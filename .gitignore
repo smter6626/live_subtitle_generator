@@ -34,6 +34,7 @@ build/
 dist/
 *.app
 *.dmg
+*.zip
 
 # Local settings / machine-specific paths
 config/settings.json
