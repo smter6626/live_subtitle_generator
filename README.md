@@ -1,12 +1,13 @@
-# Classroom Live Transcriber
+# Classroom Near-Live Transcriber
 
 ## 中文版
+## You can see English version with scrolling.
 
 ### 1. 项目简介
 
-Classroom Live Transcriber 是一个本地课堂实时转写工具，主要面向 macOS Apple Silicon。它把麦克风音频实时切成带重叠的短片段，使用 `whisper.cpp` + Metal 转写，并在界面中持续显示课堂文本。
+Classroom Near-Live Transcriber 是一个有几秒延迟的本地课堂实时转写工具，主要面向 macOS Apple Silicon。它把麦克风音频实时切成带重叠的短片段，使用 `whisper.cpp` + Metal 转写，并在界面中持续显示课堂文本。
 
-项目目标是提供“有一定延迟但课堂中可查看”的本地转写系统。它不是云服务，也不是 LLM 笔记工具；当前不会做总结、语义改写或自动课堂笔记整理。
+项目目标是提供“有一定延迟但课堂中可查看”的本地转写系统。它不是云服务，也不是 LLM 笔记工具；当前不会做总结、语义改写或自动课堂笔记整理。你可以用这个项目在本地断网模式生成一个相对可读的语音总结，几秒延迟后实时更新。本项目目的是方便上课/开会时看个大概内容，建议转录结束后用LLM来获取精准总结/内容提炼。
 
 ### 2. 当前状态
 
@@ -216,9 +217,9 @@ ditto -c -k --sequesterRsrc --keepParent ClassroomTranscriber.app ClassroomTrans
 
 ### 1. Project Overview
 
-Classroom Live Transcriber is a local live classroom transcription tool designed primarily for macOS Apple Silicon. It records microphone audio, splits it into overlapping chunks, transcribes each chunk with `whisper.cpp` + Metal, and continuously displays the transcript in a desktop UI.
+Classroom Near-Live Transcriber is a local live classroom transcription tool designed primarily for macOS Apple Silicon with several seconds delay. It records microphone audio, splits it into overlapping chunks, transcribes each chunk with `whisper.cpp` + Metal, and continuously displays the transcript in a desktop UI.
 
-The goal is a practical local workflow where the transcript is visible during class with some delay. This is not a cloud service and not an LLM note-taking system. It does not summarize, rewrite, or semantically correct the transcript.
+The goal is a practical local workflow where the transcript is visible during class with some delay. This is not a cloud service and not an LLM note-taking system. It does not summarize, rewrite, or semantically correct the transcript. You can use this project to generate a relatively readable audio summary in a local, offline mode, with real-time updates after a few seconds delay. The purpose of this project is to provide a quick overview of the content during classes/meetings; it is recommended to use LLM after the transcript is complete.
 
 ### 2. Current Status
 
