@@ -155,11 +155,13 @@ Packaged `.app` mode uses user-writable locations:
 
 ```text
 ~/Library/Application Support/ClassroomTranscriber/config/settings.json
-~/Library/Application Support/ClassroomTranscriber/models/
+~/Documents/ClassroomTranscriber/models/
 ~/Documents/ClassroomTranscriber/outputs/
 ```
 
 This avoids writing settings, models, or transcripts inside the `.app` bundle.
+`~/Library/Application Support/ClassroomTranscriber/models/` is also scanned for
+backward compatibility with earlier development builds.
 
 ## Model Manager In Packaged App
 
@@ -180,8 +182,11 @@ Cannot start transcription: no model selected.
 Download Model uses the bundled `download-ggml-model.sh` and downloads into:
 
 ```text
-~/Library/Application Support/ClassroomTranscriber/models/
+~/Documents/ClassroomTranscriber/models/
 ```
+
+The location can be changed in Model Manager with `Choose Folder`. The selected
+download directory is saved in `settings.json` as `download_model_dir`.
 
 ## Manual Test
 

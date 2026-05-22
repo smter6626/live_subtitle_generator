@@ -67,6 +67,18 @@ def writable_models_dir() -> Path:
     return project_root() / "models"
 
 
+def default_download_model_dir() -> Path:
+    return user_documents_dir() / "models"
+
+
+def app_support_model_dir() -> Path:
+    return user_app_support_dir() / "models"
+
+
+def source_project_model_dir() -> Path:
+    return project_root() / "models"
+
+
 def bundled_whisper_cli_path() -> Path:
     return resource_path("bin", "whisper-cli")
 
@@ -102,6 +114,18 @@ def default_download_script_path() -> Path:
 
 
 def default_model_dirs() -> tuple[Path, ...]:
-    if is_frozen_app():
-        return (writable_models_dir(),)
-    return (writable_models_dir(), source_whisper_cpp_model_dir())
+    candidates = [
+        default_download_model_dir(),
+        app_support_model_dir(),
+        source_project_model_dir(),
+        source_whisper_cpp_model_dir(),
+    ]
+    seen = set()
+    unique = []
+    for candidate in candidates:
+        key = str(candidate.expanduser().resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return tuple(unique)

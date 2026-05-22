@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from resource_paths import (
+    app_support_model_dir,
+    default_download_model_dir,
     default_download_script_path,
     default_model_dirs,
     default_whisper_cli_path,
@@ -28,6 +30,8 @@ CONFIG_DIR = writable_config_dir()
 APP_SETTINGS_PATH = CONFIG_DIR / "settings.json"
 OUTPUTS_DIR = writable_outputs_dir()
 PROJECT_MODEL_DIR = writable_models_dir()
+APP_SUPPORT_MODEL_DIR = app_support_model_dir()
+DEFAULT_DOWNLOAD_MODEL_DIR = default_download_model_dir()
 WHISPER_CPP_MODEL_DIR = PROJECT_MODEL_DIR if is_frozen_app() else source_whisper_cpp_model_dir()
 DEFAULT_WHISPER_CPP_CLI = default_whisper_cli_path()
 DEFAULT_WHISPER_CPP_MODEL = WHISPER_CPP_MODEL_DIR / "ggml-large-v3.bin"

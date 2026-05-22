@@ -55,10 +55,11 @@ from settings import (
 from model_manager import (
     DOWNLOADABLE_MODELS,
     DOWNLOAD_SCRIPT_PATH,
-    WHISPER_CPP_MODEL_DIR,
     build_download_command,
     choose_default_model,
+    default_scan_model_dirs,
     download_target_path,
+    ensure_model_dir,
     format_model_path,
     load_app_settings,
     run_download_command,
@@ -108,9 +109,12 @@ TEXT = {
         "select_model": "选择模型",
         "import_existing_model": "导入已有模型",
         "download_model": "下载模型",
+        "download_location": "下载位置",
+        "choose_folder": "选择文件夹",
         "download_target": "下载目标",
         "close": "关闭",
         "model_already_exists": "Model already exists.",
+        "cannot_create_model_download_directory": "无法创建模型下载目录",
         "model_import_error": "模型导入失败",
         "model_download_error": "模型下载失败",
         "model_download_started": "开始下载模型",
@@ -174,9 +178,12 @@ TEXT = {
         "select_model": "Select Model",
         "import_existing_model": "Import Existing Model",
         "download_model": "Download Model",
+        "download_location": "Download Location",
+        "choose_folder": "Choose Folder",
         "download_target": "Download target",
         "close": "Close",
         "model_already_exists": "Model already exists.",
+        "cannot_create_model_download_directory": "Cannot create model download directory",
         "model_import_error": "Model Import Error",
         "model_download_error": "Model Download Error",
         "model_download_started": "Starting model download",
@@ -331,6 +338,17 @@ class ModelManagerDialog(QDialog):
         self.table.itemDoubleClicked.connect(lambda _item: self.select_current_row())
         layout.addWidget(self.table, stretch=1)
 
+        location_row = QHBoxLayout()
+        location_row.addWidget(QLabel(tr("download_location")))
+        self.download_location_label = QLabel(format_model_path(self.app_settings.download_model_dir))
+        self.download_location_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.download_location_label.setToolTip(str(self.app_settings.download_model_dir))
+        location_row.addWidget(self.download_location_label, stretch=1)
+        self.choose_download_folder_button = QPushButton(tr("choose_folder"))
+        self.choose_download_folder_button.clicked.connect(self.choose_download_location)
+        location_row.addWidget(self.choose_download_folder_button)
+        layout.addLayout(location_row)
+
         download_row = QHBoxLayout()
         download_row.addWidget(QLabel(tr("download_model")))
         self.download_combo = QComboBox()
@@ -341,9 +359,6 @@ class ModelManagerDialog(QDialog):
         self.download_button.clicked.connect(self.download_selected_model)
         download_row.addWidget(self.download_button)
         layout.addLayout(download_row)
-
-        target_label = QLabel(f"{tr('download_target')}: {format_model_path(WHISPER_CPP_MODEL_DIR)}")
-        layout.addWidget(target_label)
 
         button_row = QHBoxLayout()
         self.select_button = QPushButton(tr("select_model"))
@@ -368,6 +383,7 @@ class ModelManagerDialog(QDialog):
         self.models = scan_model_dirs(
             self.app_settings.model_dirs,
             self.app_settings.imported_model_paths,
+            download_model_dir=self.app_settings.download_model_dir,
         )
         self.table.setRowCount(0)
         selected_key = self._selected_key()
@@ -392,7 +408,38 @@ class ModelManagerDialog(QDialog):
                 self.table.selectRow(row)
 
         self._update_current_label()
+        self._update_download_location_label()
         self.models_changed.emit()
+
+    def choose_download_location(self):
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            tr("download_location"),
+            str(self.app_settings.download_model_dir),
+        )
+        if not folder:
+            return
+
+        path = Path(folder).expanduser()
+        try:
+            ensure_model_dir(path)
+        except RuntimeError as exc:
+            QMessageBox.critical(
+                self,
+                tr("cannot_create_model_download_directory"),
+                str(exc),
+            )
+            return
+
+        self.app_settings.download_model_dir = path
+        self.app_settings.model_dirs = default_scan_model_dirs(
+            path,
+            self.app_settings.model_dirs,
+        )
+        save_app_settings(self.app_settings)
+        self._update_download_location_label()
+        self.log_message.emit(f"{tr('download_location')}: {path}", "INFO")
+        self.refresh_models()
 
     def import_existing_model(self):
         file_path, _filter = QFileDialog.getOpenFileName(
@@ -423,8 +470,18 @@ class ModelManagerDialog(QDialog):
 
     def download_selected_model(self):
         model_name = self.download_combo.currentData()
-        target_path = download_target_path(model_name)
-        WHISPER_CPP_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            download_dir = ensure_model_dir(self.app_settings.download_model_dir)
+        except RuntimeError as exc:
+            QMessageBox.critical(
+                self,
+                tr("cannot_create_model_download_directory"),
+                str(exc),
+            )
+            self.log_message.emit(str(exc), "ERROR")
+            return
+
+        target_path = download_target_path(model_name, download_dir)
         if target_path.exists():
             QMessageBox.information(self, tr("download_model"), tr("model_already_exists"))
             self.refresh_models()
@@ -439,16 +496,22 @@ class ModelManagerDialog(QDialog):
 
         self.downloading = True
         self.downloading_model_name = model_name
+        self.app_settings.download_model_dir = download_dir
+        self.app_settings.model_dirs = default_scan_model_dirs(
+            download_dir,
+            self.app_settings.model_dirs,
+        )
+        save_app_settings(self.app_settings)
         self._set_download_controls(False)
         self.log_message.emit(f"{tr('model_download_started')}: {model_name}", "INFO")
 
         def worker():
             try:
-                command = build_download_command(model_name)
+                command = build_download_command(model_name, target_dir=download_dir)
                 self.log_message.emit("download command: " + " ".join(command), "INFO")
                 return_code = run_download_command(
                     command,
-                    cwd=WHISPER_CPP_MODEL_DIR,
+                    cwd=download_dir,
                     log_callback=lambda line: self.log_message.emit(line, "INFO"),
                 )
                 if return_code == 0:
@@ -472,7 +535,10 @@ class ModelManagerDialog(QDialog):
             return
 
         self.refresh_models()
-        target_path = download_target_path(self.downloading_model_name)
+        target_path = download_target_path(
+            self.downloading_model_name,
+            self.app_settings.download_model_dir,
+        )
         selected = self._model_by_path(target_path)
         if selected:
             self._select_model(selected)
@@ -526,9 +592,16 @@ class ModelManagerDialog(QDialog):
         else:
             self.current_label.setText(f"{tr('current_model')}: {tr('no_model_selected')}")
 
+    def _update_download_location_label(self):
+        if hasattr(self, "download_location_label"):
+            path = self.app_settings.download_model_dir
+            self.download_location_label.setText(format_model_path(path))
+            self.download_location_label.setToolTip(str(path))
+
     def _set_download_controls(self, enabled: bool):
         self.download_combo.setEnabled(enabled)
         self.download_button.setEnabled(enabled)
+        self.choose_download_folder_button.setEnabled(enabled)
         self.import_button.setEnabled(enabled)
         self.refresh_button.setEnabled(enabled)
         self.close_button.setEnabled(enabled)
@@ -563,6 +636,7 @@ class MainWindow(QMainWindow):
         self.models = scan_model_dirs(
             self.app_settings.model_dirs,
             self.app_settings.imported_model_paths,
+            download_model_dir=self.app_settings.download_model_dir,
         )
         self.selected_model = choose_default_model(
             self.models,
@@ -933,6 +1007,7 @@ class MainWindow(QMainWindow):
         self.models = scan_model_dirs(
             self.app_settings.model_dirs,
             self.app_settings.imported_model_paths,
+            download_model_dir=self.app_settings.download_model_dir,
         )
         self.selected_model = choose_default_model(self.models, preferred_path)
         if self.selected_model:
@@ -978,6 +1053,7 @@ class MainWindow(QMainWindow):
         self.models = scan_model_dirs(
             self.app_settings.model_dirs,
             self.app_settings.imported_model_paths,
+            download_model_dir=self.app_settings.download_model_dir,
         )
         self.selected_model = choose_default_model(
             self.models,

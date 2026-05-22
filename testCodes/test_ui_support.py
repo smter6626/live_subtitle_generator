@@ -24,6 +24,9 @@ from settings import (  # noqa: E402
 from model_manager import (  # noqa: E402
     AppSettings,
     build_download_command,
+    default_scan_model_dirs,
+    download_target_path,
+    ensure_model_dir,
     format_file_size,
     load_app_settings,
     parse_model_name,
@@ -172,7 +175,8 @@ def test_app_settings_save_load():
             selected_model_path=selected_model,
             selected_model_name="large-v3",
             default_beam_size=5,
-            model_dirs=[model_dir],
+            download_model_dir=model_dir,
+            model_dirs=default_scan_model_dirs(model_dir, [model_dir]),
             imported_model_paths=[],
         )
         save_app_settings(app_settings, settings_path=settings_path)
@@ -181,9 +185,110 @@ def test_app_settings_save_load():
         assert loaded.selected_model_path.resolve() == selected_model.resolve()
         assert loaded.selected_model_name == "large-v3"
         assert loaded.default_beam_size == 5
-        assert loaded.model_dirs == [model_dir]
+        assert loaded.download_model_dir == model_dir
+        assert model_dir in loaded.model_dirs
 
     print_status("PASS", "app settings save/load")
+
+
+def test_ensure_model_dir_creates_missing_directory():
+    with tempfile.TemporaryDirectory(prefix="ui_model_dir_") as tmp_dir:
+        target_dir = Path(tmp_dir) / "nested" / "models"
+        assert not target_dir.exists()
+        ensured = ensure_model_dir(target_dir)
+        assert ensured == target_dir
+        assert target_dir.exists()
+        assert target_dir.is_dir()
+
+    print_status("PASS", "ensure model dir creates missing directory")
+
+
+def test_download_dir_persists_in_settings():
+    with tempfile.TemporaryDirectory(prefix="ui_download_dir_settings_") as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        download_dir = tmp_path / "custom-download"
+        selected_model = download_dir / "ggml-large-v3.bin"
+        make_model_placeholder(selected_model)
+        settings_path = tmp_path / "config" / "settings.json"
+
+        app_settings = AppSettings(
+            whisper_cpp_cli=tmp_path / "whisper-cli",
+            selected_model_path=selected_model,
+            selected_model_name="large-v3",
+            default_beam_size=5,
+            download_model_dir=download_dir,
+            model_dirs=default_scan_model_dirs(download_dir, []),
+            imported_model_paths=[],
+        )
+        save_app_settings(app_settings, settings_path=settings_path)
+        loaded = load_app_settings(settings_path=settings_path)
+
+        assert loaded.download_model_dir == download_dir
+        assert loaded.selected_model_path.resolve() == selected_model.resolve()
+        assert download_dir in loaded.model_dirs
+
+    print_status("PASS", "download dir persists in settings")
+
+
+def test_model_scanner_includes_download_model_dir():
+    with tempfile.TemporaryDirectory(prefix="ui_scan_download_dir_") as tmp_dir:
+        download_dir = Path(tmp_dir) / "downloads"
+        model_path = download_dir / "ggml-small.en.bin"
+        make_model_placeholder(model_path)
+
+        models = scan_model_dirs([], download_model_dir=download_dir)
+        assert any(model.path.resolve() == model_path.resolve() for model in models)
+
+    print_status("PASS", "model scanner includes download_model_dir")
+
+
+def test_duplicate_model_paths_are_deduplicated():
+    with tempfile.TemporaryDirectory(prefix="ui_scan_dedupe_") as tmp_dir:
+        model_dir = Path(tmp_dir) / "models"
+        model_path = model_dir / "ggml-base.en.bin"
+        make_model_placeholder(model_path)
+
+        models = scan_model_dirs(
+            [model_dir, model_dir],
+            extra_paths=[model_path],
+            download_model_dir=model_dir,
+        )
+        matching = [model for model in models if model.path.resolve() == model_path.resolve()]
+        assert len(matching) == 1
+
+    print_status("PASS", "duplicate model paths are deduplicated")
+
+
+def test_missing_download_dir_before_download_does_not_fail():
+    with tempfile.TemporaryDirectory(prefix="ui_missing_download_dir_") as tmp_dir:
+        download_dir = Path(tmp_dir) / "missing" / "models"
+        assert not download_dir.exists()
+        ensure_model_dir(download_dir)
+        target_path = download_target_path("large-v3", download_dir)
+        command = build_download_command("large-v3", target_dir=download_dir)
+
+        assert download_dir.exists()
+        assert target_path == download_dir / "ggml-large-v3.bin"
+        assert command[-1] == str(download_dir)
+
+    print_status("PASS", "missing directory before download does not fail")
+
+
+def test_bad_download_dir_returns_clear_error():
+    with tempfile.TemporaryDirectory(prefix="ui_bad_download_dir_") as tmp_dir:
+        not_a_dir = Path(tmp_dir) / "not-a-dir"
+        not_a_dir.write_text("not a directory", encoding="utf-8")
+
+        try:
+            ensure_model_dir(not_a_dir)
+        except RuntimeError as exc:
+            message = str(exc)
+            assert "Cannot create model download directory" in message
+            assert str(not_a_dir) in message
+        else:
+            raise AssertionError("file path should not be accepted as download directory")
+
+    print_status("PASS", "bad download directory returns clear error")
 
 
 def test_selected_model_missing_check():
@@ -437,6 +542,12 @@ def main():
         test_model_scan_and_parser,
         test_file_size_formatter,
         test_app_settings_save_load,
+        test_ensure_model_dir_creates_missing_directory,
+        test_download_dir_persists_in_settings,
+        test_model_scanner_includes_download_model_dir,
+        test_duplicate_model_paths_are_deduplicated,
+        test_missing_download_dir_before_download_does_not_fail,
+        test_bad_download_dir_returns_clear_error,
         test_selected_model_missing_check,
         test_download_command_builder,
         test_language_mapping,

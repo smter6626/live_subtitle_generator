@@ -77,11 +77,14 @@ Model Manager 弹窗显示本地模型表格：
 扫描目录：
 
 ```text
-/Users/smter-mac/Documents/personalAPPS/whisper/models
-/Users/smter-mac/Documents/personalAPPS/whisper/external/whisper.cpp/models
+当前 Download Location
+~/Documents/ClassroomTranscriber/models
+~/Library/Application Support/ClassroomTranscriber/models
+项目目录 models/
+external/whisper.cpp/models/
 ```
 
-如果项目内 `models/` 不存在，启动时会自动创建。
+默认 Download Location 是 `~/Documents/ClassroomTranscriber/models`。启动时会确保默认模型目录存在；点击 `Download Model` 前也会确保当前下载目录存在。
 
 识别规则：
 
@@ -122,14 +125,16 @@ Model Manager 弹窗显示本地模型表格：
 下载通过 whisper.cpp 自带脚本执行：
 
 ```bash
-sh external/whisper.cpp/models/download-ggml-model.sh <model-name>
+sh external/whisper.cpp/models/download-ggml-model.sh <model-name> <download_model_dir>
 ```
 
-下载目标是：
+默认下载目标是：
 
 ```text
-external/whisper.cpp/models/
+~/Documents/ClassroomTranscriber/models/
 ```
+
+在 Model Manager 中可以通过 `Download Location` 旁边的 `Choose Folder` 修改下载位置。选择后会保存到 settings，下次启动自动恢复。
 
 下载在后台线程执行，不阻塞 UI。Logs tab 会显示下载日志。目标文件已存在时会提示 `Model already exists.`，不会重复下载。
 
@@ -146,10 +151,13 @@ config/settings.json
 ```json
 {
   "whisper_cpp_cli": ".../external/whisper.cpp/build/bin/whisper-cli",
-  "selected_model_path": ".../external/whisper.cpp/models/ggml-large-v3.bin",
+  "selected_model_path": ".../ClassroomTranscriber/models/ggml-large-v3.bin",
   "selected_model_name": "large-v3",
   "default_beam_size": 5,
+  "download_model_dir": "~/Documents/ClassroomTranscriber/models",
   "model_dirs": [
+    ".../ClassroomTranscriber/models",
+    ".../Application Support/ClassroomTranscriber/models",
     ".../models",
     ".../external/whisper.cpp/models"
   ],
