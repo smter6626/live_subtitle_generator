@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+
+# macOS
+.DS_Store
+
+# Local runtime outputs
+outputs/
+test_runs/
+logs/
+*.log
+*_raw.txt
+*_clean.txt
+*.wav
+*.m4a
+*.mp3
+
+# Local model files
+models/
+*.bin
+*.gguf
+
+# whisper.cpp source/build/model dependency
+external/whisper.cpp/
+
+# Build artifacts
+build/
+dist/
+*.app
+*.dmg
+
+# Local settings / machine-specific paths
+config/settings.json
+app_settings.json
+*.local.json
+
+# IDE
+.vscode/
+.idea/
