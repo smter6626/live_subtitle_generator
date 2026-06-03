@@ -1,5 +1,7 @@
 # Classroom Live Transcriber
 
+github address: https://github.com/smter6626/live_subtitle_generator
+
 ## 中文版
 
 ### 1. 项目简介
