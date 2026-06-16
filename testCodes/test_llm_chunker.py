@@ -19,13 +19,15 @@ def print_status(status, name, detail=""):
 
 
 def test_transcript_line_parser():
-    lines = parse_clean_transcript("[12.34s -> 18.90s] transcript text")
+    raw_line = "[12.34s -> 18.90s] transcript text"
+    lines = parse_clean_transcript(raw_line)
 
     assert len(lines) == 1
     assert lines[0].text == "transcript text"
     assert lines[0].start == 12.34
     assert lines[0].end == 18.90
     assert lines[0].source_line == 0
+    assert lines[0].raw_line == raw_line
 
     print_status("PASS", "transcript line parser")
 
@@ -59,7 +61,13 @@ def test_parser_skips_empty_lines():
 def test_no_timestamp_fallback():
     lines = parse_clean_transcript("line without timestamp")
 
-    assert lines == [TranscriptLine(text="line without timestamp", source_line=0)]
+    assert lines == [
+        TranscriptLine(
+            text="line without timestamp",
+            source_line=0,
+            raw_line="line without timestamp",
+        )
+    ]
 
     print_status("PASS", "no timestamp fallback")
 
@@ -79,6 +87,10 @@ def test_malformed_timestamp_fallback():
         "[12.0s ->] broken",
     ]
     assert all(line.start is None and line.end is None for line in lines)
+    assert [line.raw_line for line in lines] == [
+        "[abc -> 12.0s] broken",
+        "[12.0s ->] broken",
+    ]
 
     print_status("PASS", "malformed timestamp fallback")
 
@@ -189,6 +201,33 @@ def test_chunk_start_end_from_timestamped_lines():
     print_status("PASS", "chunk start/end derived from timestamped lines")
 
 
+def test_transcript_parser_preserves_raw_line():
+    raw_lines = [
+        "[1s -> 2s] timestamped",
+        "fallback",
+        "[broken -> 3s] malformed",
+    ]
+    lines = parse_clean_transcript("\n".join(raw_lines))
+
+    assert [line.raw_line for line in lines] == raw_lines
+
+    print_status("PASS", "transcript parser preserves raw line")
+
+
+def test_inverted_timestamp_falls_back_to_text_only_line():
+    raw_line = "[20s -> 10s] wrong order"
+    lines = parse_clean_transcript(raw_line)
+
+    assert len(lines) == 1
+    assert lines[0].text == raw_line
+    assert lines[0].start is None
+    assert lines[0].end is None
+    assert lines[0].source_line == 0
+    assert lines[0].raw_line == raw_line
+
+    print_status("PASS", "inverted timestamp falls back to text-only line")
+
+
 def test_parser_and_chunker_do_not_modify_inputs():
     text = "[1s -> 2s] original\nfallback"
     original_text = text[:]
@@ -217,6 +256,8 @@ def main():
     test_no_timestamp_lines_included_in_chunks()
     test_chunk_preserves_source_line_indexes()
     test_chunk_start_end_from_timestamped_lines()
+    test_transcript_parser_preserves_raw_line()
+    test_inverted_timestamp_falls_back_to_text_only_line()
     test_parser_and_chunker_do_not_modify_inputs()
 
 

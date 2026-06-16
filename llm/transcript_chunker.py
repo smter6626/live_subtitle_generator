@@ -15,6 +15,7 @@ class TranscriptLine:
     start: float | None = None
     end: float | None = None
     source_line: int | None = None
+    raw_line: str | None = None
 
 
 @dataclass(frozen=True)
@@ -49,15 +50,26 @@ def parse_clean_transcript(text: str) -> list[TranscriptLine]:
 
         match = _TIMESTAMP_PREFIX_RE.match(raw_line)
         if not match:
-            parsed.append(TranscriptLine(text=raw_line, source_line=source_line))
+            parsed.append(
+                TranscriptLine(text=raw_line, source_line=source_line, raw_line=raw_line)
+            )
+            continue
+
+        start = float(match.group("start"))
+        end = float(match.group("end"))
+        if end < start:
+            parsed.append(
+                TranscriptLine(text=raw_line, source_line=source_line, raw_line=raw_line)
+            )
             continue
 
         parsed.append(
             TranscriptLine(
                 text=match.group("text"),
-                start=float(match.group("start")),
-                end=float(match.group("end")),
+                start=start,
+                end=end,
                 source_line=source_line,
+                raw_line=raw_line,
             )
         )
 

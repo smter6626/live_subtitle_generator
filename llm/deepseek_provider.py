@@ -6,7 +6,7 @@ class DeepSeekProvider(LLMProvider):
     """DeepSeek provider adapter placeholder.
 
     HTTP integration is intentionally deferred until the provider implementation
-    step. This skeleton does not read API keys or send network requests.
+    step. This skeleton does not read API keys or contact external services.
     """
 
     provider_id = "deepseek"
