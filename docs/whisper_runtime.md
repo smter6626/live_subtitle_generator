@@ -42,8 +42,8 @@
 
 ```text
 当前分支：llm-sidecar-phase1
-当前 checkpoint：Step 3 已完成并已 push
-唯一 ACTIVE 任务：Step 4 - 实现 transcript parser / chunker
+当前 checkpoint：Step 4 已完成
+唯一 ACTIVE 任务：Step 5 - 实现 provider interface 和 mock provider
 ```
 
 已完成：
@@ -52,12 +52,12 @@
 Step 1：冻结需求和架构边界
 Step 2：更新设计文档
 Step 3：创建独立 llm/ 模块骨架
+Step 4：实现 transcript parser / chunker
 ```
 
 当前尚未实现：
 
 ```text
-parser / chunker 业务逻辑
 mock provider
 真实 HTTP API
 summary pipeline
@@ -68,7 +68,7 @@ UI
 Phase 2A rolling sidecar
 ```
 
-当前 `llm/` package 只代表可导入骨架和模块边界。
+当前 `llm/` package 已包含 parser / chunker 业务逻辑；其他 LLM 能力仍是骨架或未实现状态。
 
 ---
 
@@ -172,36 +172,56 @@ llm-sidecar-phase1 -> origin/llm-sidecar-phase1
 
 ---
 
-## 3. ACTIVE：Step 4 - 实现 transcript parser / chunker
+### Step 4：实现 transcript parser / chunker
+
+状态：已完成，待 commit/push。
+
+完成内容：
+
+- `parse_clean_transcript(text)` 解析标准 clean timestamp 行；
+- 支持 no timestamp fallback；
+- 支持 malformed timestamp fallback；
+- 跳过空行；
+- 保留 0-based `source_line`；
+- `chunk_transcript(lines, max_chars, max_seconds)` 按输入顺序 deterministic 切块；
+- 支持稳定 `chunk-0001` 格式 chunk id；
+- 支持 `max_chars` 和 `max_seconds`；
+- 单行超出 `max_chars` 时保留为单独 chunk，不拆分原文；
+- `TranscriptChunk` 保留 source lines，并提供只读 `text` / `source_lines` convenience properties。
+
+修改文件：
+
+```text
+llm/transcript_chunker.py
+testCodes/test_llm_chunker.py
+docs/whisper_runtime.md
+```
+
+Step 4 验证结果：
+
+```text
+testCodes/test_llm_chunker.py：PASS
+compileall llm + testCodes/test_llm_chunker.py：PASS
+testCodes/test_ui_support.py：PASS
+testCodes/test_backends.py --skip-faster-smoke：PASS，whisper.cpp CLI 未配置时 SKIP
+git diff --check：PASS
+network/API grep：无实际网络/API 实现；仅既有 DeepSeek 骨架注释命中 "network requests"
+API key grep：无输出
+ASR 主链路文件：无修改
+provider/API/UI/writer/renderer/sidecar：未接入
+```
+
+---
+
+## 3. ACTIVE：Step 5 - 实现 provider interface 和 mock provider
 
 状态：ACTIVE。
 
 ### 3.1 目标
 
-实现 `llm/transcript_chunker.py` 中的 parser / chunker 业务逻辑，并新增 focused tests。
+实现 provider interface 和 mock provider，让后续 pipeline 可以通过统一接口调用 deterministic mock provider 或未来真实 provider。
 
-Step 4 只处理纯文本解析和 deterministic chunking，不接 provider，不接 API，不写 summary，不接 UI。
-
-输入：
-
-```text
-clean.txt 文本
-```
-
-典型 timestamp 行格式：
-
-```text
-[12.34s -> 18.90s] transcript text
-```
-
-输出：
-
-```text
-TranscriptLine[]
-TranscriptChunk[]
-```
-
-必须保留 evidence text，不得改写 `clean.txt`。
+Step 5 只做 provider 抽象与 mock provider，不接真实 HTTP，不要求 `DEEPSEEK_API_KEY`，不生成 summary，不写 `session_dir/llm/`，不接 UI。
 
 ---
 
@@ -210,17 +230,20 @@ TranscriptChunk[]
 原则上允许：
 
 ```text
-llm/transcript_chunker.py
-testCodes/test_llm_chunker.py
+llm/provider_base.py
+llm/deepseek_provider.py
+llm/openai_compatible_provider.py
+llm/llm_settings.py
+testCodes/test_llm_provider_mock.py
 ```
 
-如果 Codex 认为骨架中的 dataclass / type signature 需要微调，也允许最小修改：
+如需新增独立 mock module，也允许最小新增：
 
 ```text
-llm/__init__.py
+llm/mock_provider.py
 ```
 
-但必须说明理由。
+但不得接真实网络/API。
 
 ---
 
@@ -258,7 +281,6 @@ UI 主线程
 不要实现：
 
 ```text
-mock provider
 DeepSeek HTTP
 OpenAI-compatible HTTP
 summary pipeline
@@ -271,55 +293,17 @@ Phase 2A sidecar
 
 ---
 
-### 3.4 Step 4 实现要求
+### 3.4 Step 5 实现要求
 
-#### 3.4.1 Parser
-
-实现 clean transcript parser：
-
-- 解析 `[12.34s -> 18.90s] text`；
-- `start_time` / `end_time` 使用 float 秒；
-- `text` 保留原文文本，不做语义改写；
-- 跳过空行；
-- 对无 timestamp 行做 fallback，而不是让整个 job 失败；
-- malformed timestamp 行保留为 text-only entry；
-- 记录原始行号或 line index，方便后续 evidence tracking；
-- 不读取真实 session，测试使用字符串或临时 fixture。
-
-建议数据字段：
-
-```text
-TranscriptLine:
-  line_index
-  raw_line
-  text
-  start_time: float | None
-  end_time: float | None
-```
-
-如果现有骨架字段不同，可以在保持最小兼容的前提下调整。
-
-#### 3.4.2 Chunker
-
-实现 deterministic chunking：
-
-- 输入 `TranscriptLine[]`；
-- 按输入顺序稳定切块；
-- 支持最大字符数预算；
-- 支持最大时间跨度预算；
-- 每个 chunk 包含：
-  - `chunk_id`
-  - `start_time`
-  - `end_time`
-  - `lines`
-  - `text`
-  - 原始行范围或 line indexes；
-- 无 timestamp lines 也必须能进入 chunk；
-- 空 transcript 返回空列表；
-- 不跨越预算时尽量保持连续上下文；
-- 不做 LLM prompt overlap 逻辑，除非作为显式可选参数且默认关闭；
-- 不访问网络；
-- 不写文件。
+- 完善 `LLMProvider` interface 和 typed errors；
+- 新增 deterministic mock provider；
+- mock provider 返回固定结构化响应；
+- 支持错误注入：missing API key、timeout、provider error、invalid JSON、schema validation failure；
+- 不要求存在 `DEEPSEEK_API_KEY`；
+- 不发送网络请求；
+- 不写 request / response log；
+- 不写 API key；
+- 自动测试只能使用 mock/fixed response。
 
 ---
 
@@ -328,13 +312,13 @@ TranscriptLine:
 新增：
 
 ```text
-testCodes/test_llm_chunker.py
+testCodes/test_llm_provider_mock.py
 ```
 
 测试必须可直接用：
 
 ```bash
-venv/bin/python testCodes/test_llm_chunker.py
+venv/bin/python testCodes/test_llm_provider_mock.py
 ```
 
 运行，不依赖 pytest。
@@ -342,15 +326,11 @@ venv/bin/python testCodes/test_llm_chunker.py
 测试输出建议使用现有项目风格：
 
 ```text
-PASS: transcript line parser
-PASS: transcript parser skips empty lines
-PASS: no timestamp fallback
-PASS: malformed timestamp fallback
-PASS: empty transcript
-PASS: deterministic chunking
-PASS: chunk respects max chars
-PASS: chunk respects max duration
-PASS: chunk preserves source line indexes
+PASS: mock provider success
+PASS: mock provider failure
+PASS: provider errors are typed
+PASS: no real API call
+PASS: api key not written
 ```
 
 ---
@@ -382,18 +362,18 @@ git status --short --untracked-files=all
 llm-sidecar-phase1
 ```
 
-Step 4 测试：
+Step 5 测试：
 
 ```bash
-venv/bin/python testCodes/test_llm_chunker.py
+venv/bin/python testCodes/test_llm_provider_mock.py
 ```
 
-预期：所有 Step 4 focused tests PASS。
+预期：所有 Step 5 focused tests PASS。
 
 语法检查：
 
 ```bash
-venv/bin/python -m compileall -q llm testCodes/test_llm_chunker.py
+venv/bin/python -m compileall -q llm testCodes/test_llm_provider_mock.py
 ```
 
 预期：无输出，退出码为 0。
@@ -422,32 +402,29 @@ git status --short --untracked-files=all
 预期只涉及：
 
 ```text
-llm/transcript_chunker.py
-testCodes/test_llm_chunker.py
+llm/provider_base.py
+llm/mock_provider.py
+testCodes/test_llm_provider_mock.py
 ```
 
 如果出现其他文件，必须说明原因。
 
 ---
 
-### 3.7 Step 4 完成标准
+### 3.7 Step 5 完成标准
 
-全部满足才可标记 Step 4 已完成：
+全部满足才可标记 Step 5 已完成：
 
 ```text
-parser 能解析标准 timestamp 行
-parser 能处理 no timestamp fallback
-parser 能处理 malformed timestamp fallback
-parser 跳过空行
-chunker deterministic
-chunker 支持 max chars
-chunker 支持 max duration
-chunk 保留 line indexes / source evidence
-testCodes/test_llm_chunker.py PASS
+LLMProvider interface 保持清晰
+mock provider deterministic
+mock provider 支持 success/failure/error injection
+provider errors typed
+testCodes/test_llm_provider_mock.py PASS
 compileall PASS
 原有 baseline tests 无新增 FAIL
 ASR 主链路无修改
-未接 provider / API / UI / writer / renderer / sidecar
+未接真实 API / UI / writer / renderer / sidecar
 ```
 
 ---
@@ -456,31 +433,29 @@ ASR 主链路无修改
 
 重点防止：
 
-- 直接复用或修改 `transcript_store.py` 的写入逻辑；
-- 修改 `stream_transcribe.py` 中现有 timestamp parser 或 backend parser；
-- 把 chunker 做成读取真实 session 的高层 pipeline；
-- 提前生成 prompt；
-- 提前接 provider；
+- 真实调用 DeepSeek 或其他 endpoint；
+- 从 settings/config/session 文件读取或写入 API key；
+- 把 mock provider 做成依赖网络或环境变量；
+- 提前生成 summary pipeline；
 - 提前写 `session_dir/llm/`；
-- 为了测试而读取真实 outputs；
-- 对 text 做语义清洗或翻译；
-- chunking 结果不 deterministic。
+- 提前接 UI；
+- 修改 ASR 主链路。
 
 ---
 
 ### 3.9 回滚
 
-如果 Step 4 实现方向错误：
+如果 Step 5 实现方向错误：
 
 ```bash
-git diff -- llm/transcript_chunker.py testCodes/test_llm_chunker.py
+git diff -- llm/provider_base.py llm/mock_provider.py testCodes/test_llm_provider_mock.py
 ```
 
 只回滚本步骤相关文件：
 
 ```bash
-git restore llm/transcript_chunker.py
-rm -f testCodes/test_llm_chunker.py
+git restore llm/provider_base.py
+rm -f llm/mock_provider.py testCodes/test_llm_provider_mock.py
 ```
 
 不要使用：
@@ -493,25 +468,6 @@ git clean -fd
 ---
 
 ## 4. 后续步骤简要内容
-
-### Step 5：实现 provider interface 和 mock provider
-
-目标：
-
-- 完善 `LLMProvider` 接口和 typed errors；
-- 新增 mock provider；
-- 支持 deterministic success response；
-- 支持错误注入；
-- 不真实调用 API；
-- 不要求 `DEEPSEEK_API_KEY`。
-
-验收：
-
-```bash
-venv/bin/python testCodes/test_llm_provider_mock.py
-```
-
----
 
 ### Step 6：实现 output writer、state schema、renderer
 
