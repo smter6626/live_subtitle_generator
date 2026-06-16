@@ -21,6 +21,7 @@ Classroom Live Transcriber 是一个本地课堂实时转写工具，主要面�
 - 输出：每次录音生成独立 session，包含 `raw.txt`、`clean.txt`、`session.log`、`config.json`
 - 模型管理：UI 内可检测、选择、导入和下载 ggml/gguf 模型
 - 打包：已有 macOS Apple Silicon PyInstaller 开发版 `.app` 打包脚本
+- LLM 分支：2026-06-03 已新增独立 `llm/` package 骨架，预留 provider、settings、chunker、pipeline、writer、state 和 renderer 边界；尚未实现 API、CLI、UI 或总结生成
 
 旧的 `stream_transcribe.py` 命令行入口和 `faster-whisper` fallback 仍保留，用于回滚和对比；普通 UI 不暴露 `turbo` 或 `faster-whisper` 选项。
 
@@ -196,7 +197,7 @@ ditto -c -k --sequesterRsrc --keepParent ClassroomTranscriber.app ClassroomTrans
 - 当前只验证 macOS Apple Silicon。
 - 没有 notarization，不是正式发布版。
 - 没有 Windows 打包。
-- 没有 LLM summary。
+- LLM summary 尚未实现；当前只有独立 `llm/` package 骨架，不调用真实 API，不接 UI，也不修改 `raw.txt` / `clean.txt`。
 - 没有语义纠错或课堂笔记结构化。
 - `whisper.cpp` 当前仍按 chunk 调用 CLI，后续可优化为 server 或 native binding。
 - Mixed Chinese/English 使用 `-l auto`，实际效果依赖模型和音频。
@@ -208,7 +209,7 @@ ditto -c -k --sequesterRsrc --keepParent ClassroomTranscriber.app ClassroomTrans
 - 缩小 PyInstaller app 体积。
 - 做正式签名和 notarization。
 - 研究 whisper.cpp server/native binding，减少每个 chunk 的进程启动开销。
-- 后续可增加离线 LLM cleanup / summary，但不放入实时转写主链路。
+- 按 sidecar 设计继续实现 LLM parser/chunker、mock provider、output writer、summary/readable pipeline 和 CLI；不得放入实时转写主链路。
 
 更多实现细节见 `工程细节.md`。
 
@@ -233,6 +234,7 @@ Current main path:
 - Output: each recording creates a session with `raw.txt`, `clean.txt`, `session.log`, and `config.json`
 - Model management: the UI can scan, select, import, and download ggml/gguf models
 - Packaging: macOS Apple Silicon PyInstaller development `.app` build scripts are available
+- LLM branch: as of 2026-06-03, an isolated `llm/` package skeleton exists for provider, settings, chunker, pipeline, writer, state, and renderer boundaries; API, CLI, UI, and summary generation are not implemented yet
 
 The legacy `stream_transcribe.py` CLI and old `faster-whisper` fallback remain for rollback and comparison. The normal UI does not expose `turbo` or `faster-whisper`.
 
@@ -408,7 +410,7 @@ The packaged app bundles `whisper-cli`, but it does not bundle `large-v3` or any
 - Only macOS Apple Silicon has been tested.
 - No notarization; this is not a formal release build.
 - No Windows build.
-- No LLM summary.
+- No implemented LLM summary yet; the current `llm/` package is an isolated skeleton and does not call real APIs, connect UI, or modify `raw.txt` / `clean.txt`.
 - No semantic correction or structured note generation.
 - `whisper.cpp` is still called as a CLI process per chunk; a server or native binding may reduce overhead later.
 - Mixed Chinese/English uses `-l auto`; real quality depends on model and audio.
@@ -420,6 +422,6 @@ The packaged app bundles `whisper-cli`, but it does not bundle `large-v3` or any
 - Reduce PyInstaller app size.
 - Add proper signing and notarization.
 - Explore a persistent `whisper.cpp` server or native binding.
-- Add optional offline LLM cleanup / summary later, outside the live transcription path.
+- Continue the sidecar LLM path with parser/chunker, mock provider, output writer, summary/readable pipeline, and CLI, outside the live transcription path.
 
 For implementation details, see `工程细节.md`.
