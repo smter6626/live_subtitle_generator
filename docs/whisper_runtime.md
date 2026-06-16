@@ -42,7 +42,7 @@
 
 ```text
 当前分支：llm-sidecar-phase1
-当前 checkpoint：Step 4 已完成
+当前 checkpoint：Step 4 已完成并已 push
 唯一 ACTIVE 任务：Step 5 - 实现 provider interface 和 mock provider
 ```
 
@@ -174,11 +174,29 @@ llm-sidecar-phase1 -> origin/llm-sidecar-phase1
 
 ### Step 4：实现 transcript parser / chunker
 
-状态：已完成，待 commit/push。
+状态：已完成，已 commit 并 push。
+
+提交：
+
+```text
+commit: 920b0bb
+message: Implement LLM transcript parser and chunker version1
+branch: llm-sidecar-phase1
+remote: origin/llm-sidecar-phase1
+```
+
+修改文件：
+
+```text
+llm/transcript_chunker.py
+testCodes/test_llm_chunker.py
+docs/whisper_runtime.md
+```
 
 完成内容：
 
 - `parse_clean_transcript(text)` 解析标准 clean timestamp 行；
+- 支持整数或小数秒，例如 `[1s -> 2s]`、`[1.0s -> 2.50s]`；
 - 支持 no timestamp fallback；
 - 支持 malformed timestamp fallback；
 - 跳过空行；
@@ -189,18 +207,10 @@ llm-sidecar-phase1 -> origin/llm-sidecar-phase1
 - 单行超出 `max_chars` 时保留为单独 chunk，不拆分原文；
 - `TranscriptChunk` 保留 source lines，并提供只读 `text` / `source_lines` convenience properties。
 
-修改文件：
-
-```text
-llm/transcript_chunker.py
-testCodes/test_llm_chunker.py
-docs/whisper_runtime.md
-```
-
 Step 4 验证结果：
 
 ```text
-testCodes/test_llm_chunker.py：PASS
+testCodes/test_llm_chunker.py：PASS，14 项 focused tests
 compileall llm + testCodes/test_llm_chunker.py：PASS
 testCodes/test_ui_support.py：PASS
 testCodes/test_backends.py --skip-faster-smoke：PASS，whisper.cpp CLI 未配置时 SKIP
@@ -210,6 +220,15 @@ API key grep：无输出
 ASR 主链路文件：无修改
 provider/API/UI/writer/renderer/sidecar：未接入
 ```
+
+Step 4 version1 已验收通过，不需要单独做 Step 4 version2。
+
+#### Step 4 后续 hardening backlog
+
+以下小点不阻塞 Step 5，不在 Step 5 中处理，后续可在 Step 6、Step 10 或专门 hardening step 中评估：
+
+1. `TranscriptLine` 当前未保存完整 `raw_line`。如果后续需要更严格 evidence reconstruction / audit，可增加 `raw_line: str | None`。
+2. 当前 parser 未验证 timestamp 单调性或 `end < start`。正常 clean 输出不应出现该问题；如果后续需要更强 validation，可在 error injection / malformed transcript 测试阶段补。
 
 ---
 
@@ -243,7 +262,9 @@ testCodes/test_llm_provider_mock.py
 llm/mock_provider.py
 ```
 
-但不得接真实网络/API。
+如果需要从 `llm/__init__.py` 导出 mock provider 或 typed errors，可以最小修改 `llm/__init__.py`，但必须说明理由。
+
+不得修改 `docs/whisper_static.md`。本步骤没有改变长期合同。
 
 ---
 
@@ -281,8 +302,8 @@ UI 主线程
 不要实现：
 
 ```text
-DeepSeek HTTP
-OpenAI-compatible HTTP
+真实 DeepSeek HTTP
+真实 OpenAI-compatible HTTP
 summary pipeline
 output writer
 renderer
@@ -291,19 +312,66 @@ UI
 Phase 2A sidecar
 ```
 
+不要在 Step 5 里处理 Step 4 hardening backlog，除非发现它会直接阻塞 provider mock tests。
+
 ---
 
 ### 3.4 Step 5 实现要求
 
-- 完善 `LLMProvider` interface 和 typed errors；
-- 新增 deterministic mock provider；
-- mock provider 返回固定结构化响应；
-- 支持错误注入：missing API key、timeout、provider error、invalid JSON、schema validation failure；
-- 不要求存在 `DEEPSEEK_API_KEY`；
+#### 3.4.1 Provider interface
+
+完善 `llm/provider_base.py`，目标是提供稳定、mockable 的 provider contract。
+
+建议保留或实现：
+
+```text
+LLMProvider
+generate_json(...)
+generate_text(...)
+provider_id
+```
+
+Provider error 必须是 typed enough，至少覆盖：
+
+```text
+LLMProviderError
+LLMConfigurationError / missing API key
+LLMAuthenticationError
+LLMRateLimitError
+LLMTimeoutError
+LLMMalformedResponseError
+LLMSchemaError 或 LLMInvalidResponseError
+```
+
+命名可按现有骨架调整，但必须能让后续 pipeline 区分错误类别。
+
+#### 3.4.2 Mock provider
+
+新增或完善 deterministic mock provider。
+
+要求：
+
+- 不读取 `DEEPSEEK_API_KEY`；
+- 不读取 settings/config/session；
 - 不发送网络请求；
 - 不写 request / response log；
-- 不写 API key；
-- 自动测试只能使用 mock/fixed response。
+- 不写文件；
+- 返回固定、可测试的 JSON/text；
+- 支持错误注入。
+
+建议错误注入方式之一：
+
+```text
+mode = success | missing_api_key | timeout | provider_error | invalid_json | schema_error
+```
+
+或使用构造参数控制下一次调用抛出的 typed error。
+
+#### 3.4.3 Placeholder providers
+
+`deepseek_provider.py` 和 `openai_compatible_provider.py` 仍应保持 placeholder / not implemented / no network state。
+
+Step 5 不应实现真实 HTTP client。
 
 ---
 
@@ -315,7 +383,7 @@ Phase 2A sidecar
 testCodes/test_llm_provider_mock.py
 ```
 
-测试必须可直接用：
+测试必须可直接运行：
 
 ```bash
 venv/bin/python testCodes/test_llm_provider_mock.py
@@ -326,12 +394,26 @@ venv/bin/python testCodes/test_llm_provider_mock.py
 测试输出建议使用现有项目风格：
 
 ```text
-PASS: mock provider success
-PASS: mock provider failure
+PASS: mock provider text success
+PASS: mock provider json success
+PASS: mock provider failure injection
 PASS: provider errors are typed
+PASS: mock provider does not require api key
 PASS: no real API call
 PASS: api key not written
 ```
+
+至少覆盖：
+
+- mock provider `generate_text()` success；
+- mock provider `generate_json()` success；
+- fixed response deterministic；
+- typed error raising；
+- timeout / provider error / malformed response 或 schema error 注入；
+- 没有 `DEEPSEEK_API_KEY` 时 mock provider 仍可用；
+- 不发生真实网络请求；
+- 不写文件；
+- 不输出或保存 API key。
 
 ---
 
@@ -362,7 +444,7 @@ git status --short --untracked-files=all
 llm-sidecar-phase1
 ```
 
-Step 5 测试：
+Step 5 focused test：
 
 ```bash
 venv/bin/python testCodes/test_llm_provider_mock.py
@@ -381,16 +463,12 @@ venv/bin/python -m compileall -q llm testCodes/test_llm_provider_mock.py
 原有回归：
 
 ```bash
+venv/bin/python testCodes/test_llm_chunker.py
 venv/bin/python testCodes/test_ui_support.py
 venv/bin/python testCodes/test_backends.py --skip-faster-smoke
 ```
 
-预期：
-
-```text
-无新增 FAIL
-whisper.cpp availability 在 CLI 未配置时可 SKIP
-```
+预期：无新增 FAIL。`whisper.cpp availability` 在 CLI 未配置时可 SKIP。
 
 修改范围检查：
 
@@ -399,7 +477,7 @@ git diff --name-only
 git status --short --untracked-files=all
 ```
 
-预期只涉及：
+理想只涉及：
 
 ```text
 llm/provider_base.py
@@ -407,7 +485,33 @@ llm/mock_provider.py
 testCodes/test_llm_provider_mock.py
 ```
 
+可能允许：
+
+```text
+llm/deepseek_provider.py
+llm/openai_compatible_provider.py
+llm/llm_settings.py
+llm/__init__.py
+docs/whisper_runtime.md
+```
+
 如果出现其他文件，必须说明原因。
+
+网络/API 检查：
+
+```bash
+grep -RInE 'requests|httpx|aiohttp|urllib|urlopen|socket|Authorization|Bearer |chat\.completions|client\.chat|api\.deepseek|https?://' llm testCodes/test_llm_provider_mock.py || true
+```
+
+预期：无实际网络/API 实现。若只命中注释或 placeholder 文本，必须说明。
+
+API key 检查：
+
+```bash
+grep -RInE 'sk-[A-Za-z0-9_-]{16,}' llm testCodes/test_llm_provider_mock.py docs/whisper_runtime.md || true
+```
+
+预期：无输出。
 
 ---
 
@@ -416,12 +520,18 @@ testCodes/test_llm_provider_mock.py
 全部满足才可标记 Step 5 已完成：
 
 ```text
-LLMProvider interface 保持清晰
+LLMProvider interface 清晰
+provider typed errors 可区分主要错误类别
 mock provider deterministic
-mock provider 支持 success/failure/error injection
-provider errors typed
+mock provider 支持 text / json success
+mock provider 支持 failure/error injection
+mock provider 不要求 DEEPSEEK_API_KEY
+mock provider 不访问网络
+mock provider 不写文件
+mock provider 不保存 API key
 testCodes/test_llm_provider_mock.py PASS
 compileall PASS
+testCodes/test_llm_chunker.py PASS
 原有 baseline tests 无新增 FAIL
 ASR 主链路无修改
 未接真实 API / UI / writer / renderer / sidecar
@@ -439,7 +549,8 @@ ASR 主链路无修改
 - 提前生成 summary pipeline；
 - 提前写 `session_dir/llm/`；
 - 提前接 UI；
-- 修改 ASR 主链路。
+- 修改 ASR 主链路；
+- 把 Step 4 parser/chunker hardening 混进 Step 5，导致 diff 变杂。
 
 ---
 
@@ -454,7 +565,7 @@ git diff -- llm/provider_base.py llm/mock_provider.py testCodes/test_llm_provide
 只回滚本步骤相关文件：
 
 ```bash
-git restore llm/provider_base.py
+git restore llm/provider_base.py llm/deepseek_provider.py llm/openai_compatible_provider.py llm/llm_settings.py llm/__init__.py docs/whisper_runtime.md
 rm -f llm/mock_provider.py testCodes/test_llm_provider_mock.py
 ```
 
@@ -549,7 +660,8 @@ venv/bin/python llm_postprocess.py --session outputs/<SESSION_ID> --provider moc
 - schema validation failure；
 - renderer failure；
 - API key leakage scan；
-- raw/clean/session/config unchanged。
+- raw/clean/session/config unchanged；
+- 可顺手评估 Step 4 hardening backlog：`raw_line` 保存、`end < start` validation。
 
 ---
 
@@ -683,7 +795,7 @@ git diff --name-only
 当前下一次合理 commit：
 
 ```text
-Implement LLM transcript parser and chunker
+Implement LLM provider interface and mock provider
 ```
 
 push：
