@@ -74,6 +74,7 @@ def assert_no_live_outputs(session_dir: Path):
 
 def assert_no_secret_or_prompt(result, session_dir: Path, secret: str | None = None):
     combined = f"{result.stdout}\n{result.stderr}"
+    assert "Traceback" not in combined
     assert "Required constraints" not in combined
     assert "Clean transcript chunk" not in combined
     assert "system_prompt" not in combined
@@ -194,7 +195,39 @@ def test_cli_failure_output_sanitized():
         assert_evidence_unchanged(session_dir, originals)
 
     print_status("PASS", "cli failure output sanitized")
+    print_status("PASS", "cli failure display sanitized across stdout stderr")
     print_status("PASS", "cli does not print prompts or raw responses")
+    print_status("PASS", "no traceback printed")
+
+
+def test_cli_both_partial_failure_policy():
+    with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
+        session_dir, originals = make_session(Path(tmp_dir))
+        result = run_cli(
+            [
+                "--session",
+                str(session_dir),
+                "--provider",
+                "mock",
+                "--task",
+                "both",
+                "--mock-fail",
+                "summary failed for partial policy",
+                "--mock-fail-schema",
+                "phase1a_section_summary",
+            ]
+        )
+
+        assert result.returncode != 0
+        assert "summary failed" in result.stderr
+        assert "readable: ok" in result.stdout
+        assert not (session_dir / "llm" / "summary.md").exists()
+        assert (session_dir / "llm" / "readable_zh_final_state.json").exists()
+        assert (session_dir / "llm" / "llm_errors.log").exists()
+        assert_evidence_unchanged(session_dir, originals)
+        assert_no_secret_or_prompt(result, session_dir)
+
+    print_status("PASS", "cli both partial failure policy")
 
 
 def test_cli_raw_clean_session_config_unchanged():
@@ -238,6 +271,7 @@ def main():
     test_cli_rejects_missing_clean_transcript()
     test_cli_rejects_non_mock_provider()
     test_cli_failure_output_sanitized()
+    test_cli_both_partial_failure_policy()
     test_cli_raw_clean_session_config_unchanged()
     test_cli_no_live_sidecar_outputs()
     test_cli_no_real_api_call()

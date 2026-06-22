@@ -94,7 +94,7 @@ class ReadableSegment:
 @dataclass(frozen=True)
 class ReadableTranscriptState:
     schema_version: int = 1
-    revision: int = 0
+    revision: int = 1
     source: SourceInfo = field(default_factory=SourceInfo)
     segments: tuple[ReadableSegment, ...] = field(default_factory=tuple)
 
@@ -130,8 +130,13 @@ def validate_summary_state(state: SummaryState | dict[str, Any]) -> dict[str, An
     _require_list(data, "review_questions")
     _require_list(data, "unclear_parts")
 
+    section_ids: set[str] = set()
     for section in data["sections"]:
-        _validate_section(section)
+        section_data = _validate_section(section)
+        section_id = section_data["section_id"]
+        if section_id in section_ids:
+            raise LLMSchemaError(f"Duplicate section_id: {section_id}")
+        section_ids.add(section_id)
     for term in data["key_terms"]:
         _validate_key_term(term)
     for item in data["action_items"]:
@@ -153,13 +158,20 @@ def validate_readable_state(state: ReadableTranscriptState | dict[str, Any]) -> 
         raise LLMSchemaError("Readable transcript state must be a mapping.")
 
     _require_int(data, "schema_version")
-    _require_int(data, "revision")
+    revision = _require_int(data, "revision")
+    if revision < 1:
+        raise LLMSchemaError("Readable transcript revision must be at least 1.")
     source = _require_mapping(data, "source")
     _validate_source(source)
     segments = _require_list(data, "segments")
 
+    segment_ids: set[str] = set()
     for segment in segments:
-        _validate_segment(segment)
+        segment_data = _validate_segment(segment)
+        segment_id = segment_data["segment_id"]
+        if segment_id in segment_ids:
+            raise LLMSchemaError(f"Duplicate segment_id: {segment_id}")
+        segment_ids.add(segment_id)
 
     return data
 
@@ -173,14 +185,16 @@ def _validate_source(source: dict[str, Any]):
         raise LLMSchemaError("State source.raw_used must be false for Phase 1.")
 
 
-def _validate_section(section: Any):
+def _validate_section(section: Any) -> dict[str, Any]:
     mapping = _expect_mapping(section, "Section")
     _require_str(mapping, "section_id")
     _require_str(mapping, "title")
     _require_str(mapping, "summary")
     _require_optional_number(mapping, "start")
     _require_optional_number(mapping, "end")
+    _validate_time_range(mapping, "Section")
     _require_string_list(mapping, "evidence")
+    return mapping
 
 
 def _validate_key_term(term: Any):
@@ -206,11 +220,12 @@ def _validate_unclear_part(unclear: Any):
     _require_string_list(mapping, "evidence")
 
 
-def _validate_segment(segment: Any):
+def _validate_segment(segment: Any) -> dict[str, Any]:
     mapping = _expect_mapping(segment, "Readable segment")
     _require_str(mapping, "segment_id")
     _require_optional_number(mapping, "start")
     _require_optional_number(mapping, "end")
+    _validate_time_range(mapping, "Readable segment")
     _require_str(mapping, "source_text")
     _require_str(mapping, "text_zh")
     _require_string_list(mapping, "evidence")
@@ -222,6 +237,7 @@ def _validate_segment(segment: Any):
     annotations = _require_list(mapping, "annotations")
     for annotation in annotations:
         _validate_annotation(annotation)
+    return mapping
 
 
 def _validate_annotation(annotation: Any):
@@ -230,6 +246,13 @@ def _validate_annotation(annotation: Any):
     if annotation_type not in {item.value for item in AnnotationType}:
         raise LLMSchemaError(f"Invalid annotation type: {annotation_type}")
     _require_str({"text": mapping.get("text", "")}, "text")
+
+
+def _validate_time_range(mapping: dict[str, Any], label: str):
+    start = mapping.get("start")
+    end = mapping.get("end")
+    if start is not None and end is not None and end < start:
+        raise LLMSchemaError(f"{label} end must be greater than or equal to start.")
 
 
 def _expect_mapping(value: Any, label: str) -> dict[str, Any]:

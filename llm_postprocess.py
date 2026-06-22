@@ -21,11 +21,12 @@ class CLIMockProvider:
 
     provider_id = SUPPORTED_PROVIDER
 
-    def __init__(self, *, fail_with: str | None = None):
+    def __init__(self, *, fail_with: str | None = None, fail_schema: str | None = None):
         self.fail_with = fail_with
+        self.fail_schema = fail_schema
 
     def generate_json(self, *, system_prompt: str, user_prompt: str, schema_name: str) -> dict[str, Any]:
-        if self.fail_with:
+        if self.fail_with and (self.fail_schema is None or self.fail_schema == schema_name):
             raise RuntimeError(self.fail_with)
 
         if schema_name == "phase1a_section_summary":
@@ -62,7 +63,6 @@ class CLIMockProvider:
             return {
                 "segments": [
                     {
-                        "segment_id": "mock-readable-seg-0001",
                         "start": None,
                         "end": None,
                         "source_text": "mock clean transcript chunk",
@@ -77,7 +77,7 @@ class CLIMockProvider:
         raise RuntimeError(f"Unsupported mock schema: {schema_name}")
 
     def generate_text(self, *, system_prompt: str, user_prompt: str) -> str:
-        if self.fail_with:
+        if self.fail_with and self.fail_schema is None:
             raise RuntimeError(self.fail_with)
         return "Mock text response."
 
@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         _print_error(f"Missing clean transcript: {clean_path}")
         return 2
 
-    provider = CLIMockProvider(fail_with=args.mock_fail)
+    provider = CLIMockProvider(fail_with=args.mock_fail, fail_schema=args.mock_fail_schema)
     settings = LLMSettings(provider=SUPPORTED_PROVIDER, output_language=args.output_language)
 
     print(f"LLM postprocess: session={session_dir}")
@@ -167,6 +167,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--max-seconds", type=float, default=None)
     parser.add_argument("--output-language", default="zh")
     parser.add_argument("--mock-fail", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--mock-fail-schema", default=None, help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 

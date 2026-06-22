@@ -247,6 +247,15 @@ def read_all_outputs(llm_dir: Path):
     return content
 
 
+def snapshot_files(paths: list[Path]):
+    return {path.name: path.read_text(encoding="utf-8") for path in paths}
+
+
+def assert_files_unchanged(snapshot: dict[str, str], llm_dir: Path):
+    for name, content in snapshot.items():
+        assert (llm_dir / name).read_text(encoding="utf-8") == content
+
+
 def assert_evidence_unchanged(session_dir: Path, originals: dict[str, str]):
     for name, content in originals.items():
         assert (session_dir / name).read_text(encoding="utf-8") == content
@@ -410,6 +419,39 @@ def test_api_key_not_written_success_and_failure():
         assert secret not in output
 
     print_status("PASS", "api key not written")
+    print_status("PASS", "all llm outputs contain no fake secret")
+
+
+def test_summary_failure_preserves_previous_outputs():
+    clean_text = "[1s -> 2s] project instructions"
+    providers = [
+        MockProvider(mode="provider_error"),
+        InvalidSchemaProvider(),
+    ]
+
+    for provider in providers:
+        with tempfile.TemporaryDirectory(prefix="llm_pipeline_") as tmp_dir:
+            session_dir, originals = make_session(Path(tmp_dir), clean_text)
+            success = run_summary_pipeline(session_dir=session_dir, provider=RecordingSummaryProvider())
+            assert success.success
+            llm_dir = session_dir / "llm"
+            snapshot = snapshot_files(
+                [
+                    llm_dir / "summary.md",
+                    llm_dir / "summary.json",
+                    llm_dir / "sections.json",
+                    llm_dir / "key_terms.json",
+                    llm_dir / "action_items.json",
+                ]
+            )
+
+            failure = run_summary_pipeline(session_dir=session_dir, provider=provider)
+            assert not failure.success
+            assert (llm_dir / "llm_errors.log").exists()
+            assert_files_unchanged(snapshot, llm_dir)
+            assert_evidence_unchanged(session_dir, originals)
+
+    print_status("PASS", "summary failure preserves previous outputs")
 
 
 def test_no_phase1b_outputs():
@@ -615,6 +657,72 @@ def test_readable_api_key_not_written_success_and_failure():
         assert secret not in output
 
     print_status("PASS", "readable api key not written")
+    print_status("PASS", "all readable outputs contain no fake secret")
+
+
+def test_readable_failure_preserves_previous_outputs():
+    clean_text = "[1s -> 2s] project instructions"
+    providers = [
+        MockProvider(mode="provider_error"),
+        InvalidReadableProvider(),
+    ]
+
+    for provider in providers:
+        with tempfile.TemporaryDirectory(prefix="llm_readable_") as tmp_dir:
+            session_dir, originals = make_session(Path(tmp_dir), clean_text)
+            success = run_readable_pipeline(session_dir=session_dir, provider=RecordingReadableProvider())
+            assert success.success
+            llm_dir = session_dir / "llm"
+            snapshot = snapshot_files(
+                [
+                    llm_dir / "readable_zh_final_state.json",
+                    llm_dir / "readable_zh_final.md",
+                    llm_dir / "readable_zh_final.html",
+                    llm_dir / "review_zh_final.md",
+                    llm_dir / "review_zh_final.html",
+                ]
+            )
+
+            failure = run_readable_pipeline(session_dir=session_dir, provider=provider)
+            assert not failure.success
+            assert (llm_dir / "readable_zh_errors.log").exists()
+            assert_files_unchanged(snapshot, llm_dir)
+            assert_evidence_unchanged(session_dir, originals)
+
+    with tempfile.TemporaryDirectory(prefix="llm_readable_") as tmp_dir:
+        session_dir, originals = make_session(Path(tmp_dir), clean_text)
+        success = run_readable_pipeline(session_dir=session_dir, provider=RecordingReadableProvider())
+        assert success.success
+        llm_dir = session_dir / "llm"
+        snapshot = snapshot_files(
+            [
+                llm_dir / "readable_zh_final_state.json",
+                llm_dir / "readable_zh_final.md",
+                llm_dir / "readable_zh_final.html",
+                llm_dir / "review_zh_final.md",
+                llm_dir / "review_zh_final.html",
+            ]
+        )
+        original_renderer = readable_pipeline_module.render_readable_markdown
+
+        def fail_renderer(state):
+            raise RuntimeError("renderer failed")
+
+        try:
+            readable_pipeline_module.render_readable_markdown = fail_renderer
+            failure = readable_pipeline_module.run_readable_pipeline(
+                session_dir=session_dir,
+                provider=RecordingReadableProvider(),
+            )
+        finally:
+            readable_pipeline_module.render_readable_markdown = original_renderer
+
+        assert not failure.success
+        assert (llm_dir / "readable_zh_errors.log").exists()
+        assert_files_unchanged(snapshot, llm_dir)
+        assert_evidence_unchanged(session_dir, originals)
+
+    print_status("PASS", "readable failure preserves previous outputs")
 
 
 def test_readable_no_live_sidecar_outputs():
@@ -663,6 +771,7 @@ def main():
     test_schema_failure_isolated()
     test_raw_clean_session_config_unchanged()
     test_api_key_not_written_success_and_failure()
+    test_summary_failure_preserves_previous_outputs()
     test_no_phase1b_outputs()
     test_no_live_sidecar_outputs()
     test_no_real_api_call()
@@ -674,6 +783,7 @@ def main():
     test_readable_renderer_failure_isolated()
     test_readable_raw_clean_session_config_unchanged()
     test_readable_api_key_not_written_success_and_failure()
+    test_readable_failure_preserves_previous_outputs()
     test_readable_no_live_sidecar_outputs()
     test_phase1a_summary_regression_still_works()
     test_readable_no_real_api_call()

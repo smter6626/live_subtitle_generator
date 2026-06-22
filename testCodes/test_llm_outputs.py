@@ -302,6 +302,75 @@ def test_schema_validation_failure():
     raise AssertionError("invalid readable state did not raise LLMSchemaError")
 
 
+def test_duplicate_section_ids_rejected():
+    state = SummaryState(
+        overview="overview",
+        sections=(
+            SectionSummary(section_id="duplicate", title="A", summary="one", start=1.0, end=2.0),
+            SectionSummary(section_id="duplicate", title="B", summary="two", start=2.0, end=3.0),
+        ),
+    )
+    try:
+        render_summary_markdown(state)
+    except LLMSchemaError:
+        print_status("PASS", "duplicate section ids rejected")
+        return
+    raise AssertionError("duplicate section ids were accepted")
+
+
+def test_duplicate_segment_ids_rejected():
+    state = ReadableTranscriptState(
+        revision=1,
+        segments=(
+            ReadableSegment(segment_id="duplicate", text_zh="one", source_text="one"),
+            ReadableSegment(segment_id="duplicate", text_zh="two", source_text="two"),
+        ),
+    )
+    try:
+        render_readable_markdown(state)
+    except LLMSchemaError:
+        print_status("PASS", "duplicate segment ids rejected")
+        return
+    raise AssertionError("duplicate segment ids were accepted")
+
+
+def test_invalid_time_range_rejected():
+    bad_summary = SummaryState(
+        overview="overview",
+        sections=(
+            SectionSummary(section_id="s1", title="bad", summary="bad", start=5.0, end=4.0),
+        ),
+    )
+    bad_readable = ReadableTranscriptState(
+        revision=1,
+        segments=(
+            ReadableSegment(segment_id="seg-1", text_zh="bad", source_text="bad", start=5.0, end=4.0),
+        ),
+    )
+
+    for state, renderer in [
+        (bad_summary, render_summary_markdown),
+        (bad_readable, render_readable_markdown),
+    ]:
+        try:
+            renderer(state)
+        except LLMSchemaError:
+            continue
+        raise AssertionError("invalid time range was accepted")
+
+    print_status("PASS", "invalid time range rejected or normalized")
+
+
+def test_readable_revision_policy_enforced():
+    bad_state = ReadableTranscriptState(revision=0, segments=())
+    try:
+        render_readable_markdown(bad_state)
+    except LLMSchemaError:
+        print_status("PASS", "readable revision policy enforced")
+        return
+    raise AssertionError("readable revision 0 was accepted")
+
+
 def test_renderer_failure_preserves_previous_valid_output():
     with tempfile.TemporaryDirectory(prefix="llm_outputs_") as tmp_dir:
         session_dir, _ = make_session(Path(tmp_dir))
@@ -412,6 +481,10 @@ def main():
     test_annotation_rendering()
     test_renderer_deterministic()
     test_schema_validation_failure()
+    test_duplicate_section_ids_rejected()
+    test_duplicate_segment_ids_rejected()
+    test_invalid_time_range_rejected()
+    test_readable_revision_policy_enforced()
     test_renderer_failure_preserves_previous_valid_output()
     test_raw_clean_session_config_unchanged()
     test_api_key_not_written()
