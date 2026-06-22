@@ -40,8 +40,8 @@ Codex 执行代码 Step
 
 ```text
 当前分支：llm-sidecar-phase1
-当前 checkpoint：Step 10 已完成并已 push
-唯一 ACTIVE 任务：Step 11 - 实现 DeepSeek / OpenAI-compatible provider
+当前 checkpoint：Step 11 已完成并已 push
+唯一 ACTIVE 任务：Step 12 - 本地手动真实 API smoke test
 ```
 
 已完成：
@@ -57,12 +57,13 @@ Step 7：实现 Phase 1A after-stop summary mock pipeline
 Step 8：实现 Phase 1B after-stop readable transcript mock pipeline
 Step 9：新增 CLI 入口并用 mock 跑通 Phase 1A / Phase 1B
 Step 10：补齐 mock tests、failure isolation、secret leakage tests 与 hardening
+Step 11：实现 DeepSeek / OpenAI-compatible provider
 ```
 
 当前尚未实现：
 
 ```text
-真实 HTTP API
+真实 API smoke test
 UI
 Phase 2A rolling sidecar
 ```
@@ -72,6 +73,7 @@ Phase 2A rolling sidecar
 ```text
 provider interface
 mock provider
+DeepSeek / OpenAI-compatible provider
 parser / chunker
 parser/chunker hardening: raw_line + end<start fallback
 output writer
@@ -255,45 +257,9 @@ commit: 68b7923
 message: Harden mock LLM pipelines and CLI tests
 ```
 
-修改文件：
+完成内容：CLI `--task both` partial success 策略固定；CLI 不打印 traceback/prompt/raw request/raw response；provider exception 中 fake secret redacted；summary/readable failure 不破坏上一版有效输出；state validation 增强：重复 `section_id` / `segment_id` 拒绝、`end < start` 拒绝、readable `revision >= 1`、默认 revision 改为 `1`；`CLIMockProvider` 保持 CLI smoke-only provider；隐藏 `--mock-fail-schema` 仅用于 failure-policy 测试。
 
-```text
-llm/state_schema.py
-llm_postprocess.py
-testCodes/test_llm_cli.py
-testCodes/test_llm_outputs.py
-testCodes/test_llm_pipeline.py
-```
-
-完成内容：
-
-- CLI `--task both` 策略固定为 partial success：summary 失败后仍运行 readable，最终返回非 0，并打印 sanitized summary failure + readable status；
-- CLI 不打印 traceback、prompt、raw request、raw response；provider exception 中的 fake secret 会被 redacted；
-- summary/readable failure 不破坏上一版有效输出，覆盖 provider failure、schema failure、readable renderer failure；
-- state validation 增强：重复 `section_id` / `segment_id` 拒绝，`end < start` 拒绝，readable `revision >= 1`，默认 revision 改为 `1`；
-- `CLIMockProvider` 保持在 `llm_postprocess.py` 内作为 CLI smoke-only provider；增加隐藏 `--mock-fail-schema` 仅用于 failure-policy 测试，并移除固定 readable segment id，避免多 chunk 时重复 id。
-
-验证结果：
-
-```text
-testCodes/test_llm_cli.py：PASS
-testCodes/test_llm_pipeline.py：PASS
-testCodes/test_llm_outputs.py：PASS
-compileall llm + llm_postprocess.py + Step 10 tests：PASS
-testCodes/test_llm_chunker.py：PASS
-testCodes/test_llm_provider_mock.py：PASS
-testCodes/test_ui_support.py：PASS
-testCodes/test_backends.py --skip-faster-smoke：PASS，whisper.cpp availability 可按环境 SKIP
-git diff --check：PASS
-network/API grep：无输出
-API key grep：无输出
-ASR 主链路文件：无修改
-docs 文件：无修改
-真实 API / UI / Phase 2A sidecar：未接入
-merge：未执行
-```
-
-审查结论：Step 10 通过，不需要 Step 10 v2。
+验证结果：`test_llm_cli.py` PASS；`test_llm_pipeline.py` PASS；`test_llm_outputs.py` PASS；compileall PASS；LLM 回归 PASS；原有 UI/backend 回归无新增 FAIL；network/API grep 无输出；API key grep 无输出；ASR 主链路无修改；docs 无修改；真实 API/UI/Phase 2A sidecar 未接入。
 
 #### Step 10 非阻塞问题点
 
@@ -302,441 +268,213 @@ merge：未执行
 
 ---
 
-## 3. ACTIVE：Step 11 - 实现 DeepSeek / OpenAI-compatible provider
+### Step 11：实现 DeepSeek / OpenAI-compatible provider
+
+状态：已完成，已 commit 并 push。
+
+```text
+commit: 41e2968
+message: Implement DeepSeek provider
+```
+
+修改文件：
+
+```text
+llm/deepseek_provider.py
+llm/openai_compatible_provider.py
+llm/llm_settings.py
+testCodes/test_llm_provider_deepseek.py
+```
+
+完成内容：
+
+- `OpenAICompatibleProvider` 实现 chat completions request builder、`generate_text()`、`generate_json()`、response parsing、typed error mapping；
+- `DeepSeekProvider` 是 DeepSeek 默认 endpoint/model 的窄包装；
+- `LLMSettings.read_api_key()` 只从 `DEEPSEEK_API_KEY` 环境变量读取 key；不写 settings/config/session/docs/logs；
+- HTTP transport 是可注入 `HTTPJSONClient`，默认 stdlib `UrllibHTTPJSONClient` 仅供后续手动 smoke；自动测试全部使用 fake client；
+- CLI 仍只支持 mock，未开放真实 provider 参数；
+- 不接 UI 或 Phase 2A sidecar。
+
+Error mapping：
+
+```text
+missing key -> MissingAPIKeyError
+malformed response JSON -> LLMMalformedResponseError
+invalid JSON/schema contract -> LLMSchemaError
+401/403 -> LLMAuthenticationError
+429 -> LLMRateLimitError
+timeout -> LLMTimeoutError
+5xx/其他 provider failure -> LLMProviderError
+```
+
+验证结果：
+
+```text
+testCodes/test_llm_provider_deepseek.py：PASS
+compileall llm + testCodes/test_llm_provider_deepseek.py：PASS
+testCodes/test_llm_cli.py：PASS
+testCodes/test_llm_pipeline.py：PASS
+testCodes/test_llm_outputs.py：PASS
+testCodes/test_llm_chunker.py：PASS
+testCodes/test_llm_provider_mock.py：PASS
+testCodes/test_ui_support.py：PASS
+testCodes/test_backends.py --skip-faster-smoke：PASS，whisper.cpp availability 可按环境 SKIP
+git diff --check：PASS
+ASR 主链路文件：无修改
+docs 文件：无修改
+真实 API 自动测试：未执行，全部 HTTP 行为由 fake client 覆盖
+UI / Phase 2A sidecar：未接入
+merge：未执行
+```
+
+审查结论：Step 11 通过，不需要 Step 11 v2。
+
+#### Step 11 非阻塞问题点
+
+1. `UrllibHTTPJSONClient` 遇到 HTTPError 且响应 body 不是 JSON 时，后续 `_normalize_response()` 可能先尝试解析 body，从而抛 `LLMMalformedResponseError`，而不是按 status code 映射为 `LLMProviderError` / `LLMAuthenticationError` / `LLMRateLimitError`。当前 fake-client 测试使用 `json_body={}` 覆盖了 status mapping；Step 12 真实 API smoke 可观察真实错误响应形态，必要时后续改为优先按 status code 分类，再解析 body。
+2. `OpenAICompatibleProvider` 的默认 endpoint/model 当前也是 DeepSeek 默认值。对当前项目目标没有问题，因为真实 provider 首站就是 DeepSeek；如果未来真的支持多个 OpenAI-compatible provider，可以把通用默认值和 DeepSeek 默认值拆得更干净。
+
+---
+
+## 3. ACTIVE：Step 12 - 本地手动真实 API smoke test
 
 状态：ACTIVE。
 
 ### 3.1 目标
 
-实现真实 provider 的代码路径，但自动测试必须使用 mock HTTP client / monkeypatch，不得真实访问网络。
+在所有 mock/provider 自动测试通过后，使用 disposable session 和真实 `DEEPSEEK_API_KEY` 做一次最小真实 API smoke。
 
-目标：
-
-```text
-DEEPSEEK_API_KEY env var
--> OpenAI-compatible chat completions request builder
--> HTTP client abstraction / injectable transport
--> DeepSeekProvider.generate_text / generate_json
--> typed provider errors
--> no secret leakage
--> no request/response log
-```
-
-Step 11 只实现 provider 层，不接 UI，不实现 Phase 2A sidecar，不改变 ASR 主链路。CLI 可以继续只支持 mock，除非用户另行批准开放真实 provider CLI 参数。
+本步骤是人工/本地验证步骤，不建议 Codex 自动执行真实 API。Codex 可生成 smoke 脚本或命令，但真实 API key 由用户在本地 shell 设置，不写入仓库，不写入 docs，不写入任何 session/config/log。
 
 ---
 
-### 3.2 允许修改范围
+### 3.2 原则
 
-原则上允许：
-
-```text
-llm/deepseek_provider.py
-llm/openai_compatible_provider.py
-llm/provider_base.py
-llm/llm_settings.py
-testCodes/test_llm_provider_deepseek.py
-```
-
-如需复用 secret redaction，可最小修改：
+必须满足：
 
 ```text
-llm/output_writer.py
-```
-
-如需导出 provider symbols，可最小修改：
-
-```text
-llm/__init__.py
-```
-
-Codex 默认不得修改：
-
-```text
-docs/whisper_runtime.md
-docs/whisper_static.md
-README.md
-```
-
-Step 11 完成后，由人工审查后再受控更新 runtime。
-
----
-
-### 3.3 禁止修改范围
-
-不要修改 ASR 主链路文件：
-
-```text
-ui_app.py
-transcription_engine.py
-transcription_controller.py
-transcript_store.py
-stream_transcribe.py
-settings.py
-model_manager.py
-resource_paths.py
-```
-
-不要修改 ASR 主链路行为：
-
-```text
-audio capture
-ring buffer
-chunk scheduling
-resample
-WhisperCppBackend
-simple_dedup()
-fuzzy_boundary_dedup()
-TranscriptStore raw / clean 写入逻辑
-Start / Stop
-麦克风释放
-UI 主线程
-```
-
-不要实现：
-
-```text
-UI
-Phase 2A sidecar
-request / response log
-API key settings / Keychain
-自动测试真实网络调用
-```
-
-不要修改 evidence layer：
-
-```text
-raw.txt
-clean.txt
-session.log
-config.json
+不把 API key 写入 repo
+不把 API key 写入 docs
+不把 API key 写入 settings/config/session 输出
+不把 API key 写入 logs
+不把 API key 打印到 stdout/stderr
+不提交任何包含 key 的文件
+使用 disposable session
+真实 smoke 后扫描 repo 和 session_dir
+失败不得修改 evidence layer
+CLI 仍不默认开放真实 provider，除非单独受控实现真实 provider CLI path
 ```
 
 ---
 
-### 3.4 Step 11 实现要求
+### 3.3 推荐执行方式
 
-#### 3.4.1 Provider API
+优先创建一个临时 smoke 脚本或一次性 Python command，只调用 provider 的 `generate_text()` / `generate_json()`，不先接入 CLI。
 
-实现或完善：
-
-```text
-DeepSeekProvider
-OpenAICompatibleProvider
-```
-
-要求：
-
-- 从环境变量 `DEEPSEEK_API_KEY` 读取 key；
-- key 缺失时抛 `MissingAPIKeyError` 或等价 typed error；
-- 不把 key 保存到 settings/config/session/docs/logs；
-- 不打印 key；
-- 不记录 Authorization header；
-- 不记录完整 request/response body；
-- 支持 `generate_text(system_prompt, user_prompt)`；
-- 支持 `generate_json(system_prompt, user_prompt, schema_name)`；
-- JSON response 解析失败时抛 `LLMMalformedResponseError` 或 `LLMInvalidResponseError`；
-- schema / JSON contract 失败时抛 `LLMSchemaError` 或明确 typed error；
-- HTTP 401/403 映射为 `LLMAuthenticationError`；
-- HTTP 429 映射为 `LLMRateLimitError`；
-- timeout 映射为 `LLMTimeoutError`；
-- 其他 provider/HTTP error 映射为 `LLMProviderError` 或等价 typed error。
-
-#### 3.4.2 HTTP client / transport abstraction
-
-自动测试不得真实访问网络。
-
-建议实现 injectable HTTP transport，例如：
-
-```text
-OpenAICompatibleProvider(api_key=None, endpoint=..., model=..., http_client=...)
-```
-
-`http_client` 可为极小接口，例如：
-
-```text
-post_json(url, headers, payload, timeout) -> response-like object
-```
-
-或使用 stdlib `urllib` 的 wrapper，但测试必须 monkeypatch wrapper，不真实请求。
-
-不要在自动测试中调用真实 `api.deepseek.com`。
-
-#### 3.4.3 Request shape
-
-OpenAI-compatible chat completions 请求应包含：
-
-```text
-model
-messages: system + user
-temperature 可配置，默认低温
-response_format 可选 JSON object，用于 generate_json
-```
-
-默认 endpoint 可指向 DeepSeek OpenAI-compatible endpoint，但不得在测试中真实访问。
-
-#### 3.4.4 Secret safety
-
-测试必须验证：
-
-- fake `DEEPSEEK_API_KEY` 不出现在 exception message；
-- fake key 不出现在 provider returned text/json；
-- fake key 不出现在 stdout/stderr；
-- fake key 不出现在 any local output/error logs（如果测试构造 session 输出）；
-- Authorization header 不被记录或暴露。
-
----
-
-### 3.5 测试要求
-
-新增：
-
-```text
-testCodes/test_llm_provider_deepseek.py
-```
-
-测试必须可直接运行，不依赖 pytest：
-
-```bash
-venv/bin/python testCodes/test_llm_provider_deepseek.py
-```
-
-自动测试只用 fake env key 和 fake http client。
-
-建议 PASS 输出：
-
-```text
-PASS: deepseek provider requires api key
-PASS: deepseek provider builds chat completion request
-PASS: deepseek provider text success
-PASS: deepseek provider json success
-PASS: deepseek provider malformed json response
-PASS: deepseek provider invalid json contract
-PASS: deepseek provider authentication error
-PASS: deepseek provider rate limit error
-PASS: deepseek provider timeout error
-PASS: deepseek provider secret not leaked
-PASS: deepseek provider no real network
-```
-
-至少覆盖：
-
-- `DEEPSEEK_API_KEY` 缺失；
-- fake key 从 env 读取；
-- request headers 包含 Authorization，但不会被打印/记录；
-- request payload 包含 system/user prompt 和 model；
-- text success；
-- json success；
-- invalid JSON body；
-- JSON object 缺失或类型不对；
-- 401/403；
-- 429；
-- timeout；
-- arbitrary HTTP 5xx/provider error；
-- fake key 不泄露；
-- 无真实网络调用。
-
----
-
-### 3.6 验收命令
-
-运行目录：
+推荐流程：
 
 ```bash
 cd /Users/smter-mac/Documents/personalAPPS/whisper
-```
-
-虚拟环境：
-
-```bash
 source venv/bin/activate
-```
-
-基础检查：
-
-```bash
-git branch --show-current
 git status --short --untracked-files=all
-git pull
-git log --oneline --decorate -5
+export DEEPSEEK_API_KEY='在本地 shell 粘贴，不写入文件'
+venv/bin/python - <<'PY'
+from llm.deepseek_provider import DeepSeekProvider
+
+provider = DeepSeekProvider()
+text = provider.generate_text(
+    system_prompt="You are a concise test assistant.",
+    user_prompt="Reply with exactly: OK"
+)
+print("TEXT_SMOKE_OK", text[:20])
+
+obj = provider.generate_json(
+    system_prompt="Return JSON only.",
+    user_prompt='Return {"ok": true, "message": "smoke"}.',
+    schema_name="smoke_test"
+)
+print("JSON_SMOKE_OK", obj)
+PY
+unset DEEPSEEK_API_KEY
 ```
 
-预期当前分支：
-
-```text
-llm-sidecar-phase1
-```
-
-Step 11 focused test：
-
-```bash
-venv/bin/python testCodes/test_llm_provider_deepseek.py
-```
-
-预期：全部 PASS。
-
-语法检查：
-
-```bash
-venv/bin/python -m compileall -q llm testCodes/test_llm_provider_deepseek.py
-```
-
-预期：无输出，退出码为 0。
-
-LLM 既有回归：
-
-```bash
-venv/bin/python testCodes/test_llm_cli.py
-venv/bin/python testCodes/test_llm_pipeline.py
-venv/bin/python testCodes/test_llm_outputs.py
-venv/bin/python testCodes/test_llm_chunker.py
-venv/bin/python testCodes/test_llm_provider_mock.py
-```
-
-预期：全部 PASS。
-
-原有 ASR/UI 回归：
-
-```bash
-venv/bin/python testCodes/test_ui_support.py
-venv/bin/python testCodes/test_backends.py --skip-faster-smoke
-```
-
-预期：无新增 FAIL。`whisper.cpp availability` 在 CLI 未配置时可 SKIP。
-
-修改范围检查：
-
-```bash
-git diff --name-only
-git status --short --untracked-files=all
-git diff --check
-```
-
-可接受涉及：
-
-```text
-llm/deepseek_provider.py
-llm/openai_compatible_provider.py
-llm/provider_base.py
-llm/llm_settings.py
-llm/output_writer.py
-llm/__init__.py
-testCodes/test_llm_provider_deepseek.py
-```
-
-不允许出现：
-
-```text
-docs/whisper_runtime.md
-docs/whisper_static.md
-README.md
-ui_app.py
-transcription_engine.py
-transcription_controller.py
-transcript_store.py
-stream_transcribe.py
-settings.py
-model_manager.py
-resource_paths.py
-```
-
-网络/API 检查：
-
-```bash
-grep -RInE 'requests|httpx|aiohttp|urlopen|socket|api\.deepseek|https?://' llm testCodes/test_llm_provider_deepseek.py || true
-```
-
-预期：如果 provider implementation 使用 stdlib/network wrapper 或 endpoint 字符串，grep 可能有命中；必须说明没有在自动测试中真实请求网络，并且所有 HTTP 行为由 fake client/monkeypatch 覆盖。
-
-API key 检查：
-
-```bash
-grep -RInE 'sk-[A-Za-z0-9_-]{16,}|DEEPSEEK_API_KEY|Authorization|Bearer ' llm testCodes/test_llm_provider_deepseek.py || true
-```
-
-预期：只允许出现环境变量名、Authorization header 组装代码、测试 fake key 或测试断言；不得出现真实 key；不得输出 key。
+注意：上面的 command 不应打印 key。若 provider 返回内容异常或 JSON parse 失败，记录错误类型即可，不要打印 headers/request body/key。
 
 ---
 
-### 3.7 Step 11 完成标准
+### 3.4 smoke 后扫描
 
-全部满足才可标记 Step 11 已完成：
+执行后运行：
+
+```bash
+git status --short --untracked-files=all
+grep -RInE 'sk-[A-Za-z0-9_-]{16,}|DEEPSEEK_API_KEY|Authorization|Bearer ' . \
+  --exclude-dir=.git \
+  --exclude-dir=venv \
+  --exclude-dir=__pycache__ \
+  --exclude='*.pyc' || true
+```
+
+预期：
+
+- 不应出现真实 key；
+- 允许出现源码中的环境变量名、Authorization/Bearer 组装代码、测试 fake key；
+- 不应出现新增未跟踪文件；
+- 不应修改 docs/session/evidence 文件。
+
+---
+
+### 3.5 可选 disposable session smoke
+
+如果 provider text/json smoke 通过，可再用一个临时 disposable session 测试 pipeline。但不要直接改 CLI 默认 provider 行为。
+
+建议只写临时一次性 Python command，使用 `run_summary_pipeline()` 和 `run_readable_pipeline()` 传入 `DeepSeekProvider()`。
+
+要求：
 
 ```text
-DeepSeek/OpenAI-compatible provider 可构造
-缺失 DEEPSEEK_API_KEY 抛 typed error
-fake env key 可被 provider 使用但不泄露
-text success PASS
-json success PASS
-malformed/invalid json PASS
-401/403 -> authentication typed error
-429 -> rate limit typed error
-timeout -> timeout typed error
-5xx/provider error -> provider typed error
-自动测试无真实网络调用
-testCodes/test_llm_provider_deepseek.py PASS
-既有 LLM tests PASS
-compileall PASS
-原有 baseline tests 无新增 FAIL
-ASR 主链路无修改
-未接 UI / Phase 2A sidecar
-docs/whisper_runtime.md 未由 Codex 修改
+session_dir 必须在 /tmp 或项目外临时目录，或项目内明确未提交的 disposable 目录
+raw.txt / clean.txt / session.log / config.json 建立即固定，不被修改
+只检查 session_dir/llm/ sidecar outputs
+运行后扫描 secret leakage
+测试结束可删除 disposable session
 ```
 
 ---
 
-### 3.8 风险
+### 3.6 Step 12 完成标准
+
+全部满足才可标记 Step 12 已完成：
+
+```text
+真实 DeepSeek provider text smoke 成功或失败类型明确
+真实 DeepSeek provider json smoke 成功或失败类型明确
+没有 API key 泄露到 stdout/stderr/repo/session/log
+没有把 API key 写入任何文件
+没有修改 docs
+没有修改 ASR 主链路
+没有修改 evidence layer
+真实 smoke 后 git status 干净，或仅有明确 disposable 文件且已删除
+grep secret scan 无真实 key 命中
+若执行 disposable session pipeline smoke，llm outputs 仅在 session_dir/llm/ 下生成
+```
+
+---
+
+### 3.7 风险
 
 重点防止：
 
-- 自动测试真实访问 DeepSeek；
-- API key 写入 repo/docs/session/config/logs；
-- exception message 泄露 key 或 Authorization header；
-- 为接 provider 修改 ASR 主链路；
-- CLI 默认开放真实 provider；
-- request/response body 被落盘或打印；
-- Codex 提前改 runtime。
-
----
-
-### 3.9 回滚
-
-如果 Step 11 实现方向错误，先看 diff：
-
-```bash
-git diff -- llm/deepseek_provider.py llm/openai_compatible_provider.py llm/provider_base.py llm/llm_settings.py llm/output_writer.py llm/__init__.py testCodes/test_llm_provider_deepseek.py
-```
-
-只回滚本步骤相关文件，优先使用：
-
-```bash
-git restore <path>
-```
-
-如果新增了 `testCodes/test_llm_provider_deepseek.py` 且确认只属于 Step 11：
-
-```bash
-rm -f testCodes/test_llm_provider_deepseek.py
-```
-
-不要使用：
-
-```bash
-git reset --hard
-git clean -fd
-```
-
-除非用户明确确认当前工作区可以全部丢弃。
+- 把真实 key 粘贴进源码、docs、runtime、README、test、shell 脚本；
+- 把 key 打印出来；
+- 把 request headers/body 写入 log；
+- 把真实 smoke 输出误提交；
+- 将 CLI 默认开放真实 provider，导致误调用真实 API；
+- 在项目 outputs 里留下带真实测试内容的 session 并误提交。
 
 ---
 
 ## 4. 后续步骤简要内容
-
-### Step 12：本地手动真实 API smoke test
-
-目标：mock tests 全部通过后，用 disposable session 手动测试真实 API；不打印 key；不保存 key；扫描 repo/session/log。
-
----
 
 ### Step 13：验证 Phase 1A / 1B 真实课堂 session 输出质量
 
@@ -786,21 +524,4 @@ git diff --name-only
 
 确认没有模型、outputs、日志、API key、venv、build、dist 被 staged。
 
-推荐提交节奏：
-
-```text
-一个 Step 一个 commit
-文档同步通常在人工审查后单独提交，除非用户明确允许 Codex 修改 runtime
-```
-
-当前下一次合理 commit：
-
-```text
-Implement DeepSeek provider
-```
-
-push：
-
-```bash
-git push
-```
+Step 12 是人工 smoke checkpoint，除非为了新增受控 smoke helper，否则通常不需要代码 commit。
