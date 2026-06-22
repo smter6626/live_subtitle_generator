@@ -58,8 +58,20 @@ def assert_evidence_unchanged(session_dir: Path, originals: dict[str, str]):
         assert (session_dir / name).read_text(encoding="utf-8") == content
 
 
-def assert_no_live_outputs(session_dir: Path):
+def assert_no_structured_outputs(session_dir: Path):
     forbidden = [
+        "summary.md",
+        "summary.json",
+        "sections.json",
+        "key_terms.json",
+        "action_items.json",
+        "llm_errors.log",
+        "readable_zh_final_state.json",
+        "readable_zh_final.md",
+        "readable_zh_final.html",
+        "review_zh_final.md",
+        "review_zh_final.html",
+        "readable_zh_errors.log",
         "live_readable_zh_state.json",
         "live_readable_zh_revisions.jsonl",
         "live_readable_zh.md",
@@ -75,7 +87,6 @@ def assert_no_live_outputs(session_dir: Path):
 def assert_no_secret_or_prompt(result, session_dir: Path, secret: str | None = None):
     combined = f"{result.stdout}\n{result.stderr}"
     assert "Traceback" not in combined
-    assert "Required constraints" not in combined
     assert "Clean transcript chunk" not in combined
     assert "system_prompt" not in combined
     assert "user_prompt" not in combined
@@ -85,61 +96,41 @@ def assert_no_secret_or_prompt(result, session_dir: Path, secret: str | None = N
         assert secret not in read_all_outputs(session_dir / "llm")
 
 
-def test_cli_summary_mock_success():
+def test_cli_markdown_mock_success():
     with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
         session_dir, originals = make_session(Path(tmp_dir))
-        result = run_cli(["--session", str(session_dir), "--provider", "mock", "--task", "summary"])
+        result = run_cli(["--session", str(session_dir), "--provider", "mock", "--task", "markdown"])
 
         assert result.returncode == 0, result.stderr
-        assert "summary: ok" in result.stdout
-        assert (session_dir / "llm" / "summary.md").exists()
-        assert (session_dir / "llm" / "summary.json").exists()
-        assert not (session_dir / "llm" / "readable_zh_final_state.json").exists()
+        assert "markdown: ok" in result.stdout
+        assert (session_dir / "llm" / "readable_zh.md").exists()
+        assert (session_dir / "llm" / "log.md").exists()
+        assert_no_structured_outputs(session_dir)
         assert_evidence_unchanged(session_dir, originals)
         assert_no_secret_or_prompt(result, session_dir)
 
-    print_status("PASS", "cli summary mock success")
+    print_status("PASS", "cli markdown mock success")
 
 
-def test_cli_readable_mock_success():
+def test_cli_default_markdown_mock_success():
     with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
         session_dir, originals = make_session(Path(tmp_dir))
-        result = run_cli(["--session", str(session_dir), "--provider", "mock", "--task", "readable"])
+        result = run_cli(["--session", str(session_dir), "--provider", "mock"])
 
         assert result.returncode == 0, result.stderr
-        assert "readable: ok" in result.stdout
-        assert (session_dir / "llm" / "readable_zh_final_state.json").exists()
-        assert (session_dir / "llm" / "readable_zh_final.md").exists()
-        assert (session_dir / "llm" / "readable_zh_final.html").exists()
-        assert (session_dir / "llm" / "review_zh_final.md").exists()
-        assert (session_dir / "llm" / "review_zh_final.html").exists()
-        assert not (session_dir / "llm" / "summary.md").exists()
+        assert "Task: markdown" in result.stdout
+        assert (session_dir / "llm" / "readable_zh.md").exists()
+        assert (session_dir / "llm" / "log.md").exists()
+        assert_no_structured_outputs(session_dir)
         assert_evidence_unchanged(session_dir, originals)
-        assert_no_secret_or_prompt(result, session_dir)
 
-    print_status("PASS", "cli readable mock success")
-
-
-def test_cli_both_mock_success():
-    with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
-        session_dir, originals = make_session(Path(tmp_dir))
-        result = run_cli(["--session", str(session_dir), "--provider", "mock", "--task", "both"])
-
-        assert result.returncode == 0, result.stderr
-        assert "summary: ok" in result.stdout
-        assert "readable: ok" in result.stdout
-        assert (session_dir / "llm" / "summary.md").exists()
-        assert (session_dir / "llm" / "readable_zh_final_state.json").exists()
-        assert_evidence_unchanged(session_dir, originals)
-        assert_no_secret_or_prompt(result, session_dir)
-
-    print_status("PASS", "cli both mock success")
+    print_status("PASS", "cli default markdown mock success")
 
 
 def test_cli_rejects_missing_session():
     with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
         missing = Path(tmp_dir) / "missing"
-        result = run_cli(["--session", str(missing), "--provider", "mock", "--task", "summary"])
+        result = run_cli(["--session", str(missing), "--provider", "mock"])
 
         assert result.returncode != 0
         assert "ERROR:" in result.stderr
@@ -150,10 +141,12 @@ def test_cli_rejects_missing_session():
 def test_cli_rejects_missing_clean_transcript():
     with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
         session_dir, originals = make_session(Path(tmp_dir), include_clean=False)
-        result = run_cli(["--session", str(session_dir), "--provider", "mock", "--task", "summary"])
+        result = run_cli(["--session", str(session_dir), "--provider", "mock"])
 
         assert result.returncode != 0
         assert "Missing clean transcript" in result.stderr
+        assert not (session_dir / "llm" / "readable_zh.md").exists()
+        assert (session_dir / "llm").exists() is False
         assert_evidence_unchanged(session_dir, originals)
 
     print_status("PASS", "cli rejects missing clean transcript")
@@ -162,7 +155,7 @@ def test_cli_rejects_missing_clean_transcript():
 def test_cli_rejects_non_mock_provider():
     with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
         session_dir, originals = make_session(Path(tmp_dir))
-        result = run_cli(["--session", str(session_dir), "--provider", "deepseek", "--task", "summary"])
+        result = run_cli(["--session", str(session_dir), "--provider", "deepseek"])
 
         assert result.returncode != 0
         assert "only supports mock" in result.stderr
@@ -172,7 +165,7 @@ def test_cli_rejects_non_mock_provider():
     print_status("PASS", "cli rejects non-mock provider")
 
 
-def test_cli_failure_output_sanitized():
+def test_cli_provider_failure_sanitized():
     secret = make_fake_secret()
     with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
         session_dir, originals = make_session(Path(tmp_dir))
@@ -183,7 +176,7 @@ def test_cli_failure_output_sanitized():
                 "--provider",
                 "mock",
                 "--task",
-                "both",
+                "markdown",
                 "--mock-fail",
                 f"provider failed with {secret}",
             ]
@@ -191,49 +184,20 @@ def test_cli_failure_output_sanitized():
 
         assert result.returncode != 0
         assert "[REDACTED]" in result.stderr
+        assert not (session_dir / "llm" / "readable_zh.md").exists()
+        assert (session_dir / "llm" / "log.md").exists()
         assert_no_secret_or_prompt(result, session_dir, secret=secret)
+        assert_no_structured_outputs(session_dir)
         assert_evidence_unchanged(session_dir, originals)
 
-    print_status("PASS", "cli failure output sanitized")
-    print_status("PASS", "cli failure display sanitized across stdout stderr")
-    print_status("PASS", "cli does not print prompts or raw responses")
-    print_status("PASS", "no traceback printed")
-
-
-def test_cli_both_partial_failure_policy():
-    with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
-        session_dir, originals = make_session(Path(tmp_dir))
-        result = run_cli(
-            [
-                "--session",
-                str(session_dir),
-                "--provider",
-                "mock",
-                "--task",
-                "both",
-                "--mock-fail",
-                "summary failed for partial policy",
-                "--mock-fail-schema",
-                "phase1a_section_summary",
-            ]
-        )
-
-        assert result.returncode != 0
-        assert "summary failed" in result.stderr
-        assert "readable: ok" in result.stdout
-        assert not (session_dir / "llm" / "summary.md").exists()
-        assert (session_dir / "llm" / "readable_zh_final_state.json").exists()
-        assert (session_dir / "llm" / "llm_errors.log").exists()
-        assert_evidence_unchanged(session_dir, originals)
-        assert_no_secret_or_prompt(result, session_dir)
-
-    print_status("PASS", "cli both partial failure policy")
+    print_status("PASS", "cli provider failure sanitized")
+    print_status("PASS", "cli does not print traceback prompt or raw response")
 
 
 def test_cli_raw_clean_session_config_unchanged():
     with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
         session_dir, originals = make_session(Path(tmp_dir))
-        result = run_cli(["--session", str(session_dir), "--provider", "mock", "--task", "both"])
+        result = run_cli(["--session", str(session_dir), "--provider", "mock"])
 
         assert result.returncode == 0, result.stderr
         assert_evidence_unchanged(session_dir, originals)
@@ -241,21 +205,10 @@ def test_cli_raw_clean_session_config_unchanged():
     print_status("PASS", "cli raw clean session config unchanged")
 
 
-def test_cli_no_live_sidecar_outputs():
-    with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
-        session_dir, _ = make_session(Path(tmp_dir))
-        result = run_cli(["--session", str(session_dir), "--provider", "mock", "--task", "both"])
-
-        assert result.returncode == 0, result.stderr
-        assert_no_live_outputs(session_dir)
-
-    print_status("PASS", "cli no live sidecar outputs")
-
-
 def test_cli_no_real_api_call():
     with tempfile.TemporaryDirectory(prefix="llm_cli_") as tmp_dir:
         session_dir, _ = make_session(Path(tmp_dir))
-        result = run_cli(["--session", str(session_dir), "--provider", "mock", "--task", "summary"])
+        result = run_cli(["--session", str(session_dir), "--provider", "mock"])
 
         assert result.returncode == 0, result.stderr
         assert "Provider: mock" in result.stdout
@@ -264,16 +217,13 @@ def test_cli_no_real_api_call():
 
 
 def main():
-    test_cli_summary_mock_success()
-    test_cli_readable_mock_success()
-    test_cli_both_mock_success()
+    test_cli_markdown_mock_success()
+    test_cli_default_markdown_mock_success()
     test_cli_rejects_missing_session()
     test_cli_rejects_missing_clean_transcript()
     test_cli_rejects_non_mock_provider()
-    test_cli_failure_output_sanitized()
-    test_cli_both_partial_failure_policy()
+    test_cli_provider_failure_sanitized()
     test_cli_raw_clean_session_config_unchanged()
-    test_cli_no_live_sidecar_outputs()
     test_cli_no_real_api_call()
 
 

@@ -29,6 +29,19 @@ Do not modify, overwrite, or replace clean.txt.
 Do not directly generate full Markdown or HTML."""
 
 
+MARKDOWN_SIDECAR_SYSTEM_PROMPT = """You are a conservative classroom transcript post-processor.
+Output language: Chinese.
+Return user-readable Markdown only.
+Use only the provided clean transcript evidence.
+Do not hallucinate or add facts outside the transcript.
+Keep timestamp grounding where useful.
+Separate explicit transcript evidence from inference.
+Mark uncertain content in natural language.
+ASR corrections may appear only as possible correction suggestions.
+Do not output API keys, Authorization headers, raw requests, raw responses, or diagnostic secrets.
+Do not output JSON, HTML, schema fields, enum labels, or machine-readable state."""
+
+
 @dataclass(frozen=True)
 class PromptPayload:
     """Prompt payload plus metadata used for deterministic tests and providers."""
@@ -207,6 +220,55 @@ Clean transcript chunk:
 """
     return PromptPayload(
         system_prompt=PHASE1B_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        metadata=metadata,
+    )
+
+
+def build_markdown_sidecar_payload(
+    *,
+    chunk: TranscriptChunk,
+    output_language: str = "zh",
+    session_metadata: dict[str, Any] | None = None,
+) -> PromptPayload:
+    """Build a Markdown-only sidecar prompt payload for one clean transcript chunk."""
+
+    metadata = {
+        "task": "markdown_sidecar",
+        "output_language": output_language,
+        "chunk_id": chunk.chunk_id,
+        "chunk_start": chunk.start,
+        "chunk_end": chunk.end,
+        "source_lines": list(chunk.source_lines),
+        "session_metadata": session_metadata or {},
+    }
+    source_lines = ", ".join(str(line) for line in chunk.source_lines) or "none"
+    user_prompt = f"""Task: produce Chinese Markdown for classroom review from this clean transcript chunk.
+Write naturally for a student who wants to review the class.
+Recommended content may include:
+- current class or chunk summary
+- important reminders or tasks
+- possible deadlines, assignments, project requirements
+- uncertain content or possible ASR errors
+
+Hard constraints:
+- Markdown only, no JSON and no HTML.
+- Use only clean transcript evidence.
+- No hallucination.
+- Keep timestamp grounding where useful.
+- Mark uncertainty in natural language.
+- Possible correction only for ASR uncertainty.
+- Do not output API keys, Authorization headers, raw requests, raw responses, or diagnostic secrets.
+- Do not modify, overwrite, or replace clean.txt.
+
+Chunk id: {chunk.chunk_id}
+Chunk time range: {chunk.start} -> {chunk.end}
+Source line indexes: {source_lines}
+Clean transcript chunk:
+{chunk.text}
+"""
+    return PromptPayload(
+        system_prompt=MARKDOWN_SIDECAR_SYSTEM_PROMPT,
         user_prompt=user_prompt,
         metadata=metadata,
     )

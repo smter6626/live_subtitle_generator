@@ -40,6 +40,8 @@ class LLMOutputPaths:
     review_md: Path
     review_html: Path
     readable_errors_log: Path
+    markdown_readable_md: Path
+    markdown_log_md: Path
 
     @classmethod
     def for_session(cls, session_dir: Path):
@@ -58,6 +60,8 @@ class LLMOutputPaths:
             review_md=llm_dir / "review_zh_final.md",
             review_html=llm_dir / "review_zh_final.html",
             readable_errors_log=llm_dir / "readable_zh_errors.log",
+            markdown_readable_md=llm_dir / "readable_zh.md",
+            markdown_log_md=llm_dir / "log.md",
         )
 
 
@@ -120,6 +124,57 @@ def append_error_log(
 
     with target.open("a", encoding="utf-8") as log_file:
         log_file.write(f"{line}\n")
+
+
+def append_markdown_log(
+    path: Path,
+    *,
+    category: str,
+    message: str,
+    details: Any | None = None,
+    llm_dir: Path,
+):
+    """Append a sanitized Markdown sidecar diagnostic entry."""
+
+    target = _validate_output_path(path, llm_dir)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    safe_category = sanitize_text(category)
+    safe_message = sanitize_text(message)
+    lines = [
+        f"## {timestamp} {safe_category}",
+        "",
+        f"- Status: {safe_message}",
+    ]
+    if details is not None:
+        safe_details = sanitize_text(str(details))[:_MAX_ERROR_DETAIL_CHARS]
+        lines.append(f"- Details: {safe_details}")
+    lines.append("")
+
+    with target.open("a", encoding="utf-8") as log_file:
+        log_file.write("\n".join(lines))
+        log_file.write("\n")
+
+
+def write_markdown_sidecar_outputs(
+    session_dir: Path,
+    markdown_text: str,
+    *,
+    log_message: str,
+    log_details: Any | None = None,
+) -> LLMOutputPaths:
+    """Write the Markdown-only readable output and append a sanitized log entry."""
+
+    paths = ensure_llm_dir(session_dir)
+    atomic_write_text(paths.markdown_readable_md, markdown_text, llm_dir=paths.llm_dir)
+    append_markdown_log(
+        paths.markdown_log_md,
+        category="success",
+        message=log_message,
+        details=log_details,
+        llm_dir=paths.llm_dir,
+    )
+    return paths
 
 
 def write_phase1a_outputs(session_dir: Path, summary_state: Any, summary_markdown: str) -> LLMOutputPaths:
