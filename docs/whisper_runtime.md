@@ -40,8 +40,8 @@ Codex 执行代码 Step
 
 ```text
 当前分支：llm-sidecar-phase1
-当前 checkpoint：Step 9 已完成并已 push
-唯一 ACTIVE 任务：Step 10 - 补齐 mock tests、failure isolation、secret leakage tests 与 hardening
+当前 checkpoint：Step 10 已完成并已 push
+唯一 ACTIVE 任务：Step 11 - 实现 DeepSeek / OpenAI-compatible provider
 ```
 
 已完成：
@@ -56,6 +56,7 @@ Step 6：实现 output writer、state schema、renderer
 Step 7：实现 Phase 1A after-stop summary mock pipeline
 Step 8：实现 Phase 1B after-stop readable transcript mock pipeline
 Step 9：新增 CLI 入口并用 mock 跑通 Phase 1A / Phase 1B
+Step 10：补齐 mock tests、failure isolation、secret leakage tests 与 hardening
 ```
 
 当前尚未实现：
@@ -79,6 +80,7 @@ renderer
 Phase 1A summary mock pipeline
 Phase 1B readable transcript mock pipeline
 mock CLI entrypoint
+mock pipeline/CLI hardening
 ```
 
 ---
@@ -173,14 +175,6 @@ commit: 811386c
 message: Implement Phase 1A summary mock pipeline
 ```
 
-修改文件：
-
-```text
-llm/summary_pipeline.py
-llm/prompt_templates.py
-testCodes/test_llm_pipeline.py
-```
-
 完成内容：`run_summary_pipeline(...)`；读取 `clean.txt`；parser/chunker；section/global prompt payload；provider `generate_json()`；归一化为 `SummaryState`；renderer；`write_phase1a_outputs()`；返回 `SummaryPipelineResult`；失败写 sanitized `llm_errors.log`；fake secret 不落盘；evidence layer 保持不变。
 
 Phase 1A 输出文件：
@@ -211,14 +205,6 @@ commit: 0267d76
 message: Implement Phase 1B readable transcript mock pipeline
 ```
 
-修改文件：
-
-```text
-llm/prompt_templates.py
-llm/readable_pipeline.py
-testCodes/test_llm_pipeline.py
-```
-
 完成内容：新增 Phase 1B `run_readable_pipeline(...)`；链路为 `clean.txt -> parser/chunker -> readable prompt -> mock/fake provider -> ReadableTranscriptState -> renderer -> write_phase1b_outputs`；成功输出 readable/review state、Markdown、HTML；失败写 sanitized `readable_zh_errors.log`；failure 不修改 evidence layer；Step 7 Phase 1A summary regression 仍 PASS；不接真实 API、UI、CLI 或 Phase 2A sidecar。
 
 Phase 1B 输出文件：
@@ -236,7 +222,7 @@ session_dir/llm/review_zh_final.html
 #### Step 8 非阻塞问题点
 
 1. `ReadablePipelineResult.error` 当前仍直接保存 `str(exc)`。和 Step 7 的 `SummaryPipelineResult.error` 类似，这不会落盘，但后续 CLI/UI 如果直接打印 `result.error`，理论上可能暴露 provider exception 中的敏感文本。Step 9 CLI 已在显示层使用 sanitized error display。
-2. Phase 1B 当前按 chunk 直接生成 segments，`revision` 固定为 1。对 after-stop mock pipeline 足够；后续 Step 10 或 Phase 2A 前可考虑补充更强 state consistency 检查，例如 segment_id 去重、`end < start` validation、revision policy。
+2. Phase 1B 当前按 chunk 直接生成 segments，`revision` 固定为 1。对 after-stop mock pipeline 足够；Step 10 已补充 revision >= 1、duplicate id 和 invalid time range validation；Phase 2A 前仍可继续细化 revision policy。
 
 ---
 
@@ -249,36 +235,53 @@ commit: 81767bb
 message: Add mock LLM postprocess CLI
 ```
 
+完成内容：新增 `llm_postprocess.py`；支持 `--session`、`--provider mock`、`--task summary|readable|both`、`--max-chars`、`--max-seconds`、`--output-language zh`；只支持 mock provider；内置 schema-aware deterministic `CLIMockProvider`；summary/readable/both 均可生成对应 Phase 1A/1B 输出；missing session、missing `clean.txt`、non-mock provider 均返回非 0；CLI 错误显示使用 `sanitize_text()`，不打印 traceback、prompt 全文、raw request 或 raw response；evidence layer 保持不变；未生成 Phase 2A live sidecar 文件。
+
+验证结果：`test_llm_cli.py` PASS；`test_llm_pipeline.py` PASS；compileall PASS；LLM 回归 PASS；原有 UI/backend 回归无新增 FAIL；network/API grep 无输出；API key grep 无输出；ASR 主链路无修改；docs 无修改；真实 API/UI/Phase 2A sidecar 未接入。
+
+#### Step 9 非阻塞问题点
+
+1. `CLIMockProvider` 当前在 `llm_postprocess.py` 内部定义。对 Step 9/10 离线 CLI smoke 可接受；后续如果测试/CLI/provider mock 逻辑继续扩展，可考虑抽到 `llm/mock_provider.py` 或专门的 mock fixtures。
+2. `--task both` 当前采用 partial success 策略：summary 失败后仍会继续执行 readable，最终返回非 0。Step 10 已用测试固定该行为；后续接真实 provider 后可继续优化 terminal wording。
+
+---
+
+### Step 10：补齐 mock tests、failure isolation、secret leakage tests 与 hardening
+
+状态：已完成，已 commit 并 push。
+
+```text
+commit: 68b7923
+message: Harden mock LLM pipelines and CLI tests
+```
+
 修改文件：
 
 ```text
+llm/state_schema.py
 llm_postprocess.py
 testCodes/test_llm_cli.py
+testCodes/test_llm_outputs.py
+testCodes/test_llm_pipeline.py
 ```
 
 完成内容：
 
-- 新增 `llm_postprocess.py`；
-- 支持 `--session`、`--provider mock`、`--task summary|readable|both`、`--max-chars`、`--max-seconds`、`--output-language zh`；
-- 只支持 mock provider，non-mock 返回非 0；
-- 内置 schema-aware deterministic `CLIMockProvider`，只服务 Step 9 离线 CLI smoke，不读取 `DEEPSEEK_API_KEY`，不访问网络；
-- `--task summary` 生成 Phase 1A outputs；
-- `--task readable` 生成 Phase 1B outputs；
-- `--task both` 按 summary -> readable 顺序生成两组输出；
-- missing session、missing `clean.txt`、non-mock provider 均返回非 0；
-- CLI 错误显示使用 `sanitize_text()`，不打印 traceback、prompt 全文、raw request 或 raw response；
-- `raw.txt`、`clean.txt`、`session.log`、`config.json` 保持不变；
-- 未生成 Phase 2A live sidecar 文件。
+- CLI `--task both` 策略固定为 partial success：summary 失败后仍运行 readable，最终返回非 0，并打印 sanitized summary failure + readable status；
+- CLI 不打印 traceback、prompt、raw request、raw response；provider exception 中的 fake secret 会被 redacted；
+- summary/readable failure 不破坏上一版有效输出，覆盖 provider failure、schema failure、readable renderer failure；
+- state validation 增强：重复 `section_id` / `segment_id` 拒绝，`end < start` 拒绝，readable `revision >= 1`，默认 revision 改为 `1`；
+- `CLIMockProvider` 保持在 `llm_postprocess.py` 内作为 CLI smoke-only provider；增加隐藏 `--mock-fail-schema` 仅用于 failure-policy 测试，并移除固定 readable segment id，避免多 chunk 时重复 id。
 
 验证结果：
 
 ```text
 testCodes/test_llm_cli.py：PASS
-testCodes/test_llm_pipeline.py：PASS，Step 7/8 regression 仍通过
-compileall llm + llm_postprocess.py + tests：PASS
+testCodes/test_llm_pipeline.py：PASS
+testCodes/test_llm_outputs.py：PASS
+compileall llm + llm_postprocess.py + Step 10 tests：PASS
 testCodes/test_llm_chunker.py：PASS
 testCodes/test_llm_provider_mock.py：PASS
-testCodes/test_llm_outputs.py：PASS
 testCodes/test_ui_support.py：PASS
 testCodes/test_backends.py --skip-faster-smoke：PASS，whisper.cpp availability 可按环境 SKIP
 git diff --check：PASS
@@ -290,24 +293,36 @@ docs 文件：无修改
 merge：未执行
 ```
 
-审查结论：Step 9 通过，不需要 Step 9 v2。
+审查结论：Step 10 通过，不需要 Step 10 v2。
 
-#### Step 9 非阻塞问题点
+#### Step 10 非阻塞问题点
 
-1. `CLIMockProvider` 当前在 `llm_postprocess.py` 内部定义。对 Step 9 离线 CLI smoke 可接受；后续如果测试/CLI/provider mock 逻辑继续扩展，可考虑抽到 `llm/mock_provider.py` 或专门的 mock fixtures，避免 CLI 文件承载过多测试 provider 逻辑。
-2. `--task both` 当前 summary 失败后仍会继续执行 readable。这不会破坏 evidence layer，也能暴露两个 pipeline 的独立失败状态；但 Step 10 应明确策略：`both` 模式是否 fail-fast，还是保留 partial success。
+1. `state_schema.py` 的 number validation 使用 `isinstance(value, (int, float))`。Python 中 `bool` 是 `int` 的子类，所以 `True/False` 理论上会被当作合法 number。当前测试和正常 pipeline 不会触发；后续 schema strictness 可改为排除 bool。
+2. CLI partial success 策略已固定，但将来接真实 provider 后，summary/readable 的 partial output 对用户可能需要更清晰的 terminal wording，例如区分 “summary failed, readable succeeded, overall failed”。当前 Step 10 已满足 mock CLI hardening，不阻塞 Step 11。
 
 ---
 
-## 3. ACTIVE：Step 10 - 补齐 mock tests、failure isolation、secret leakage tests 与 hardening
+## 3. ACTIVE：Step 11 - 实现 DeepSeek / OpenAI-compatible provider
 
 状态：ACTIVE。
 
 ### 3.1 目标
 
-对 Step 7/8/9 已实现的 mock pipeline 和 CLI 做集中 hardening。重点不是新增产品功能，而是补齐 failure isolation、secret leakage、state consistency、CLI partial failure policy 和 regression coverage。
+实现真实 provider 的代码路径，但自动测试必须使用 mock HTTP client / monkeypatch，不得真实访问网络。
 
-Step 10 不接真实 DeepSeek/OpenAI HTTP，不要求 `DEEPSEEK_API_KEY`，不接 UI，不做 Phase 2A rolling sidecar，不改变 ASR 主链路。
+目标：
+
+```text
+DEEPSEEK_API_KEY env var
+-> OpenAI-compatible chat completions request builder
+-> HTTP client abstraction / injectable transport
+-> DeepSeekProvider.generate_text / generate_json
+-> typed provider errors
+-> no secret leakage
+-> no request/response log
+```
+
+Step 11 只实现 provider 层，不接 UI，不实现 Phase 2A sidecar，不改变 ASR 主链路。CLI 可以继续只支持 mock，除非用户另行批准开放真实 provider CLI 参数。
 
 ---
 
@@ -316,26 +331,22 @@ Step 10 不接真实 DeepSeek/OpenAI HTTP，不要求 `DEEPSEEK_API_KEY`，不�
 原则上允许：
 
 ```text
-testCodes/test_llm_pipeline.py
-testCodes/test_llm_cli.py
-llm/summary_pipeline.py
-llm/readable_pipeline.py
-llm_postprocess.py
-```
-
-如需集中测试工具，允许新增：
-
-```text
-testCodes/llm_test_utils.py
-```
-
-如确有必要，可最小修改：
-
-```text
-llm/state_schema.py
-llm/output_writer.py
-llm/mock_provider.py
+llm/deepseek_provider.py
+llm/openai_compatible_provider.py
+llm/provider_base.py
 llm/llm_settings.py
+testCodes/test_llm_provider_deepseek.py
+```
+
+如需复用 secret redaction，可最小修改：
+
+```text
+llm/output_writer.py
+```
+
+如需导出 provider symbols，可最小修改：
+
+```text
 llm/__init__.py
 ```
 
@@ -347,7 +358,7 @@ docs/whisper_static.md
 README.md
 ```
 
-Step 10 完成后，由人工审查后再受控更新 runtime。
+Step 11 完成后，由人工审查后再受控更新 runtime。
 
 ---
 
@@ -385,12 +396,11 @@ UI 主线程
 不要实现：
 
 ```text
-真实 DeepSeek HTTP
-真实 OpenAI-compatible HTTP
 UI
 Phase 2A sidecar
 request / response log
 API key settings / Keychain
+自动测试真实网络调用
 ```
 
 不要修改 evidence layer：
@@ -402,135 +412,129 @@ session.log
 config.json
 ```
 
-不要生成 Phase 2A live sidecar 输出，除非测试明确验证这些文件不存在。
-
 ---
 
-### 3.4 Step 10 hardening 要求
+### 3.4 Step 11 实现要求
 
-#### 3.4.1 CLI partial failure policy
+#### 3.4.1 Provider API
 
-明确 `llm_postprocess.py --task both` 的失败策略，并用测试固定。
-
-可选方案：
+实现或完善：
 
 ```text
-A. fail-fast：summary 失败后不运行 readable；返回非 0。
-B. partial success：summary 失败仍运行 readable；返回非 0，并清楚打印 summary failed + readable status。
+DeepSeekProvider
+OpenAICompatibleProvider
 ```
-
-任选其一，但必须：
-
-- 行为 deterministic；
-- stdout/stderr sanitized；
-- 测试覆盖；
-- evidence layer unchanged；
-- 不打印 prompt/raw response/traceback。
-
-当前实现是偏向 partial success。若保留该行为，需要测试明确记录 readable 仍被运行；若改为 fail-fast，需要相应调整测试。
-
-#### 3.4.2 Sanitized result / display hardening
-
-检查 `SummaryPipelineResult.error`、`ReadablePipelineResult.error`、CLI error display 的使用路径。
 
 要求：
 
-- CLI 不直接打印 unsanitized exception；
-- 测试覆盖 provider exception 中含 fake secret 时，stdout/stderr、`llm_errors.log`、`readable_zh_errors.log`、所有 JSON/Markdown/HTML 输出均不包含 fake secret；
-- 不打印 traceback；
-- 不打印 prompt/raw request/raw response。
+- 从环境变量 `DEEPSEEK_API_KEY` 读取 key；
+- key 缺失时抛 `MissingAPIKeyError` 或等价 typed error；
+- 不把 key 保存到 settings/config/session/docs/logs；
+- 不打印 key；
+- 不记录 Authorization header；
+- 不记录完整 request/response body；
+- 支持 `generate_text(system_prompt, user_prompt)`；
+- 支持 `generate_json(system_prompt, user_prompt, schema_name)`；
+- JSON response 解析失败时抛 `LLMMalformedResponseError` 或 `LLMInvalidResponseError`；
+- schema / JSON contract 失败时抛 `LLMSchemaError` 或明确 typed error；
+- HTTP 401/403 映射为 `LLMAuthenticationError`；
+- HTTP 429 映射为 `LLMRateLimitError`；
+- timeout 映射为 `LLMTimeoutError`；
+- 其他 provider/HTTP error 映射为 `LLMProviderError` 或等价 typed error。
 
-#### 3.4.3 State consistency hardening
+#### 3.4.2 HTTP client / transport abstraction
 
-对 Phase 1A / Phase 1B state 增加必要的一致性验证，优先覆盖：
+自动测试不得真实访问网络。
 
-```text
-segment_id / section_id 不应重复
-end < start 应被拒绝或明确 fallback
-revision 应为非负整数，必要时 readable revision >= 1
-status / annotation type 仍为受控枚举
-source.transcript = clean.txt
-source.raw_used = false
-```
-
-实现位置可选择：
-
-```text
-llm/state_schema.py validation helper
-或 pipeline normalization 阶段
-或测试先覆盖现状并记录 TODO
-```
-
-优先做最小必要 hardening，不要重构 schema 全部结构。
-
-#### 3.4.4 Mock provider / CLI mock organization
-
-`CLIMockProvider` 目前在 `llm_postprocess.py` 内。Step 10 可选择：
+建议实现 injectable HTTP transport，例如：
 
 ```text
-1. 保持不动，只补测试，记录它是 CLI smoke-only provider；或
-2. 抽到 llm/mock_provider.py，作为 schema-aware mock response provider；或
-3. 抽到 test helper，但 CLI 仍需要 runtime 可用的 mock provider。
+OpenAICompatibleProvider(api_key=None, endpoint=..., model=..., http_client=...)
 ```
 
-不要为了抽象过度重构。若移动代码，必须保证现有 provider mock tests 仍 PASS。
+`http_client` 可为极小接口，例如：
 
-#### 3.4.5 Output failure preservation
+```text
+post_json(url, headers, payload, timeout) -> response-like object
+```
 
-补测或实现：
+或使用 stdlib `urllib` 的 wrapper，但测试必须 monkeypatch wrapper，不真实请求。
 
-- 如果已有上一版有效 `summary.md/json`，summary failure 不应破坏上一版文件；
-- 如果已有上一版有效 `readable_zh_final_state.json/md/html`，readable failure 不应破坏上一版文件；
-- renderer failure 不应留下半写入文件；
-- atomic writer 行为仍 PASS。
+不要在自动测试中调用真实 `api.deepseek.com`。
+
+#### 3.4.3 Request shape
+
+OpenAI-compatible chat completions 请求应包含：
+
+```text
+model
+messages: system + user
+temperature 可配置，默认低温
+response_format 可选 JSON object，用于 generate_json
+```
+
+默认 endpoint 可指向 DeepSeek OpenAI-compatible endpoint，但不得在测试中真实访问。
+
+#### 3.4.4 Secret safety
+
+测试必须验证：
+
+- fake `DEEPSEEK_API_KEY` 不出现在 exception message；
+- fake key 不出现在 provider returned text/json；
+- fake key 不出现在 stdout/stderr；
+- fake key 不出现在 any local output/error logs（如果测试构造 session 输出）；
+- Authorization header 不被记录或暴露。
 
 ---
 
 ### 3.5 测试要求
 
-优先扩展现有测试：
+新增：
 
 ```text
-testCodes/test_llm_pipeline.py
-testCodes/test_llm_cli.py
-testCodes/test_llm_outputs.py
+testCodes/test_llm_provider_deepseek.py
 ```
 
-如测试公共逻辑重复明显，可新增：
+测试必须可直接运行，不依赖 pytest：
 
-```text
-testCodes/llm_test_utils.py
+```bash
+venv/bin/python testCodes/test_llm_provider_deepseek.py
 ```
 
-测试必须可直接运行，不依赖 pytest。
+自动测试只用 fake env key 和 fake http client。
 
-建议新增/强化 PASS 输出：
+建议 PASS 输出：
 
 ```text
-PASS: cli both partial failure policy
-PASS: cli failure display sanitized across stdout stderr
-PASS: summary failure preserves previous outputs
-PASS: readable failure preserves previous outputs
-PASS: duplicate segment ids rejected
-PASS: duplicate section ids rejected
-PASS: invalid time range rejected or normalized
-PASS: readable revision policy enforced
-PASS: all llm outputs contain no fake secret
-PASS: no traceback printed
-PASS: no prompt or raw response printed
+PASS: deepseek provider requires api key
+PASS: deepseek provider builds chat completion request
+PASS: deepseek provider text success
+PASS: deepseek provider json success
+PASS: deepseek provider malformed json response
+PASS: deepseek provider invalid json contract
+PASS: deepseek provider authentication error
+PASS: deepseek provider rate limit error
+PASS: deepseek provider timeout error
+PASS: deepseek provider secret not leaked
+PASS: deepseek provider no real network
 ```
 
 至少覆盖：
 
-- CLI `--task both` 一边失败时的既定策略；
-- summary provider failure/schema failure 不破坏旧输出；
-- readable provider failure/schema failure/renderer failure 不破坏旧输出；
-- fake secret 不出现在 stdout/stderr/error logs/JSON/Markdown/HTML；
-- duplicate ids 或 invalid time range 的策略；
-- no prompt/raw response/traceback；
-- raw/clean/session/config unchanged；
-- 不生成 Phase 2A live sidecar files；
-- 不调用真实网络/API。
+- `DEEPSEEK_API_KEY` 缺失；
+- fake key 从 env 读取；
+- request headers 包含 Authorization，但不会被打印/记录；
+- request payload 包含 system/user prompt 和 model；
+- text success；
+- json success；
+- invalid JSON body；
+- JSON object 缺失或类型不对；
+- 401/403；
+- 429；
+- timeout；
+- arbitrary HTTP 5xx/provider error；
+- fake key 不泄露；
+- 无真实网络调用。
 
 ---
 
@@ -563,12 +567,10 @@ git log --oneline --decorate -5
 llm-sidecar-phase1
 ```
 
-Step 10 focused/regression tests：
+Step 11 focused test：
 
 ```bash
-venv/bin/python testCodes/test_llm_cli.py
-venv/bin/python testCodes/test_llm_pipeline.py
-venv/bin/python testCodes/test_llm_outputs.py
+venv/bin/python testCodes/test_llm_provider_deepseek.py
 ```
 
 预期：全部 PASS。
@@ -576,14 +578,17 @@ venv/bin/python testCodes/test_llm_outputs.py
 语法检查：
 
 ```bash
-venv/bin/python -m compileall -q llm llm_postprocess.py testCodes/test_llm_cli.py testCodes/test_llm_pipeline.py testCodes/test_llm_outputs.py
+venv/bin/python -m compileall -q llm testCodes/test_llm_provider_deepseek.py
 ```
 
 预期：无输出，退出码为 0。
 
-LLM 已有回归：
+LLM 既有回归：
 
 ```bash
+venv/bin/python testCodes/test_llm_cli.py
+venv/bin/python testCodes/test_llm_pipeline.py
+venv/bin/python testCodes/test_llm_outputs.py
 venv/bin/python testCodes/test_llm_chunker.py
 venv/bin/python testCodes/test_llm_provider_mock.py
 ```
@@ -610,18 +615,13 @@ git diff --check
 可接受涉及：
 
 ```text
-llm_postprocess.py
-testCodes/test_llm_cli.py
-testCodes/test_llm_pipeline.py
-testCodes/test_llm_outputs.py
-llm/summary_pipeline.py
-llm/readable_pipeline.py
-llm/state_schema.py
-llm/output_writer.py
-llm/mock_provider.py
+llm/deepseek_provider.py
+llm/openai_compatible_provider.py
+llm/provider_base.py
 llm/llm_settings.py
+llm/output_writer.py
 llm/__init__.py
-testCodes/llm_test_utils.py
+testCodes/test_llm_provider_deepseek.py
 ```
 
 不允许出现：
@@ -643,43 +643,43 @@ resource_paths.py
 网络/API 检查：
 
 ```bash
-grep -RInE 'requests|httpx|aiohttp|urllib|urlopen|socket|Authorization|Bearer |chat\.completions|client\.chat|api\.deepseek|https?://' llm llm_postprocess.py testCodes/test_llm_cli.py testCodes/test_llm_pipeline.py testCodes/test_llm_outputs.py || true
+grep -RInE 'requests|httpx|aiohttp|urlopen|socket|api\.deepseek|https?://' llm testCodes/test_llm_provider_deepseek.py || true
 ```
 
-预期：无实际网络/API 实现。若只命中注释、prompt 文本、测试 fake secret 或 placeholder 文本，必须说明。
+预期：如果 provider implementation 使用 stdlib/network wrapper 或 endpoint 字符串，grep 可能有命中；必须说明没有在自动测试中真实请求网络，并且所有 HTTP 行为由 fake client/monkeypatch 覆盖。
 
 API key 检查：
 
 ```bash
-grep -RInE 'sk-[A-Za-z0-9_-]{16,}' llm llm_postprocess.py testCodes/test_llm_cli.py testCodes/test_llm_pipeline.py testCodes/test_llm_outputs.py || true
+grep -RInE 'sk-[A-Za-z0-9_-]{16,}|DEEPSEEK_API_KEY|Authorization|Bearer ' llm testCodes/test_llm_provider_deepseek.py || true
 ```
 
-预期：无真实 key。若测试中故意使用 fake key pattern，必须说明它是测试字符串，并确保不会写入 stdout/stderr/output/error log。
+预期：只允许出现环境变量名、Authorization header 组装代码、测试 fake key 或测试断言；不得出现真实 key；不得输出 key。
 
 ---
 
-### 3.7 Step 10 完成标准
+### 3.7 Step 11 完成标准
 
-全部满足才可标记 Step 10 已完成：
+全部满足才可标记 Step 11 已完成：
 
 ```text
-CLI both partial failure policy 已明确并有测试
-CLI stdout/stderr 不泄露 fake secret
-CLI 不打印 traceback/prompt/raw response
-summary/readable failure 不破坏上一版有效输出
-state consistency hardening 或明确测试记录已完成
-duplicate ids / invalid time range / revision policy 有测试或明确策略
-raw.txt / clean.txt / session.log / config.json unchanged
-不生成 Phase 2A live sidecar outputs
-testCodes/test_llm_cli.py PASS
-testCodes/test_llm_pipeline.py PASS
-testCodes/test_llm_outputs.py PASS
-testCodes/test_llm_chunker.py PASS
-testCodes/test_llm_provider_mock.py PASS
+DeepSeek/OpenAI-compatible provider 可构造
+缺失 DEEPSEEK_API_KEY 抛 typed error
+fake env key 可被 provider 使用但不泄露
+text success PASS
+json success PASS
+malformed/invalid json PASS
+401/403 -> authentication typed error
+429 -> rate limit typed error
+timeout -> timeout typed error
+5xx/provider error -> provider typed error
+自动测试无真实网络调用
+testCodes/test_llm_provider_deepseek.py PASS
+既有 LLM tests PASS
 compileall PASS
 原有 baseline tests 无新增 FAIL
 ASR 主链路无修改
-未接真实 API / UI / Phase 2A sidecar
+未接 UI / Phase 2A sidecar
 docs/whisper_runtime.md 未由 Codex 修改
 ```
 
@@ -689,25 +689,35 @@ docs/whisper_runtime.md 未由 Codex 修改
 
 重点防止：
 
-- 为 hardening 过度重构 pipeline/schema；
-- 修改 ASR 主链路；
-- 接入真实 API 或读取 `DEEPSEEK_API_KEY`；
-- CLI 继续打印 unsanitized exception；
-- 测试只检查 stdout/stderr，不扫描 outputs/error logs；
-- 新增测试依赖 pytest 或真实 outputs；
+- 自动测试真实访问 DeepSeek；
+- API key 写入 repo/docs/session/config/logs；
+- exception message 泄露 key 或 Authorization header；
+- 为接 provider 修改 ASR 主链路；
+- CLI 默认开放真实 provider；
+- request/response body 被落盘或打印；
 - Codex 提前改 runtime。
 
 ---
 
 ### 3.9 回滚
 
-如果 Step 10 实现方向错误，先看 diff：
+如果 Step 11 实现方向错误，先看 diff：
 
 ```bash
-git diff -- llm_postprocess.py llm/summary_pipeline.py llm/readable_pipeline.py llm/state_schema.py llm/output_writer.py llm/mock_provider.py llm/llm_settings.py llm/__init__.py testCodes/test_llm_cli.py testCodes/test_llm_pipeline.py testCodes/test_llm_outputs.py testCodes/llm_test_utils.py
+git diff -- llm/deepseek_provider.py llm/openai_compatible_provider.py llm/provider_base.py llm/llm_settings.py llm/output_writer.py llm/__init__.py testCodes/test_llm_provider_deepseek.py
 ```
 
-只回滚本步骤相关文件，优先使用 `git restore <path>`，仅删除确认属于 Step 10 的新增文件。
+只回滚本步骤相关文件，优先使用：
+
+```bash
+git restore <path>
+```
+
+如果新增了 `testCodes/test_llm_provider_deepseek.py` 且确认只属于 Step 11：
+
+```bash
+rm -f testCodes/test_llm_provider_deepseek.py
+```
 
 不要使用：
 
@@ -721,12 +731,6 @@ git clean -fd
 ---
 
 ## 4. 后续步骤简要内容
-
-### Step 11：实现 DeepSeek / OpenAI-compatible provider
-
-目标：从 `DEEPSEEK_API_KEY` 读取 key；model / endpoint 可配置；typed provider errors；测试用 monkeypatch/mock HTTP client；自动测试不真实调用 API。
-
----
 
 ### Step 12：本地手动真实 API smoke test
 
@@ -792,7 +796,7 @@ git diff --name-only
 当前下一次合理 commit：
 
 ```text
-Harden mock LLM pipelines and CLI tests
+Implement DeepSeek provider
 ```
 
 push：
