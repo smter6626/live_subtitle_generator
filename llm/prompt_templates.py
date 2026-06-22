@@ -16,6 +16,19 @@ Do not modify, overwrite, or replace clean.txt.
 Return structured JSON matching the requested schema."""
 
 
+PHASE1B_SYSTEM_PROMPT = """You are a conservative readable transcript post-processor.
+Output language: Chinese.
+Produce a Chinese readable transcript from clean transcript evidence only.
+Do not hallucinate or add information outside the transcript.
+Keep timestamp grounding for each segment whenever possible.
+Return structured JSON state; state JSON is the true source.
+Markdown and HTML must be derived later by the local renderer.
+Mark uncertain content as unclear or suspicious.
+ASR corrections must appear only as possible correction annotations.
+Do not modify, overwrite, or replace clean.txt.
+Do not directly generate full Markdown or HTML."""
+
+
 @dataclass(frozen=True)
 class PromptPayload:
     """Prompt payload plus metadata used for deterministic tests and providers."""
@@ -132,4 +145,68 @@ def build_global_summary_prompt(*, section_summaries: str) -> tuple[str, str]:
 def build_readable_transcript_prompt(*, transcript_text: str) -> tuple[str, str]:
     """Return prompts for Phase 1B readable transcript structured output."""
 
-    raise NotImplementedError("Phase 1B prompt templates are deferred to a later step.")
+    user_prompt = f"""Task: produce Chinese readable transcript segments as structured JSON.
+Required constraints:
+- Chinese readable transcript.
+- use only clean transcript evidence.
+- no hallucination.
+- timestamp grounding.
+- structured JSON/state output.
+- state JSON is the true source.
+- Markdown / HTML are derived by the local renderer.
+- mark uncertain content as unclear or suspicious.
+- possible correction only for ASR uncertainty.
+- do not overwrite clean.txt.
+- do not directly generate full Markdown or HTML.
+
+Clean transcript chunk:
+{transcript_text}
+"""
+    return PHASE1B_SYSTEM_PROMPT, user_prompt
+
+
+def build_readable_transcript_payload(
+    *,
+    chunk: TranscriptChunk,
+    output_language: str = "zh",
+    session_metadata: dict[str, Any] | None = None,
+) -> PromptPayload:
+    """Build a Phase 1B readable-transcript prompt payload for one chunk."""
+
+    metadata = {
+        "phase": "Phase 1B",
+        "task": "readable_transcript",
+        "output_language": output_language,
+        "chunk_id": chunk.chunk_id,
+        "chunk_start": chunk.start,
+        "chunk_end": chunk.end,
+        "source_lines": list(chunk.source_lines),
+        "session_metadata": session_metadata or {},
+    }
+    source_lines = ", ".join(str(line) for line in chunk.source_lines) or "none"
+    user_prompt = f"""Task: produce Chinese readable transcript segments as structured JSON/state.
+Schema fields should include: segments[] with segment_id, start, end, source_text, text_zh, annotations, evidence, status.
+Required constraints:
+- Chinese readable transcript.
+- use only clean transcript evidence.
+- no hallucination.
+- timestamp grounding.
+- structured JSON/state output.
+- state JSON is the true source.
+- Markdown / HTML are derived by the local renderer.
+- mark uncertain content as unclear or suspicious.
+- possible correction only for ASR uncertainty.
+- do not overwrite clean.txt.
+- do not directly generate full Markdown or HTML.
+
+Chunk id: {chunk.chunk_id}
+Chunk time range: {chunk.start} -> {chunk.end}
+Source line indexes: {source_lines}
+Clean transcript chunk:
+{chunk.text}
+"""
+    return PromptPayload(
+        system_prompt=PHASE1B_SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        metadata=metadata,
+    )
