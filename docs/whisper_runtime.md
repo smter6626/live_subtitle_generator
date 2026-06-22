@@ -40,8 +40,8 @@ Codex 执行代码 Step
 
 ```text
 当前分支：llm-sidecar-phase1
-当前 checkpoint：Step 11 已完成并已 push
-唯一 ACTIVE 任务：Step 12 - 本地手动真实 API smoke test
+当前 checkpoint：Step 12 已完成
+唯一 ACTIVE 任务：Step 13 - 验证 Phase 1A / Phase 1B 真实课堂 session 输出质量
 ```
 
 已完成：
@@ -58,14 +58,16 @@ Step 8：实现 Phase 1B after-stop readable transcript mock pipeline
 Step 9：新增 CLI 入口并用 mock 跑通 Phase 1A / Phase 1B
 Step 10：补齐 mock tests、failure isolation、secret leakage tests 与 hardening
 Step 11：实现 DeepSeek / OpenAI-compatible provider
+Step 12：本地手动真实 API smoke test
 ```
 
 当前尚未实现：
 
 ```text
-真实 API smoke test
 UI
 Phase 2A rolling sidecar
+provider/model registry
+真实课堂输出质量验收
 ```
 
 当前 `llm/` package 已包含：
@@ -83,6 +85,7 @@ Phase 1A summary mock pipeline
 Phase 1B readable transcript mock pipeline
 mock CLI entrypoint
 mock pipeline/CLI hardening
+真实 DeepSeek provider 最小 smoke 已通过
 ```
 
 ---
@@ -336,15 +339,77 @@ merge：未执行
 
 ---
 
-## 3. ACTIVE：Step 12 - 本地手动真实 API smoke test
+### Step 12：本地手动真实 API smoke test
+
+状态：已完成。
+
+完成内容：
+
+- 使用真实 `DEEPSEEK_API_KEY` 在本地 shell 环境变量中执行最小真实 provider smoke；
+- `DeepSeekProvider.generate_text()` 成功返回 `OK`；
+- `DeepSeekProvider.generate_json()` 成功返回 `{'ok': True, 'message': 'smoke'}`；
+- `DEEPSEEK_API_KEY` 已 unset；
+- 精确 secret scan 显示真实 API key 未出现在项目文件或 smoke report；
+- generic grep 只命中源码中的 `DEEPSEEK_API_KEY`、`Authorization`、`Bearer` 组装代码、文档说明、测试 fake key 和 external/whisper.cpp 相关非 LLM server 示例；
+- 一次性脚本 `run_smoketest_6_22.sh` 已删除；
+- `git status --short --untracked-files=all` 最终干净；
+- 未修改 docs、ASR 主链路、UI 或 Phase 2A sidecar；
+- 未修改 evidence layer；
+- disposable pipeline session 已删除；
+- 真实 pipeline smoke 在 SSL 修复前失败，最终 Step 12 完成标准以最小 provider text/json smoke 为准。
+
+最终成功设置：
+
+```text
+Python: venv/bin/python 3.13.7
+SSL_CERT_FILE=$(venv/bin/python -m certifi)
+REQUESTS_CA_BUNDLE=$SSL_CERT_FILE
+DEEPSEEK_API_KEY=<shell env only, not written to file>
+Provider: DeepSeekProvider
+Endpoint: https://api.deepseek.com/chat/completions
+Model: deepseek-chat
+```
+
+关键成功输出：
+
+```text
+TEXT_SMOKE_OK 'OK'
+JSON_SMOKE_OK {'ok': True, 'message': 'smoke'}
+```
+
+API 调用失效 / 阻塞情况记录：
+
+```text
+1. 未设置 certifi CA bundle 时，Python urllib 请求 DeepSeek 失败：ssl.SSLCertVerificationError / CERTIFICATE_VERIFY_FAILED / unable to get local issuer certificate。
+2. 直接访问 https://api.deepseek.com 且不携带 Authorization header 时返回 401 Unauthorized；这说明 TLS 已通过、服务端已到达，但裸请求未授权。
+3. SSL 未修复前，disposable session pipeline smoke 中 summary/readable 均失败，只生成 llm_errors.log / readable_zh_errors.log；disposable session 随后删除，未保留输出。
+4. sudo 运行 /Applications/Python 3.13/Install Certificates.command 未能修复系统 Python certifi，报 certifi uninstall-no-record-file；最终采用 venv certifi + SSL_CERT_FILE / REQUESTS_CA_BUNDLE 解决。
+```
+
+审查结论：Step 12 通过，可以推进 Step 13。
+
+---
+
+## 3. ACTIVE：Step 13 - 验证 Phase 1A / Phase 1B 真实课堂 session 输出质量
 
 状态：ACTIVE。
 
 ### 3.1 目标
 
-在所有 mock/provider 自动测试通过后，使用 disposable session 和真实 `DEEPSEEK_API_KEY` 做一次最小真实 API smoke。
+使用真实课堂 session 或较长真实课堂片段，验证 Phase 1A summary 与 Phase 1B readable/review 输出质量。
 
-本步骤是人工/本地验证步骤，不建议 Codex 自动执行真实 API。Codex 可生成 smoke 脚本或命令，但真实 API key 由用户在本地 shell 设置，不写入仓库，不写入 docs，不写入任何 session/config/log。
+本步骤不是新增大功能，而是人工质量验证和必要的小修正。重点检查：
+
+```text
+hallucination
+timestamp grounding
+action items
+unclear parts
+readable transcript 可读性
+review view 可用性
+secret safety
+evidence layer unchanged
+```
 
 ---
 
@@ -353,134 +418,96 @@ merge：未执行
 必须满足：
 
 ```text
-不把 API key 写入 repo
-不把 API key 写入 docs
-不把 API key 写入 settings/config/session 输出
-不把 API key 写入 logs
-不把 API key 打印到 stdout/stderr
-不提交任何包含 key 的文件
-使用 disposable session
-真实 smoke 后扫描 repo 和 session_dir
-失败不得修改 evidence layer
-CLI 仍不默认开放真实 provider，除非单独受控实现真实 provider CLI path
+不修改 raw.txt / clean.txt / session.log / config.json
+LLM 输出只写入 session_dir/llm/
+API key 仍只从 shell env 读取
+API key 不写入 repo/docs/session/logs/Markdown/HTML/JSON state
+不要把真实课堂隐私内容提交到 repo
+不要接 UI
+不要做 Phase 2A rolling sidecar
 ```
 
 ---
 
 ### 3.3 推荐执行方式
 
-优先创建一个临时 smoke 脚本或一次性 Python command，只调用 provider 的 `generate_text()` / `generate_json()`，不先接入 CLI。
-
-推荐流程：
+先选择一个 disposable copy 的真实 session，或复制一个真实 session 到临时目录：
 
 ```bash
 cd /Users/smter-mac/Documents/personalAPPS/whisper
 source venv/bin/activate
-git status --short --untracked-files=all
+export SSL_CERT_FILE="$(venv/bin/python -m certifi)"
+export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
 export DEEPSEEK_API_KEY='在本地 shell 粘贴，不写入文件'
+```
+
+用一次性 Python command 调用 pipeline，不改 CLI：
+
+```bash
 venv/bin/python - <<'PY'
+from pathlib import Path
 from llm.deepseek_provider import DeepSeekProvider
+from llm.summary_pipeline import run_summary_pipeline
+from llm.readable_pipeline import run_readable_pipeline
 
+session_dir = Path("/path/to/disposable/session")
 provider = DeepSeekProvider()
-text = provider.generate_text(
-    system_prompt="You are a concise test assistant.",
-    user_prompt="Reply with exactly: OK"
-)
-print("TEXT_SMOKE_OK", text[:20])
 
-obj = provider.generate_json(
-    system_prompt="Return JSON only.",
-    user_prompt='Return {"ok": true, "message": "smoke"}.',
-    schema_name="smoke_test"
-)
-print("JSON_SMOKE_OK", obj)
+summary = run_summary_pipeline(session_dir=session_dir, provider=provider, max_chars=12000)
+print("SUMMARY", summary.success, summary.chunks_processed, summary.error)
+
+readable = run_readable_pipeline(session_dir=session_dir, provider=provider, max_chars=12000)
+print("READABLE", readable.success, readable.chunks_processed, readable.error)
 PY
 unset DEEPSEEK_API_KEY
 ```
 
-注意：上面的 command 不应打印 key。若 provider 返回内容异常或 JSON parse 失败，记录错误类型即可，不要打印 headers/request body/key。
-
----
-
-### 3.4 smoke 后扫描
-
-执行后运行：
-
-```bash
-git status --short --untracked-files=all
-grep -RInE 'sk-[A-Za-z0-9_-]{16,}|DEEPSEEK_API_KEY|Authorization|Bearer ' . \
-  --exclude-dir=.git \
-  --exclude-dir=venv \
-  --exclude-dir=__pycache__ \
-  --exclude='*.pyc' || true
-```
-
-预期：
-
-- 不应出现真实 key；
-- 允许出现源码中的环境变量名、Authorization/Bearer 组装代码、测试 fake key；
-- 不应出现新增未跟踪文件；
-- 不应修改 docs/session/evidence 文件。
-
----
-
-### 3.5 可选 disposable session smoke
-
-如果 provider text/json smoke 通过，可再用一个临时 disposable session 测试 pipeline。但不要直接改 CLI 默认 provider 行为。
-
-建议只写临时一次性 Python command，使用 `run_summary_pipeline()` 和 `run_readable_pipeline()` 传入 `DeepSeekProvider()`。
-
-要求：
+然后人工检查：
 
 ```text
-session_dir 必须在 /tmp 或项目外临时目录，或项目内明确未提交的 disposable 目录
-raw.txt / clean.txt / session.log / config.json 建立即固定，不被修改
-只检查 session_dir/llm/ sidecar outputs
-运行后扫描 secret leakage
-测试结束可删除 disposable session
+session_dir/llm/summary.md
+session_dir/llm/summary.json
+session_dir/llm/readable_zh_final.md
+session_dir/llm/review_zh_final.md
+session_dir/llm/readable_zh_final_state.json
 ```
 
 ---
 
-### 3.6 Step 12 完成标准
+### 3.4 Step 13 完成标准
 
-全部满足才可标记 Step 12 已完成：
+全部满足才可标记 Step 13 已完成：
 
 ```text
-真实 DeepSeek provider text smoke 成功或失败类型明确
-真实 DeepSeek provider json smoke 成功或失败类型明确
-没有 API key 泄露到 stdout/stderr/repo/session/log
-没有把 API key 写入任何文件
-没有修改 docs
-没有修改 ASR 主链路
-没有修改 evidence layer
-真实 smoke 后 git status 干净，或仅有明确 disposable 文件且已删除
-grep secret scan 无真实 key 命中
-若执行 disposable session pipeline smoke，llm outputs 仅在 session_dir/llm/ 下生成
+真实/近真实课堂 session 至少 1 个样本完成 Phase 1A summary 输出
+真实/近真实课堂 session 至少 1 个样本完成 Phase 1B readable/review 输出
+人工检查未发现明显 hallucination 或已记录问题点
+时间戳 grounding 可接受或已记录问题点
+action_items / unclear_parts 可接受或已记录问题点
+readable transcript 可读性可接受或已记录问题点
+review view 可用性可接受或已记录问题点
+raw.txt / clean.txt / session.log / config.json unchanged
+API key 未泄露到 stdout/stderr/repo/session/logs/Markdown/HTML/JSON state
+git status 干净或仅有明确 disposable 文件且已删除
+若发现 provider/schema/prompt 问题，给出最小修正建议，不重构 ASR 主链路
 ```
 
 ---
 
-### 3.7 风险
+### 3.5 风险
 
 重点防止：
 
-- 把真实 key 粘贴进源码、docs、runtime、README、test、shell 脚本；
-- 把 key 打印出来；
-- 把 request headers/body 写入 log；
-- 把真实 smoke 输出误提交；
-- 将 CLI 默认开放真实 provider，导致误调用真实 API；
-- 在项目 outputs 里留下带真实测试内容的 session 并误提交。
+- 用原始真实 session 直接覆盖输出且难以区分验证产物；
+- 把真实课堂 transcript 或 LLM 输出提交到 repo；
+- API key 泄露到 shell history、logs、Markdown、HTML、JSON state；
+- 真实 LLM hallucination 被当成事实；
+- 为修正输出质量改动 ASR 主链路；
+- 过早接 UI 或 Phase 2A。
 
 ---
 
 ## 4. 后续步骤简要内容
-
-### Step 13：验证 Phase 1A / 1B 真实课堂 session 输出质量
-
-目标：人工检查 1-2 节真实课堂 session；检查 hallucination、timestamp grounding、action items、unclear parts、readable/review 视图可读性。
-
----
 
 ### Step 14：实现 Phase 2A rolling sidecar
 
@@ -524,4 +551,4 @@ git diff --name-only
 
 确认没有模型、outputs、日志、API key、venv、build、dist 被 staged。
 
-Step 12 是人工 smoke checkpoint，除非为了新增受控 smoke helper，否则通常不需要代码 commit。
+Step 13 如果只做人工验证，通常不需要代码 commit。若必须做质量修正，建议一个明确修正一个 commit，并保持 ASR 主链路不变。
