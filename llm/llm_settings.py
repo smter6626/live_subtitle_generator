@@ -7,6 +7,8 @@ DEFAULT_OUTPUT_LANGUAGE = "zh"
 DEFAULT_API_KEY_ENV_VAR = "DEEPSEEK_API_KEY"
 DEFAULT_DEEPSEEK_MODEL_ENV_VAR = "DEEPSEEK_MODEL"
 DEFAULT_DEEPSEEK_ENDPOINT_ENV_VAR = "DEEPSEEK_ENDPOINT"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-chat"
+DEFAULT_DEEPSEEK_ENDPOINT = "https://api.deepseek.com/chat/completions"
 
 
 @dataclass(frozen=True)
@@ -32,3 +34,8 @@ class LLMSettings:
         model = os.environ.get(DEFAULT_DEEPSEEK_MODEL_ENV_VAR) or None
         endpoint = os.environ.get(DEFAULT_DEEPSEEK_ENDPOINT_ENV_VAR) or None
         return cls(model=model, endpoint=endpoint)
+
+    def read_api_key(self) -> str | None:
+        """Read the provider API key from the configured environment variable."""
+
+        return os.environ.get(self.api_key_env_var) or None

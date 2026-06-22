@@ -1,21 +1,30 @@
-from llm.llm_settings import LLMSettings
-from llm.provider_base import LLMProvider
+from llm.llm_settings import (
+    DEFAULT_DEEPSEEK_ENDPOINT,
+    DEFAULT_DEEPSEEK_MODEL,
+    LLMSettings,
+)
+from llm.openai_compatible_provider import HTTPJSONClient, OpenAICompatibleProvider
 
 
-class DeepSeekProvider(LLMProvider):
-    """DeepSeek provider adapter placeholder.
-
-    HTTP integration is intentionally deferred until the provider implementation
-    step. This skeleton does not read API keys or contact external services.
-    """
+class DeepSeekProvider(OpenAICompatibleProvider):
+    """DeepSeek OpenAI-compatible provider adapter."""
 
     provider_id = "deepseek"
 
-    def __init__(self, settings: LLMSettings | None = None):
-        self.settings = settings or LLMSettings()
-
-    def generate_json(self, *, system_prompt: str, user_prompt: str, schema_name: str):
-        raise NotImplementedError("DeepSeek JSON generation is not implemented in Step 3.")
-
-    def generate_text(self, *, system_prompt: str, user_prompt: str) -> str:
-        raise NotImplementedError("DeepSeek text generation is not implemented in Step 3.")
+    def __init__(
+        self,
+        settings: LLMSettings | None = None,
+        *,
+        api_key: str | None = None,
+        endpoint: str | None = None,
+        model: str | None = None,
+        http_client: HTTPJSONClient | None = None,
+    ):
+        active_settings = settings or LLMSettings(provider=self.provider_id)
+        super().__init__(
+            active_settings,
+            api_key=api_key,
+            endpoint=endpoint or active_settings.endpoint or DEFAULT_DEEPSEEK_ENDPOINT,
+            model=model or active_settings.model or DEFAULT_DEEPSEEK_MODEL,
+            http_client=http_client,
+        )
