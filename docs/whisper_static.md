@@ -1,6 +1,6 @@
 # whisper_static.md
 
-最后更新：2026-06-16  
+最后更新：2026-06-22  
 文档角色：稳定合同（static contract）
 
 本文件记录 Classroom Live Transcriber / whisper 项目的长期稳定要求、架构边界、交付目标和非目标。只有当项目方向、范围、Phase 设计、交付物或硬约束发生实质变化时才更新本文件。
@@ -18,7 +18,7 @@ Classroom Live Transcriber 是一个 macOS Apple Silicon 本地 near-real-time �
 ```text
 本地实时课堂转写
 稳定保存 raw / clean evidence
-后续通过可选 LLM sidecar 生成学习材料
+可选 LLM sidecar 读取 clean.txt 并生成一个中文 Markdown 辅助阅读稿
 ```
 
 当前稳定主链路：
@@ -142,8 +142,8 @@ LLM 只能做：
 ```text
 可选
 异步
-旁路读取
-额外派生输出到 session_dir/llm/
+旁路读取 clean.txt snapshot
+额外派生 Markdown 输出到 session_dir/llm/
 ```
 
 LLM 不得进入：
@@ -178,31 +178,50 @@ future recordings
 
 所有 LLM 输出都是派生产物，不是 evidence layer。
 
----
+### 4.1 Markdown-only 原则
 
-## 5. LLM Phase 合同
+LLM sidecar 只生成用户可读 Markdown artifact。程序不得把模型生成内容作为稳定内部状态源。
 
-### 5.1 Phase 1A：After-stop 中文总结
-
-Phase 1A 是第一优先级。
-
-触发条件：
+稳定主路径必须满足：
 
 ```text
-Stop complete 后
-Whisper queue drained 后
+不解析模型生成 JSON 作为程序状态
+不依赖模型生成 enum
+不依赖 segment status
+不依赖 annotation type
+不依赖机器可读 key_terms/action_items
+不做局部冻结/局部删除/局部合并
+不做结构化 review state
 ```
 
-输入：
+LLM 输出可以内容质量不稳定，但不得导致程序状态不稳定。程序只负责：
+
+```text
+读取 clean.txt snapshot
+调用 provider.generate_text()
+接收 Markdown/text
+做 basic sanity / secret safety check
+atomic write 到 session_dir/llm/readable_zh.md
+把状态和错误写入 session_dir/llm/log.md
+失败时保留上一版 readable_zh.md
+```
+
+---
+
+## 5. LLM Markdown sidecar 合同
+
+### 5.1 输入
+
+LLM sidecar 的唯一 transcript 输入是：
 
 ```text
 session_dir/clean.txt
 ```
 
-可选输入：
+可选只读输入：
 
 ```text
-只读 session metadata
+session metadata
 ```
 
 第一版不使用：
@@ -214,141 +233,106 @@ cross-session history
 external knowledge base
 ```
 
-输出目录：
+### 5.2 输出
+
+LLM 输出目录固定为：
 
 ```text
 session_dir/llm/
 ```
 
-必需输出：
+必需输出仅限：
 
 ```text
-summary.md
+readable_zh.md
+log.md
+```
+
+文件语义：
+
+```text
+readable_zh.md = 当前 LLM 中文 Markdown 输出快照
+log.md = LLM sidecar 状态、错误和诊断记录，必须 sanitized
+```
+
+不得要求或生成作为稳定合同的：
+
+```text
 summary.json
 sections.json
 key_terms.json
 action_items.json
-llm_errors.log
-```
-
-内容要求：
-
-- 中文输出；
-- timeline / section summary；
-- key terms；
-- important details；
-- assignments / deadlines / project instructions；
-- professor-emphasized points；
-- action items；
-- review questions；
-- unclear / possible ASR errors；
-- timestamp grounding；
-- 不编造 transcript 外的信息。
-
----
-
-### 5.2 Phase 1B：After-stop 中文阅读稿
-
-Phase 1B 生成完整中文 readable transcript 派生稿。它不是 evidence，也不是 summary。
-
-输入：
-
-```text
-完整 clean.txt
-```
-
-输出：
-
-```text
 readable_zh_final_state.json
-readable_zh_final.md
 readable_zh_final.html
 review_zh_final.md
 review_zh_final.html
-readable_zh_errors.log
-```
-
-合同：
-
-```text
-state JSON 是真实状态源
-Markdown / HTML 是派生视图
-LLM 不直接自由生成并覆盖整个 Markdown / HTML
-本地 renderer 负责从 state JSON 生成 Markdown / HTML
-```
-
-阅读版用于复习，审计版用于保留疑似重复、修订痕迹、不确定术语和 possible corrections。
-
----
-
-### 5.3 Phase 2A：动态中文阅读稿 sidecar
-
-Phase 2A 是后续功能，不是 Phase 1A/1B 的验收内容。
-
-默认状态：
-
-```text
-关闭
-```
-
-运行时：
-
-```text
-录音期间可选运行
-只读 newline-complete clean.txt 快照
-只读当前结构化 state
-```
-
-初始可配置参数：
-
-```text
-interval_seconds = 30
-clean_context_window_seconds = 40
-editable_window_seconds = 60
-```
-
-输出：
-
-```text
 live_readable_zh_state.json
 live_readable_zh_revisions.jsonl
-live_readable_zh.md
 live_readable_zh.html
 live_review_zh.md
 live_review_zh.html
-live_readable_zh_errors.log
+*.log
 ```
 
-合同：
+如果已有旧实现仍生成上述 legacy 文件，它们不得作为新主路径、UI 或验收标准。后续应逐步旁路或清理。
 
-- 最多一个 in-flight API request；
-- 使用 pending snapshot coalescing；
-- 不产生 backlog；
-- frozen segment 不可改写；
-- editable segment 可在窗口内 replace / annotate / mark_duplicate；
-- 动态文件使用 atomic replace；
-- 失败保留上一版有效输出；
-- 不进入 ASR 主链路。
+### 5.3 触发模式
 
----
-
-### 5.4 Phase 2B：应用内 Markdown / HTML 渲染
-
-Phase 2B 在 Phase 2A 稳定后实现。
-
-正式 UI 使用：
+LLM sidecar 可以有两种触发模式，但输出仍写同一组文件：
 
 ```text
-QTextBrowser.setHtml()
+Stop 后 final refresh
+录音中 live refresh
 ```
 
-渲染路径：
+两种模式都写：
 
 ```text
-state JSON
--> local renderer
--> HTML
--> QTextBrowser.setHtml()
+session_dir/llm/readable_zh.md
+session_dir/llm/log.md
+```
+
+Stop 后 final refresh 成功时覆盖 `readable_zh.md` 为最终快照。录音中 live refresh 成功时覆盖 `readable_zh.md` 为当前快照。失败时保留上一版 `readable_zh.md`，只向 `log.md` 追加 sanitized 记录。
+
+### 5.4 Live refresh 稳定性合同
+
+live refresh 只做 Markdown snapshot refresh，不做结构化增量合并。
+
+必须满足：
+
+```text
+默认关闭或显式启用
+只读 clean.txt snapshot
+最多一个 in-flight API request
+pending snapshot coalescing
+不产生 backlog
+可配置最小刷新间隔
+atomic replace readable_zh.md
+失败保留上一版 readable_zh.md
+不进入 ASR 主链路
+```
+
+不得实现：
+
+```text
+frozen segment
+editable segment
+replace / annotate / mark_duplicate
+base_revision
+state revisions
+局部 merge
+```
+
+### 5.5 UI preview 合同
+
+UI 只显示 `readable_zh.md` 的当前内容。
+
+允许路径：
+
+```text
+readable_zh.md
+-> 本地 Markdown 渲染或 QTextBrowser 兼容显示
+-> UI refresh
 ```
 
 不得引入：
@@ -361,7 +345,7 @@ QWebEngineView
 
 Typora 和浏览器只能作为开发 spot check 工具。
 
-sidecar worker 不得直接操作 Qt widget，只能通过 signal 让 Qt 主线程更新 UI。
+sidecar worker 不得直接操作 Qt widget，只能通过 signal 让 Qt 主线程重新读取或渲染 Markdown。
 
 ---
 
@@ -369,15 +353,16 @@ sidecar worker 不得直接操作 Qt widget，只能通过 signal 让 Qt 主线�
 
 ### 6.1 Provider 抽象
 
-LLM 实现必须使用 provider abstraction，使 parser、chunker、prompt、state、renderer、output 与具体 provider 解耦。
+LLM 实现必须使用 provider abstraction，使 parser、chunker、prompt、writer 与具体 provider 解耦。
 
-最小 provider 能力：
+稳定主路径最小 provider 能力：
 
 ```text
-generate_json(...)
 generate_text(...)
 typed provider errors
 ```
+
+`generate_json(...)` 不属于稳定主路径合同。若代码中保留，只能作为 legacy、测试或未来实验能力，不得驱动主 UI、主 sidecar 或程序状态。
 
 错误类型至少应能区分：
 
@@ -421,6 +406,8 @@ raw.txt
 clean.txt
 request log
 response log
+readable_zh.md
+log.md
 Markdown
 HTML
 JSON state
@@ -452,40 +439,44 @@ config.json
 
 写入原则：
 
-- JSON / Markdown / HTML 输出尽量使用 atomic write；
-- 动态 sidecar 文件必须使用 atomic replace；
-- 失败时保留上一版有效输出；
-- error log 只记录 sanitized diagnostics；
-- 不记录 API key、Authorization header、完整 raw request body 或完整 raw response body。
+- `readable_zh.md` 必须使用 atomic write / atomic replace；
+- `log.md` 只记录 sanitized diagnostics；
+- 失败时保留上一版有效 `readable_zh.md`；
+- 不记录 API key、Authorization header、完整 raw request body 或完整 raw response body；
+- 不落盘模型 raw response；
+- 不落盘模型生成 JSON state；
+- 不落盘 HTML 作为稳定交付物。
 
 ---
 
 ## 8. Prompt 与输出质量合同
 
-所有 Phase 1A/1B/2A prompt 必须要求：
+prompt 只用于提高输出质量，不是程序稳定性保证。程序稳定性不得依赖模型遵守特定 JSON schema、enum 或结构化字段。
+
+prompt 应要求：
 
 ```text
-中文输出
+中文 Markdown 输出
+适合课堂中实时查看或课后复习
 不编造 transcript 外事实
-保留 timestamp grounding
+尽量保留 timestamp grounding
 区分 transcript 明确证据和模型推断
-不确定内容标记 unclear
+不确定内容用自然语言标记
 ASR 修正只能作为 possible correction
 不得覆盖 clean.txt
-不得直接自由覆盖完整 Markdown / HTML
+不得输出 API key 或敏感诊断信息
 ```
 
-Summary 至少应包含：
+`readable_zh.md` 推荐包含但不强制结构化解析：
 
 ```text
-overview
-timeline
-key terms
-important details
-action items
-review questions
-unclear / possible ASR errors
+当前课堂/片段总结
+重要提醒或任务
+可能的截止日期、作业、项目要求
+不确定或疑似 ASR 错误内容
 ```
+
+这些栏目只是 Markdown 文本。程序不得解析它们作为机器可读状态。
 
 高风险内容，如 deadline、考试要求、作业要求、评分规则和项目提交要求，必须保留不确定性标注，不得过度自信。
 
@@ -502,50 +493,39 @@ venv/bin/python testCodes/test_ui_support.py
 venv/bin/python testCodes/test_backends.py --skip-faster-smoke
 ```
 
-LLM 后续测试建议：
-
-```text
-testCodes/test_llm_chunker.py
-testCodes/test_llm_provider_mock.py
-testCodes/test_llm_outputs.py
-testCodes/test_llm_pipeline.py
-```
-
-LLM 测试必须覆盖：
+LLM Markdown sidecar 测试必须覆盖：
 
 ```text
 clean.txt timestamp parser
 no timestamp fallback
 empty transcript
 deterministic chunking
-prompt payload construction
-mock provider success/failure
-malformed response
-schema validation failure
+Markdown prompt construction
+mock provider text success/failure
 missing DEEPSEEK_API_KEY behavior
-API key 不出现在任何输出或日志
+API key 不出现在 readable_zh.md / log.md
 raw.txt / clean.txt / session.log / config.json unchanged
-summary/readable/review Markdown/HTML outputs
-HTML escaping
-annotation rendering
-renderer deterministic
-atomic replace
-Phase 1A/1B 不生成 live sidecar 输出
+readable_zh.md atomic write / replace
+log.md sanitized diagnostics
+failure preserves previous readable_zh.md
+single in-flight request
+pending snapshot coalescing
+sidecar disabled/off leaves ASR independently usable
 ```
 
-Phase 2A 额外覆盖：
+不再作为稳定合同测试的内容：
 
 ```text
-newline-complete snapshot
-high-water mark
-configurable 30/40/60 参数
+schema validation failure
+model-generated JSON normalization
+summary/readable/review JSON outputs
+HTML file outputs
+annotation rendering
+renderer deterministic from state JSON
 editable/frozen window
-coalescing
-single in-flight request
 invalid schema rejection
 base_revision mismatch rejection
-Stop final reconciliation
-sidecar disabled/off leaves ASR independently usable
+structured review state
 ```
 
 ---
@@ -555,7 +535,6 @@ sidecar disabled/off leaves ASR independently usable
 当前 LLM 分支不做：
 
 ```text
-实时逐 chunk 调 LLM
 自动替换 clean.txt
 强制联网
 本地大模型推理
@@ -566,12 +545,25 @@ session browser
 persistent whisper backend
 OpenCC / 多语言 clean 层
 API key settings / Keychain 管理
-正式 UI 集成
-Phase 2A 动态 sidecar
-Phase 2B 应用内预览
+机器可读 key_terms/action_items
+结构化 summary JSON
+结构化 readable state
+segment annotation
+segment status
+局部冻结
+局部删除
+局部合并
+review state
+LLM JSON schema parsing as core path
+落盘 HTML
+QWebEngineView
 ```
 
-这些可以作为后续 roadmap，但不得混入当前 Phase 1A/1B 的实现步骤。
+当前 LLM 分支只推进：
+
+```text
+clean.txt snapshot -> provider.generate_text() -> readable_zh.md -> UI Markdown preview
+```
 
 ---
 
@@ -579,14 +571,14 @@ Phase 2B 应用内预览
 
 当前优先级：
 
-1. LLM 离线/在线 API 后处理管线；
+1. LLM Markdown sidecar + UI preview；
 2. Session Browser / Search；
 3. Persistent whisper backend；
 4. Benchmark / Regression suite；
 5. 多语言 clean 层；
 6. Release / packaging 自动化。
 
-除 LLM 后处理管线外，其余方向尚未进入详细实现状态。实现前必须单独细化目标、边界、测试和回滚。
+除 LLM Markdown sidecar + UI preview 外，其余方向尚未进入详细实现状态。实现前必须单独细化目标、边界、测试和回滚。
 
 ---
 
@@ -627,9 +619,9 @@ LLM 应天然容易回滚，因为它是 sidecar。
 回滚优先级：
 
 1. 如果 LLM 输出有问题，删除或忽略 `session_dir/llm/`；
-2. 如果真实 provider 有问题，保留 mock pipeline，禁用真实 provider；
-3. 如果 UI 集成有问题，禁用 UI 按钮，保留 CLI；
-4. 如果 Phase 2A sidecar 不稳定，关闭 live sidecar，保留 Phase 1A/1B after-stop 输出；
+2. 如果真实 provider 有问题，禁用真实 provider；
+3. 如果 UI preview 有问题，隐藏或禁用 LLM preview，保留 ASR UI；
+4. 如果 live refresh 不稳定，关闭 live refresh，保留 Stop 后 final refresh 或完全禁用 LLM；
 5. 任何时候 raw/clean/session/config 主链路必须能单独运行。
 
 禁止使用粗暴回滚破坏其他未提交工作：
@@ -645,51 +637,14 @@ git clean -fd
 
 ## 14. 最终交付物
 
-LLM 后处理管线完成后，应能提供：
-
-### Phase 1A
+LLM Markdown sidecar 完成后，应能提供：
 
 ```text
-summary.md
-summary.json
-sections.json
-key_terms.json
-action_items.json
-llm_errors.log
-```
-
-### Phase 1B
-
-```text
-readable_zh_final_state.json
-readable_zh_final.md
-readable_zh_final.html
-review_zh_final.md
-review_zh_final.html
-readable_zh_errors.log
-```
-
-### Phase 2A
-
-```text
-live_readable_zh_state.json
-live_readable_zh_revisions.jsonl
-live_readable_zh.md
-live_readable_zh.html
-live_review_zh.md
-live_review_zh.html
-live_readable_zh_errors.log
-```
-
-### Phase 2B
-
-```text
-应用内 LLM 中文阅读稿预览 tab
-reading / review mode
-provider status
-last updated time
+session_dir/llm/readable_zh.md
+session_dir/llm/log.md
+应用内 LLM Markdown 预览区域
+provider status / last updated time
 Open Markdown
-Open HTML
 ```
 
 所有交付物都必须保持 sidecar 属性，不得破坏稳定 ASR 主链路。
