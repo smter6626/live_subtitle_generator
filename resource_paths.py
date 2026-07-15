@@ -95,8 +95,8 @@ def source_whisper_cpp_model_dir() -> Path:
     return project_root() / "external" / "whisper.cpp" / "models"
 
 
-def source_download_script_path() -> Path:
-    return source_whisper_cpp_model_dir() / "download-ggml-model.sh"
+def vendored_download_script_path() -> Path:
+    return project_root() / "vendor" / "whisper.cpp" / "download-ggml-model.sh"
 
 
 def default_whisper_cli_path() -> Path:
@@ -107,10 +107,11 @@ def default_whisper_cli_path() -> Path:
 
 
 def default_download_script_path() -> Path:
-    bundled = bundled_download_script_path()
-    if bundled.exists():
-        return bundled
-    return source_download_script_path()
+    if is_frozen_app():
+        bundled = bundled_download_script_path()
+        if bundled.exists():
+            return bundled
+    return vendored_download_script_path()
 
 
 def default_model_dirs() -> tuple[Path, ...]:

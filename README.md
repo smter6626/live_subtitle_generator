@@ -53,6 +53,9 @@ Classroom Live Transcriber 是一个本地课堂实时转写工具，主要面�
 
 如果使用打包版，用户不需要自己编译 `whisper.cpp`；app 内置 `whisper-cli` 和相关动态库，但不内置大模型。
 
+源码模式要真正进行转写，仍需在 `external/whisper.cpp` 准备 Metal 构建的
+`build/bin/whisper-cli`。该目录是被 Git 忽略的本地源码和构建依赖，不随仓库 Clone。
+
 ### 5. 安装依赖
 
 源码模式需要 Python 依赖。当前项目没有强制的 `requirements.txt`，最少需要：
@@ -107,6 +110,11 @@ open dist/ClassroomTranscriber.app
 ```text
 ~/Documents/ClassroomTranscriber/models
 ```
+
+模型下载脚本作为版本锁定的第三方资源随主项目保存在
+`vendor/whisper.cpp/download-ggml-model.sh`。因此全新 Clone 中 UI 的模型下载功能不再依赖
+`external/whisper.cpp`。下载模型只会准备模型文件；它不代表源码模式所需的
+`whisper-cli` 后端已经安装或构建。
 
 当前扫描目录包括：
 
@@ -190,7 +198,9 @@ ditto -c -k --sequesterRsrc --keepParent ClassroomTranscriber.app ClassroomTrans
 ./scripts/clean_build.sh
 ```
 
-打包版内置 `whisper-cli`，但不内置 `large-v3` 等模型文件。模型由 Model Manager 下载或导入。
+打包版内置来自 `vendor/whisper.cpp` 的版本锁定模型下载脚本，以及构建机
+`external/whisper.cpp` 中的 `whisper-cli` 和相关动态库。它不内置 `large-v3` 等模型文件；
+模型由 Model Manager 下载或导入。重新打包前，构建机仍需准备本地 whisper.cpp 后端。
 
 ### 11. 已知限制
 
@@ -266,6 +276,10 @@ Recommended environment:
 
 If you use the packaged app, users do not need to compile `whisper.cpp`; the app bundles `whisper-cli` and the required dynamic libraries. Large model files are not bundled.
 
+To transcribe in source mode, you must still prepare a Metal build at
+`external/whisper.cpp/build/bin/whisper-cli`. The ignored `external/whisper.cpp`
+directory is a local source and build dependency and is not included in a clone.
+
 ### 5. Install Dependencies
 
 Source mode needs Python dependencies. There is currently no required `requirements.txt`; the minimum set is:
@@ -320,6 +334,12 @@ Default download directory:
 ```text
 ~/Documents/ClassroomTranscriber/models
 ```
+
+The version-pinned model download script is vendored with this repository at
+`vendor/whisper.cpp/download-ggml-model.sh`. Model Manager downloads therefore
+do not depend on `external/whisper.cpp` in a fresh clone. A successful model
+download only supplies a model file; it does not install or build the
+`whisper-cli` backend required by source mode.
 
 Scanned directories:
 
@@ -403,7 +423,11 @@ Clean build artifacts:
 ./scripts/clean_build.sh
 ```
 
-The packaged app bundles `whisper-cli`, but it does not bundle `large-v3` or any other model file. Models are managed through Model Manager.
+The packaged app bundles the version-pinned download script from
+`vendor/whisper.cpp`, plus `whisper-cli` and its libraries from the build
+machine's `external/whisper.cpp`. It does not bundle `large-v3` or any other
+model file. The build machine must still provide the local whisper.cpp backend;
+models are downloaded or imported through Model Manager.
 
 ### 11. Known Limitations
 
