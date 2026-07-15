@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 APP_PATH="dist/ClassroomTranscriber.app"
 SPEC_PATH="packaging/ClassroomTranscriber.spec"
+DOWNLOAD_SCRIPT="vendor/whisper.cpp/download-ggml-model.sh"
 
 python_exists() {
   [[ -x "$1" ]] || command -v "$1" >/dev/null 2>&1
@@ -70,6 +71,21 @@ if [[ ! -f "$SPEC_PATH" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$DOWNLOAD_SCRIPT" ]]; then
+  echo "Required model download script not found: $DOWNLOAD_SCRIPT"
+  exit 1
+fi
+
+if [[ ! -r "$DOWNLOAD_SCRIPT" ]]; then
+  echo "Required model download script is not readable: $DOWNLOAD_SCRIPT"
+  exit 1
+fi
+
+if ! sh -n "$DOWNLOAD_SCRIPT"; then
+  echo "Required model download script has invalid shell syntax: $DOWNLOAD_SCRIPT"
+  exit 1
+fi
+
 if [[ ! -x "external/whisper.cpp/build/bin/whisper-cli" ]]; then
   echo "Warning: whisper-cli was not found or is not executable."
   echo "Expected: external/whisper.cpp/build/bin/whisper-cli"
@@ -83,9 +99,15 @@ echo "Building ClassroomTranscriber.app with PyInstaller..."
 "$PYTHON_BIN" -m PyInstaller "$SPEC_PATH" --noconfirm --clean
 
 BIN_DIR="$APP_PATH/Contents/Resources/bin"
+BUNDLED_DOWNLOAD_SCRIPT="$BIN_DIR/download-ggml-model.sh"
+if [[ ! -f "$BUNDLED_DOWNLOAD_SCRIPT" ]]; then
+  echo "Packaged model download script not found: $BUNDLED_DOWNLOAD_SCRIPT"
+  exit 1
+fi
+chmod +x "$BUNDLED_DOWNLOAD_SCRIPT"
+
 if [[ -d "$BIN_DIR" ]]; then
   chmod +x "$BIN_DIR/whisper-cli" 2>/dev/null || true
-  chmod +x "$BIN_DIR/download-ggml-model.sh" 2>/dev/null || true
 
   if [[ -x "$BIN_DIR/whisper-cli" ]]; then
     install_name_tool -add_rpath "@executable_path" "$BIN_DIR/whisper-cli" 2>/dev/null || true
