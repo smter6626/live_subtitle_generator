@@ -27,7 +27,7 @@ An ordinary user must not install or configure Git, Python, pip, uv, a virtual e
 - `observed`: evidence read from the successful old-machine build without preserving machine-specific paths;
 - `pending`: values that a later Step must determine from evidence.
 
-The Python contract is implemented by the Step 3 bootstrap and tests. Existing App build scripts and PyInstaller specs do not consume the manifest yet.
+The Python and whisper.cpp source-build contracts are implemented by their bootstrap scripts and tests. The whisper Runtime bootstrap consumes the Manifest Build Profile directly; existing App build scripts and PyInstaller specs do not consume it yet.
 
 ## Python environment
 
@@ -47,11 +47,13 @@ commit: 8443cf05e3fa8ce1b32348e1bcbcf8fc31f7f3ae
 architecture: arm64
 ```
 
-`external/whisper.cpp` is an ignored, local, reproducible checkout and build directory. It is not part of a fresh clone and must be recreated by the future bootstrap at the pinned commit.
+`external/whisper.cpp` is an ignored, local, reproducible checkout and build directory. It is not part of a fresh clone and is recreated by `scripts/bootstrap_whisper_runtime.sh` at the pinned detached commit. The script rejects a non-official origin or a modified third-party worktree rather than overwriting it.
 
 `vendor/whisper.cpp` is tracked and contains the pinned upstream model download resource and its provenance. It does not contain whisper.cpp source, Runtime binaries, or models. The vendored script remains `vendor/whisper.cpp/download-ggml-model.sh` and is bundled as `Contents/Resources/bin/download-ggml-model.sh`.
 
-The first frozen build profile is the successful old-machine profile: CMake 4.2.3, Unix Makefiles, Release, arm64, shared libraries, CPU, Metal, embedded Metal library, Accelerate/Apple BLAS, and `GGML_NATIVE=ON`. The full curated option set is in the Runtime manifest. `GGML_NATIVE=ON` is intentionally retained for this first profile but may affect portability across Apple Silicon generations; M4 Max and M5 acceptance must verify it.
+The first frozen build profile is the successful old-machine profile normalized for reproducibility: project-local CMake 4.2.3, Unix Makefiles, Release, explicit arm64, shared libraries, CPU, Metal, embedded Metal library, Accelerate/Apple BLAS, `GGML_OPENMP=OFF`, and `GGML_NATIVE=ON`. CMake is downloaded from Kitware's official universal macOS release artifact and verified with its frozen SHA-256. The complete option set is read from the Runtime manifest for a `cmake --fresh` configuration; the bootstrap only builds the `whisper-cli` target and dependencies.
+
+Run `scripts/bootstrap_whisper_runtime.sh` after the Python bootstrap to ensure source, CMake, and Runtime. `--verify-only` performs no download, checkout, configure, or compile; it validates the pinned detached source, effective cache profile, required artifacts, arm64 architecture, source-build dependency/RPath boundaries, and the Manifest smoke command `whisper-cli --help`. `GGML_NATIVE=ON` is intentionally retained but may affect portability across Apple Silicon generations; M4 Max and M5 acceptance must verify it.
 
 ## Runtime components and bundle layout
 
@@ -84,13 +86,13 @@ A formal Release build must fail when the Python environment or a critical packa
 
 ## Work still pending
 
-The locked Python environment and bootstrap are implemented. The project has not yet bootstrapped whisper.cpp, added the Finder build entry, changed current App build behavior, hardened model downloads, built the final App, or performed clean-machine acceptance.
+The locked Python environment and whisper Runtime bootstrap implementations are present. Their audit state is tracked separately. The project has not yet added the Finder build entry, changed current App build behavior, hardened model downloads, built the final App, or performed clean-machine acceptance.
 
 The remaining implementation sequence is:
 
 ```text
 Step 3  Rebuildable locked Python environment (implemented; audit status is tracked separately)
-Step 4  Pinned whisper.cpp Runtime bootstrap
+Step 4  Pinned whisper.cpp Runtime bootstrap (implementation supplied; audit status is tracked separately)
 Step 5  Double-click build entry and orchestration
 Step 6  Strict packaging gates and post-build Runtime smoke
 Step 7  Model download integrity, recovery, and retry

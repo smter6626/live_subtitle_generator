@@ -247,13 +247,17 @@ Bootstrap 必须使用该固定 Commit，不得跟随 upstream main。
 CMake 4.2.3
 Unix Makefiles
 Release
+explicit arm64
 shared libraries
 Metal ON
 Accelerate / BLAS ON
+GGML_OPENMP OFF
 GGML_NATIVE ON
 ```
 
-完整、去除机器路径和 cache 噪声后的 Profile 以 `packaging/runtime_manifest.json` 为准。`GGML_NATIVE=ON` 是当前为了简化而冻结的值，可能影响不同 Apple Silicon 代际之间的 portability；本阶段不修改，后续必须在 M4 Max 与 M5 的 Clean-machine / E2E 验收中确认。
+正式 CMake 4.2.3 从 Kitware 官方 macOS universal tarball 获取，使用官方 SHA-256 校验并保存于被忽略的项目 `.tools/cmake/4.2.3/`，不 fallback 到 Homebrew / Conda / 系统 CMake。正式配置显式设置 `CMAKE_OSX_ARCHITECTURES=arm64`，并通过 `cmake --fresh` 排除历史 cache。
+
+旧机 cache 曾请求 `GGML_OPENMP=ON`，但成功 Runtime 的 effective OpenMP 为 OFF；正式 Profile 因此固定 `GGML_OPENMP=OFF`，避免宿主机 libomp 状态造成漂移，同时保留 requested/effective 历史证据。完整、去除机器路径和 cache 噪声后的 Profile 以 `packaging/runtime_manifest.json` 为准。`GGML_NATIVE=ON` 是当前为了简化而冻结的值，可能影响不同 Apple Silicon 代际之间的 portability；本阶段不修改，后续必须在 M4 Max 与 M5 的 Clean-machine / E2E 验收中确认。
 
 ---
 

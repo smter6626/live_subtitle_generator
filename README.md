@@ -59,8 +59,8 @@ Classroom Live Transcriber 是一个本地课堂实时转写工具，主要面�
 
 如果使用打包版，用户不需要自己编译 `whisper.cpp`；app 内置 `whisper-cli` 和相关动态库，但不内置大模型。
 
-源码模式要真正进行转写，仍需在 `external/whisper.cpp` 准备 Metal 构建的
-`build/bin/whisper-cli`。该目录是被 Git 忽略的本地源码和构建依赖，不随仓库 Clone。
+源码模式的 Metal Runtime 由正式 bootstrap 在被 Git 忽略的 `external/whisper.cpp`
+准备，CLI 路径仍为 `build/bin/whisper-cli`；Fresh Clone 不需要手工 clone 或编译该目录。
 
 ### 5. 安装依赖
 
@@ -69,9 +69,12 @@ Classroom Live Transcriber 是一个本地课堂实时转写工具，主要面�
 ```bash
 cd /path/to/whisper
 scripts/bootstrap_python_env.sh
+scripts/bootstrap_whisper_runtime.sh
 ```
 
 该脚本准备项目局部的 uv 0.12.5、uv 管理的 Python 3.12.14 和 `.venv`，并按 `uv.lock` 执行 frozen sync。需要强制重建新环境时使用 `scripts/bootstrap_python_env.sh --recreate`。历史 `venv/` 不参与正式环境；PyInstaller 已作为冻结的开发依赖同步。
+
+第二个脚本使用 Manifest 合同准备项目局部 CMake 4.2.3、固定 whisper.cpp commit 和 arm64 Runtime。已有 Runtime 可用 `scripts/bootstrap_whisper_runtime.sh --verify-only` 快速验证；该模式不会下载或构建。
 
 如果要使用旧的 `faster-whisper` fallback，需要另外安装 `faster-whisper`，但这不是当前 UI 主路径。
 
@@ -199,7 +202,8 @@ ditto -c -k --sequesterRsrc --keepParent ClassroomTranscriber.app ClassroomTrans
 
 打包版内置来自 `vendor/whisper.cpp` 的版本锁定模型下载脚本，以及构建机
 `external/whisper.cpp` 中的 `whisper-cli` 和相关动态库。它不内置 `large-v3` 等模型文件；
-模型由 Model Manager 下载或导入。重新打包前，构建机仍需准备本地 whisper.cpp 后端。
+模型由 Model Manager 下载或导入。重新打包前，构建机通过
+`scripts/bootstrap_whisper_runtime.sh` 准备本地 whisper.cpp 后端。
 
 ### 11. 已知限制
 
@@ -274,9 +278,9 @@ Recommended environment:
 
 If you use the packaged app, users do not need to compile `whisper.cpp`; the app bundles `whisper-cli` and the required dynamic libraries. Large model files are not bundled.
 
-To transcribe in source mode, you must still prepare a Metal build at
-`external/whisper.cpp/build/bin/whisper-cli`. The ignored `external/whisper.cpp`
-directory is a local source and build dependency and is not included in a clone.
+The formal bootstrap prepares the source-mode Metal Runtime under the ignored
+`external/whisper.cpp`; the CLI remains at `build/bin/whisper-cli`. A fresh clone
+does not require a manual whisper.cpp clone or build.
 
 ### 5. Install Dependencies
 
@@ -285,9 +289,12 @@ The source-mode Python and dependencies are rebuilt from exact repository declar
 ```bash
 cd /path/to/whisper
 scripts/bootstrap_python_env.sh
+scripts/bootstrap_whisper_runtime.sh
 ```
 
 The script prepares project-local uv 0.12.5, uv-managed Python 3.12.14, and `.venv`, then performs a frozen sync from `uv.lock`. Use `scripts/bootstrap_python_env.sh --recreate` to force a clean rebuild of the new environment. The historical `venv/` is not used; frozen PyInstaller is included as a development dependency.
+
+The second script uses the Manifest contract to prepare project-local CMake 4.2.3, the pinned whisper.cpp commit, and the arm64 Runtime. Use `scripts/bootstrap_whisper_runtime.sh --verify-only` to check an existing Runtime without downloading or building.
 
 The legacy `faster-whisper` fallback requires installing `faster-whisper` separately. It is not the current UI path.
 
@@ -417,7 +424,8 @@ Clean build artifacts:
 The packaged app bundles the version-pinned download script from
 `vendor/whisper.cpp`, plus `whisper-cli` and its libraries from the build
 machine's `external/whisper.cpp`. It does not bundle `large-v3` or any other
-model file. The build machine must still provide the local whisper.cpp backend;
+model file. The build machine prepares the local backend with
+`scripts/bootstrap_whisper_runtime.sh`;
 models are downloaded or imported through Model Manager.
 
 ### 11. Known Limitations

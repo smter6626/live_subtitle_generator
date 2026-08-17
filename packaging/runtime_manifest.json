@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "status": "contract-only",
+  "status": "bootstrap-source",
   "frozen": {
     "platform": {
       "os": "macOS",
@@ -73,19 +73,38 @@
         "faster-whisper": "legacy CLI fallback only; not used by the current UI or PyInstaller entry"
       }
     },
+    "cmake": {
+      "exact_version": "4.2.3",
+      "acquisition": {
+        "method": "verified Kitware official GitHub release artifact",
+        "official_release_url": "https://github.com/Kitware/CMake/releases/tag/v4.2.3",
+        "asset": "cmake-4.2.3-macos-universal.tar.gz",
+        "asset_url": "https://github.com/Kitware/CMake/releases/download/v4.2.3/cmake-4.2.3-macos-universal.tar.gz",
+        "checksum_source_url": "https://github.com/Kitware/CMake/releases/download/v4.2.3/cmake-4.2.3-SHA-256.txt",
+        "asset_sha256": "c2302d3e9c48daabee5ea7c4db4b2b93b989bcc89dae8b760880e00120641b5b"
+      },
+      "project_local_install_root_path": ".tools/cmake/4.2.3",
+      "binary_path": ".tools/cmake/4.2.3/CMake.app/Contents/bin/cmake",
+      "system_fallback_allowed": false
+    },
     "whisper_cpp": {
       "repository": "https://github.com/ggml-org/whisper.cpp.git",
       "commit": "8443cf05e3fa8ce1b32348e1bcbcf8fc31f7f3ae",
       "architecture": "arm64",
       "bootstrap_policy": "checkout the pinned commit; never follow the upstream default branch",
       "local_rebuild_root_path": "external/whisper.cpp",
+      "bootstrap_script_path": "scripts/bootstrap_whisper_runtime.sh",
+      "contract_helper_path": "scripts/whisper_runtime_contract.py",
       "build_profile": {
-        "provenance": "old-machine successful Runtime build",
+        "provenance": "old-machine successful Runtime build normalized for reproducible Step 4 bootstrap",
         "cmake_generator": "Unix Makefiles",
         "cmake_version": "4.2.3",
         "build_type": "Release",
         "target_architecture": "arm64",
+        "fresh_configuration_policy": "cmake --fresh followed by a clean-first build of the required target",
+        "build_target": "whisper-cli",
         "cmake_options": {
+          "CMAKE_OSX_ARCHITECTURES": "arm64",
           "BUILD_SHARED_LIBS": true,
           "GGML_STATIC": false,
           "GGML_CPU": true,
@@ -100,7 +119,7 @@
           "GGML_METAL_NDEBUG": false,
           "GGML_METAL_SHADER_DEBUG": false,
           "GGML_NATIVE": true,
-          "GGML_OPENMP": true,
+          "GGML_OPENMP": false,
           "GGML_BACKEND_DL": false,
           "GGML_LLAMAFILE": false,
           "GGML_LTO": false,
@@ -127,7 +146,20 @@
         },
         "portability_caveats": [
           "GGML_NATIVE=ON is frozen from the successful old-machine profile and may reduce portability across Apple Silicon generations; it must remain unchanged for this profile and be verified on the M4 Max and M5 acceptance targets."
+        ],
+        "reproducibility_normalizations": [
+          "CMAKE_OSX_ARCHITECTURES=arm64 is explicit rather than inferred from the build host.",
+          "GGML_OPENMP=OFF is explicit and matches the old successful build's effective behavior instead of depending on host OpenMP availability."
         ]
+      },
+      "minimal_runtime_smoke": {
+        "component": "whisper-cli",
+        "arguments": [
+          "--help"
+        ],
+        "expected_exit_code": 0,
+        "requires_model": false,
+        "requires_audio": false
       }
     },
     "runtime_components": [
@@ -135,42 +167,56 @@
         "name": "whisper-cli",
         "kind": "executable",
         "required": true,
+        "source_path": "external/whisper.cpp/build/bin/whisper-cli",
+        "expected_filename": "whisper-cli",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
         "name": "libwhisper",
         "kind": "dynamic_library",
         "required": true,
+        "source_path": "external/whisper.cpp/build/src/libwhisper.1.dylib",
+        "abi_filename": "libwhisper.1.dylib",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
         "name": "libggml",
         "kind": "dynamic_library",
         "required": true,
+        "source_path": "external/whisper.cpp/build/ggml/src/libggml.0.dylib",
+        "abi_filename": "libggml.0.dylib",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
         "name": "libggml-base",
         "kind": "dynamic_library",
         "required": true,
+        "source_path": "external/whisper.cpp/build/ggml/src/libggml-base.0.dylib",
+        "abi_filename": "libggml-base.0.dylib",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
         "name": "libggml-cpu",
         "kind": "dynamic_library",
         "required": true,
+        "source_path": "external/whisper.cpp/build/ggml/src/libggml-cpu.0.dylib",
+        "abi_filename": "libggml-cpu.0.dylib",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
         "name": "libggml-blas",
         "kind": "dynamic_library",
         "required": true,
+        "source_path": "external/whisper.cpp/build/ggml/src/ggml-blas/libggml-blas.0.dylib",
+        "abi_filename": "libggml-blas.0.dylib",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
         "name": "libggml-metal",
         "kind": "dynamic_library",
         "required": true,
+        "source_path": "external/whisper.cpp/build/ggml/src/ggml-metal/libggml-metal.0.dylib",
+        "abi_filename": "libggml-metal.0.dylib",
         "bundle_directory": "Contents/Resources/bin"
       }
     ],
@@ -253,6 +299,7 @@
       "cmake_osx_architectures_cache_value": null,
       "cmake_system_processor": "arm64",
       "effective_binary_architecture": "arm64",
+      "cmake_cache_requested_openmp": true,
       "effective_openmp_enabled": false,
       "runtime_artifacts": [
         {
@@ -324,10 +371,6 @@
     "minimum_macos": {
       "value": null,
       "decision_step": "validation evidence required; do not infer"
-    },
-    "cmake_acquisition_method": {
-      "value": null,
-      "decision_step": "Step 4"
     },
     "model_checksum_and_model_manifest_strategy": {
       "value": null,

@@ -58,7 +58,7 @@ class RuntimeManifestContractTests(unittest.TestCase):
         for section in ("frozen", "observed", "pending"):
             self.assertIn(section, self.manifest)
             self.assertIsInstance(self.manifest[section], dict)
-        self.assertEqual(self.manifest.get("status"), "contract-only")
+        self.assertEqual(self.manifest.get("status"), "bootstrap-source")
 
     def test_platform_is_macos_arm64(self):
         platform = self.manifest["frozen"]["platform"]
@@ -216,6 +216,7 @@ class RuntimeManifestContractTests(unittest.TestCase):
         self.assertEqual(profile["cmake_version"], "4.2.3")
         self.assertEqual(profile["build_type"], "Release")
         self.assertEqual(profile["target_architecture"], "arm64")
+        self.assertEqual(options["CMAKE_OSX_ARCHITECTURES"], "arm64")
         for option in (
             "BUILD_SHARED_LIBS",
             "GGML_ACCELERATE",
@@ -224,7 +225,26 @@ class RuntimeManifestContractTests(unittest.TestCase):
             "GGML_NATIVE",
         ):
             self.assertIs(options[option], True)
+        self.assertIs(options["GGML_OPENMP"], False)
         self.assertEqual(options["GGML_BLAS_VENDOR"], "Apple")
+
+        observed = self.manifest["observed"]["old_machine_whisper_cpp_build"]
+        self.assertIs(observed["cmake_cache_requested_openmp"], True)
+        self.assertIs(observed["effective_openmp_enabled"], False)
+
+    def test_cmake_bootstrap_tool_is_frozen(self):
+        cmake = self.manifest["frozen"]["cmake"]
+        self.assertEqual(cmake["exact_version"], "4.2.3")
+        self.assertRegex(
+            cmake["acquisition"]["asset_sha256"],
+            re.compile(r"^[0-9a-f]{64}$"),
+        )
+        self.assertEqual(
+            cmake["binary_path"],
+            ".tools/cmake/4.2.3/CMake.app/Contents/bin/cmake",
+        )
+        self.assertFalse(cmake["system_fallback_allowed"])
+        self.assertNotIn("cmake_acquisition_method", self.manifest["pending"])
 
     def test_observed_runtime_artifacts_cover_frozen_components(self):
         artifacts = self.manifest["observed"]["old_machine_whisper_cpp_build"][
@@ -253,6 +273,17 @@ class RuntimeManifestContractTests(unittest.TestCase):
                 "libggml-cpu": "libggml-cpu.0.dylib",
                 "libggml-blas": "libggml-blas.0.dylib",
                 "libggml-metal": "libggml-metal.0.dylib",
+            },
+        )
+        formal_source_paths = {
+            component["name"]: component["source_path"]
+            for component in self.manifest["frozen"]["runtime_components"]
+        }
+        self.assertEqual(
+            formal_source_paths,
+            {
+                artifact["component"]: artifact["source_path"]
+                for artifact in artifacts
             },
         )
 
