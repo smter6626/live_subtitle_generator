@@ -38,10 +38,10 @@ Codex 执行当前 Step
 
 ```text
 当前分支：main
-当前实现 checkpoint：643dee844a55f1e45467714f6fd65280aa6cd8ff
-checkpoint 内容：chore: add reproducible python environment
+当前实现 checkpoint：cc4d3bde05c110e14bac8185e3485a70ddb98565
+checkpoint 内容：chore: add reproducible whisper runtime bootstrap
 当前工作线：Deployment / Packaging / Reproducibility / Bugfix
-唯一 ACTIVE：Deployment Step 4 - Whisper Runtime Bootstrap
+唯一 ACTIVE：Deployment Step 5 - 可双击的一键构建入口与 Orchestration
 ```
 
 当前一句话目标：
@@ -156,127 +156,183 @@ scripts/bootstrap_python_env.sh
 testCodes/test_python_environment.py
 ```
 
-同时更新 `.gitignore`、Runtime Manifest、Manifest tests、Packaging / README / 工程文档；未修改生产 ASR、whisper Runtime、模型下载或 LLM。
+Bootstrap 使用官方 Astral artifact + SHA-256，在 `.tools/` 下准备 uv / managed Python / cache，建立 `.venv` 并执行 `uv sync --frozen`；历史 `venv/` 不参与正式环境。
 
-Bootstrap 行为：
+实施验证：首次 bootstrap、`--recreate`、20 项联合 unittest、带空格路径 throwaway clean-repo rebuild 与 `git diff --check` 均 PASS。
 
-```text
-官方 Astral GitHub release 获取固定 uv 0.12.5 arm64 artifact
--> SHA-256 校验
--> .tools/uv/
--> uv-managed Python 3.12.14 放入 .tools/python/
--> cache 放入 .tools/cache/
--> 建立项目 .venv/
--> uv sync --frozen
--> environment smoke
-```
+旧 `test_pseudo_real_chunk_sequences.py` 仍保持其既有行为：脚本退出码为 0，但会打印 pseudo-oral 期望失败；该项不是 Step 3 引入，且未触碰 dedup / ASR，因此不阻塞 Deployment。
 
-历史 `venv/` 不读取、不修改、不删除；正式环境不依赖 Homebrew / Conda / 系统 Python package。
+---
 
-GitHub 审核确认：
+### Deployment Step 4：Whisper Runtime Bootstrap
 
-- commit 相对 runtime checkpoint 仅 ahead 1 / behind 0；
-- 修改范围为 Step 3 的 12 个合同 / bootstrap / test / doc 文件；
-- `pyproject.toml` 将 runtime direct dependencies 与 PyInstaller dev dependency 分离；
-- Runtime Manifest 已将 Step 3 的 Python / uv / direct package pending 项转为 frozen；
-- Bootstrap 使用仓库相对路径、`set -euo pipefail`、固定 uv/Python、`uv sync --frozen`，`--recreate` 只删除 `.venv`；
-- environment test 验证 exact Python/package 版本、项目局部 managed Python 和安全项目 import surface。
+状态：已完成，并经 GitHub 实际实现审核通过。
 
-实施验证结果：
+实现 commit：
 
 ```text
-bash -n scripts/bootstrap_python_env.sh                       PASS
-Manifest JSON parse                                           PASS
-首次 .venv bootstrap                                          PASS
-Python 3.12.14                                                PASS
-PyInstaller 6.22.1                                           PASS
-environment smoke                                              PASS / 5 tests
---recreate 后重新建立 .venv                                  PASS
-联合 unittest                                                  PASS / 20 tests
-带空格路径 throwaway clean-repo/environment rebuild           PASS
-git diff --check                                              PASS
+cc4d3bde05c110e14bac8185e3485a70ddb98565
+chore: add reproducible whisper runtime bootstrap
 ```
 
-旧 `test_pseudo_real_chunk_sequences.py` 仍保持其既有行为：脚本退出码为 0，但会打印 pseudo-oral 期望失败；该项不是 Step 3 引入，且本 Step 未触碰 dedup / ASR，因此不阻塞 Step 3。
+正式 Runtime bootstrap 合同：
+
+```text
+CMake exact: 4.2.3
+CMake asset: cmake-4.2.3-macos-universal.tar.gz
+CMake SHA-256: c2302d3e9c48daabee5ea7c4db4b2b93b989bcc89dae8b760880e00120641b5b
+CMake local path: .tools/cmake/4.2.3/CMake.app/Contents/bin/cmake
+whisper.cpp commit: 8443cf05e3fa8ce1b32348e1bcbcf8fc31f7f3ae
+generator: Unix Makefiles
+build type: Release
+architecture: explicit arm64
+GGML_OPENMP: OFF
+GGML_NATIVE: ON
+build target: whisper-cli
+minimal smoke: whisper-cli --help
+```
+
+正式仓库产物：
+
+```text
+scripts/bootstrap_whisper_runtime.sh
+scripts/whisper_runtime_contract.py
+testCodes/test_whisper_runtime_bootstrap.py
+```
+
+Runtime Manifest 已从 Step 4 pending 转为 frozen：CMake exact acquisition contract、显式 `CMAKE_OSX_ARCHITECTURES=arm64`、正式 `GGML_OPENMP=OFF`、source artifact paths 和 minimal smoke。旧机器历史证据仍保留 `GGML_OPENMP requested ON / effective OFF`。
+
+Bootstrap / helper 行为审核确认：
+
+- CMake 从 Manifest 读取，不 fallback 到 Homebrew / Conda / 系统 CMake；
+- official Kitware artifact 下载后按冻结 SHA-256 验证；
+- `external/whisper.cpp` 缺失时获取 exact commit，存在时验证 official origin / clean worktree，异常状态不静默覆盖；
+- whisper.cpp 最终 detached HEAD 固定在 exact commit；
+- CMake 配置使用 `--fresh`，Build Profile 由 Manifest helper 生成，不在 shell 中复制 GGML flags；
+- 只构建 `whisper-cli` target 及依赖；
+- verify-only 不下载、不 checkout、不 configure、不 compile；
+- CLI / 6 个 dylib 必须为 arm64-only Mach-O；
+- CLI 对 required dylib 使用 `@rpath`；source-build tree RPath 允许存在，但必须位于当前 build tree；
+- minimal smoke `whisper-cli --help` 必须退出 0。
+
+实施验证：
+
+```text
+主工作区 Python bootstrap                              PASS
+Whisper bootstrap                                      PASS
+verify-only                                            PASS
+CLI + 6 dylib arm64                                    PASS
+CLI @rpath dependency                                  PASS
+minimal --help smoke                                   PASS
+throwaway 无 CMake / 无 external 首轮恢复             PASS
+throwaway 删除 external + .tools/cmake 后二次恢复      PASS
+联合 unittest                                          PASS / 29 tests
+git diff --check                                       PASS
+```
+
+GitHub 审核确认该 commit 相对 Step 4 runtime checkpoint ahead 1 / behind 0，修改范围仅为 9 个 Step 4 script / helper / test / manifest / doc 文件；没有 binary、`external/` 或 `.tools/` 进入 Git。
 
 ---
 
 ## 3. 当前唯一 ACTIVE Step
 
 ```text
-ACTIVE: Deployment Step 4 - Whisper Runtime Bootstrap
+ACTIVE: Deployment Step 5 - 可双击的一键构建入口与 Orchestration
 ```
 
 ### 3.1 目标
 
-让 Fresh Clone 在没有历史 `external/whisper.cpp` 的情况下，能够通过正式项目脚本自动获得并构建固定版本的 whisper.cpp Runtime。
+把已经可独立重建的 Python 环境与 whisper Runtime 串成正式源码构建主入口，使开发者从 Fresh Clone 后只需要启动一个入口即可得到 `ClassroomTranscriber.app`。
 
-固定上游：
+正式调用链目标：
 
 ```text
-repository: https://github.com/ggml-org/whisper.cpp.git
-commit: 8443cf05e3fa8ce1b32348e1bcbcf8fc31f7f3ae
-target architecture: arm64
+Build ClassroomTranscriber.command
+-> scripts/bootstrap_and_build.sh
+-> scripts/bootstrap_python_env.sh
+-> scripts/bootstrap_whisper_runtime.sh
+-> 使用正式 .venv/bin/python 执行现有 macOS Release build
+-> dist/ClassroomTranscriber.app
 ```
 
-第一版继续以 `packaging/runtime_manifest.json` 已冻结的旧开发机成功 Build Profile 为合同基线。
+`.command` 只做 Finder thin wrapper；全部可测试逻辑必须位于 `scripts/bootstrap_and_build.sh`。
 
-### 3.2 Step 4 预期工作
+### 3.2 Step 5 预期工作
 
-1. 确认并实现 CMake 的正式自动获取 / 使用方式，不要求开发者手工 Homebrew 安装；
-2. 创建可测试、可重复执行的 whisper Runtime bootstrap 脚本；
-3. 自动 clone / fetch 固定 upstream，并 checkout exact commit；
-4. 对已有 `external/whisper.cpp` 做来源 / commit 校验，异常状态不得静默覆盖；
-5. 使用 Manifest 冻结的第一版 Build Profile 配置并构建所需 Runtime；
-6. 明确处理 `GGML_OPENMP` cache requested ON / 旧机 effective OFF 的差异，确保 clean build 不因宿主机 OpenMP 可用性漂移；
-7. 验证 `whisper-cli` 与必需 whisper/ggml dylib 均存在且为 arm64；
-8. 验证生成结果不依赖旧开发机绝对路径作为正式运行前提；
-9. 建立 bootstrap / manifest 一致性测试和最小 Runtime smoke；
-10. 做删除 `external/whisper.cpp` 后重新 bootstrap 的 clean-repo simulation；
-11. 不进入 PyInstaller App packaging gate、`.command` orchestration、模型下载加固或新机器完整 E2E。
+1. 创建仓库根目录 `Build ClassroomTranscriber.command`，设置可执行位，能够从 Finder 双击进入正式构建流程；
+2. 创建 `scripts/bootstrap_and_build.sh`，使用 `set -euo pipefail`、仓库相对路径，并正确处理路径空格；
+3. Orchestrator 必须按固定顺序调用 Python bootstrap、whisper Runtime bootstrap，再进入现有 Release build；
+4. 正式 build interpreter 必须明确为 `.venv/bin/python`，不得重新回退到历史 `venv/`、Conda、Homebrew 或系统 Python；
+5. 优先利用现有 `scripts/build_macos.sh` 已支持的 `PYTHON` override，将 `.venv/bin/python` 显式传入，而不是在 Step 5 顺带重写 packaging 逻辑；
+6. 保留 `scripts/build_macos.sh` / PyInstaller Spec 当前 packaging 行为的 Step 6 边界：Step 5 的职责是 orchestration，不在本 Step 完成 strict Runtime gate / final dependency closure；
+7. 入口失败必须传播非零退出码并打印可理解阶段信息，不允许前序 bootstrap 失败后继续构建；
+8. 成功后必须明确打印最终 App 路径；
+9. 创建 orchestration contract/unit test，验证 wrapper、调用顺序、正式 Python injection、路径处理和禁止旧 venv fallback；
+10. 在旧开发机实际运行正式 orchestrator，完成至少一次真实 PyInstaller App build；
+11. 使用 throwaway clean repo 从无 `.venv`、无 `.tools`、无 `external/` 的状态执行正式 orchestrator，并确认能够生成 App；
+12. 不在本 Step 做模型下载、麦克风录音、新机器完整 E2E 或 LLM 工作。
 
-### 3.3 Step 4 验收方向
+### 3.3 Step 5 验收方向
 
 至少证明：
 
 ```text
-Fresh Clone / 无 external/
--> 正式 whisper bootstrap
--> exact pinned upstream commit
--> frozen build profile
--> arm64 whisper-cli + required dylibs
--> minimal CLI/runtime smoke PASS
--> 删除 external/ 后重新执行仍可恢复相同 Runtime
+Fresh Clone / 无 .venv / 无 .tools / 无 external
+-> 一个正式构建入口
+-> Python bootstrap
+-> whisper Runtime bootstrap
+-> PyInstaller Release build
+-> dist/ClassroomTranscriber.app 存在
 ```
 
-Step 4 完成、commit + push 后，由人工 / ChatGPT 基于 GitHub 实现与测试再次审核；审核通过后才激活 Step 5。
+当前 Step 5 只证明“正式入口可以完成构建编排并生成 App”。
+
+以下仍明确属于 Step 6，而不是 Step 5 PASS 的必要条件：
+
+```text
+Spec 将所有 Runtime 从 optional 改为 required
+缺 whisper-cli / dylib 时严格 Fail Fast
+install_name_tool 错误不再被吞掉
+最终 App 内 arm64 / dylib closure / RPath gate
+post-build bundled whisper-cli smoke
+完整 packaging completeness 判定
+```
+
+Step 5 commit + push 后仍由人工 / ChatGPT 基于 GitHub 实现与测试审核；审核通过后才激活 Step 6。
 
 ---
 
 ## 4. 当前为简化而保留、后续可能产生影响的内容
 
-1. 第一版冻结旧开发机成功的 whisper.cpp Build Profile，包括 `GGML_NATIVE=ON`；可能影响不同 Apple Silicon 代际 portability，必须在 M4 Max / M5 实际验收。
-2. 旧 Build Profile 中 `GGML_OPENMP=ON` 是 cache 请求值，但旧构建实际 effective OpenMP 为 OFF；Step 4 必须显式稳定该结果，避免不同宿主机生成不同 Runtime。
-3. 第一版沿用当前 `Contents/Resources/bin/` Bundle Runtime 布局，不在当前阶段重构目录。
-4. 当前 Runtime component 集合以旧成功 build 为合同基线；Step 6 仍必须通过 `otool -L` 验证最终 App dependency closure。
-5. Python 合同同时保留历史 broad floor `>=3.11` 与正式 managed environment `3.12.14 / >=3.12,<3.13`；实际可复现构建环境以 3.12.14 为准，后续不应把 3.11 视为当前正式构建目标。
-6. Python bootstrap 依赖 macOS host 提供 `curl`、`shasum`、`tar` 等系统工具；当前旧机 / throwaway 验证通过，最终 clean-machine 仍需验证这些宿主前提无需人工技术配置。
-7. 当前普通用户最小发布形式为 ZIP + `.app`，暂不要求 Developer ID / Notarization / DMG。
+1. 第一版冻结 `GGML_NATIVE=ON`；当前旧开发机 bootstrap 已 PASS，但不同 Apple Silicon 代际 portability 仍必须在 M4 Max / M5 实际验收。
+2. 正式 `GGML_OPENMP=OFF` 已解决 host OpenMP availability 漂移；旧 `requested ON / effective OFF` 继续作为历史证据保留。
+3. Step 4 source Runtime 允许当前 build tree absolute LC_RPATH；最终 App 不得依赖这些路径，Step 6 必须建立 final bundle dependency closure / RPath gate。
+4. 第一版沿用 `Contents/Resources/bin/` Bundle Runtime 布局，不在当前阶段重构目录。
+5. 当前 Runtime component 集合以 pinned build 为合同基线；Step 6 仍必须通过最终 App 的 `otool -L` closure 验证实际 bundle 完整性。
+6. Python 合同同时保留历史 broad floor `>=3.11` 与正式 managed environment `3.12.14 / >=3.12,<3.13`；实际可复现构建环境以 3.12.14 为准。
+7. Source-build bootstrap 依赖 macOS host 提供 `git/curl/tar/shasum/xcrun/clang/make/file/otool` 和 Apple Command Line Tools；旧机 / throwaway 已验证，最终 clean-machine 仍需确认无需额外人工技术修补。普通 Release 用户不承担这些 source-build prerequisites。
+8. Step 5 将继续复用现有 `build_macos.sh` 与 Spec 的非严格 packaging 行为以保持任务边界；因此 Step 5 生成 App 不等于最终 Packaging 完整性 PASS，严格门禁属于 Step 6。
+9. 当前普通用户最小发布形式为 ZIP + `.app`，暂不要求 Developer ID / Notarization / DMG。
+10. 远程自动化可以验证 `.command` 文件、可执行位及其 shell 等价调用；真实 Finder 双击交互仍需在后续本机 / clean-machine 验收中确认，不因远程 shell 调用自动视为 Finder UX 已实际验证。
 
 ---
 
 ## 5. 当前未敲定参数
 
 ```text
-# Step 4
-CMake exact version / 自动获取方式
-GGML_OPENMP requested/effective 状态的最终固定方式
-whisper bootstrap 的本地 tool/cache 布局
-最小 whisper-cli Runtime smoke 命令
+# Step 5
+Build ClassroomTranscriber.command 的最小 Finder wrapper 行为
+bootstrap_and_build.sh 的阶段日志 / 失败展示细节
+远程环境下 Finder 双击的实际交互验证方式
+
+# Step 6
+最终 App dependency closure / RPath gate 细节
+Runtime components 如何从 Manifest 驱动 Spec / build gate
+post-build bundled whisper-cli smoke 形式
+codesign failure 的正式 Build 判定边界
 
 # 后续
 minimum macOS（当前不承诺旧系统，保持未设置）
-最终 App dependency closure / RPath gate 细节
 模型 checksum / size manifest 来源与维护策略
 Developer ID signing / notarization 实施时间点
 GitHub Release 正式版本和自动发布流程
@@ -286,7 +342,7 @@ GitHub Release 正式版本和自动发布流程
 
 ## 6. 开发机与验收机状态
 
-旧 MacBook：Developer / Reference Machine，用于开发、自动测试、clean-repo simulation、稳定 ASR 回归、Commit / Push。
+旧 MacBook：Developer / Reference Machine，用于开发、自动测试、clean-repo simulation、构建验证、稳定 ASR 回归、Commit / Push。
 
 新 Mac：Clean-machine Acceptance Machine，不手工复制 `external/`、CLI、dylib 或模型，不使用旧 venv，不通过临时 Terminal 命令修补正式流程。
 
@@ -303,18 +359,23 @@ M4 / M5 支持声明必须分别有项目实际验证证据；M1 / M2 / M3 仅�
 
 ## 7. 当前已知 Failure Modes
 
-### Python / Build
+### Python / Orchestration
 
-- Python 环境已经可重建，但现有 `build_macos*.sh` 尚未统一消费正式 `.venv` / bootstrap；该整合留给 Step 5。
-- 缺 `whisper-cli` 目前仍可能只 Warning；Spec 对 Runtime 仍可 optional collection。
-- `install_name_tool` 部分错误仍可能被忽略；尚无最终 App post-build CLI / dyld smoke。
+- Python 与 whisper Runtime 已可分别重建，但尚无统一 `bootstrap_and_build.sh` 和 Finder `.command` 正式入口；Step 5 解决。
+- 当前 `build_macos.sh` 仍包含历史 interpreter selection fallback；Step 5 必须通过 orchestrator 显式注入 `.venv/bin/python`，后续是否进一步移除 fallback 可在不扩大风险时再治理。
+
+### Packaging
+
+- 缺 `whisper-cli` 当前仍只 Warning；Spec 对 CLI/dylib 仍使用 optional collection。
+- `install_name_tool` 部分错误仍被 `|| true` 吞掉。
+- 尚无最终 App 内 CLI / dylib / architecture / closure / RPath / dyld smoke。
+- source Runtime build tree 的绝对 RPath 尚未转换为正式 App bundle closure。
+- 这些都是 Step 6 的 ACTIVE-next 风险，不阻塞 Step 5 orchestration 本身。
 
 ### Whisper Runtime
 
-- Fresh Clone 尚不能自动生成 `external/whisper.cpp` 和 Runtime；Step 4 解决。
 - `GGML_NATIVE=ON` portability 尚未跨 M4/M5 验证。
-- `GGML_OPENMP` requested/effective 状态当前存在可复现性风险。
-- 旧 CLI Build RPath 含开发机构建路径；最终 App closure / RPath gate 仍留 Step 6。
+- Source bootstrap 已将 OpenMP 显式固定 OFF，不再依赖宿主机 libomp 状态。
 
 ### 模型下载
 
@@ -328,8 +389,8 @@ M4 / M5 支持声明必须分别有项目实际验证证据；M1 / M2 / M3 仅�
 Step 1：Clean-machine Gap Audit                     已完成
 Step 2：部署合同与 Runtime Manifest                已完成
 Step 3：建立可重建的 Python 环境                   已完成
-Step 4：Whisper Runtime Bootstrap                   ACTIVE
-Step 5：可双击的一键构建入口                        待做
+Step 4：Whisper Runtime Bootstrap                   已完成
+Step 5：可双击的一键构建入口与 Orchestration       ACTIVE
 Step 6：严格打包门禁与 post-build smoke             待做
 Step 7：模型下载完整性、失败恢复与重试               待做
 Step 8：新机器 Clone -> App -> 转录端到端验收         待做
@@ -353,17 +414,17 @@ Step 9 及 Developer ID / Notarization / DMG / GitHub Actions 属于后续 Relea
 继续开发时：
 
 ```text
-1. 主动 git fetch + git pull --ff-only origin main
+1. 远程模式主动 git fetch + git pull --ff-only origin main
 2. 确认 main / clean worktree / HEAD == origin/main
 3. 读取 deployment_static.md / deployment_runtime.md / PACKAGING.md / runtime_manifest.json
-4. 检查现有 resource_paths / build scripts / specs / external whisper build 状态
-5. 只执行 Deployment Step 4
+4. 检查 bootstrap_python_env.sh / bootstrap_whisper_runtime.sh / build_macos.sh / Release Spec
+5. 只执行 Deployment Step 5
 6. Codex 不修改 deployment_runtime.md
-7. 实现、自检通过后一个 commit 并 push main
-8. 人工 / ChatGPT 审核后再推进 runtime
+7. Orchestrator 显式使用正式 .venv/bin/python，不复用旧 venv
+8. 允许实际 PyInstaller build；不把当前 App build 成功误报为 Step 6 packaging completeness PASS
+9. 实现、自检通过后一个 commit 并 push main
+10. 人工 / ChatGPT 审核后再推进 Step 6
 ```
-
-进入 Step 4 正式实现前，应先确认本 Step 的 CMake 自动获取方式和 `GGML_OPENMP` 最终固定策略；不得默认为当前宿主机环境决定。
 
 ---
 
