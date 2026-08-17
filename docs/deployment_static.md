@@ -329,17 +329,54 @@ PyInstaller Spec、Build Script 和 Runtime Manifest 最终应共享同一套 Ru
 
 ## 9. Clean-machine 验收合同
 
+### 9.1 开发机与验收机职责长期原则
+
+当前 Deployment 工作线长期采用“两台机器分工”策略：
+
+```text
+旧 MacBook = Developer / Reference Machine
+新 Mac = Clean-machine Acceptance Machine
+```
+
+核心原则：
+
+> **继续在旧开发机完成实现、回归和已知依赖治理；尽可能在旧机器上消灭可预见的隐式依赖和安装缺口。新机器保持尽量纯净，只负责验证正式流程是否仍遗漏未知依赖。**
+
+不得为了加快开发而把新机器逐步改造成第二台历史开发环境。尤其避免在新机器上长期保留项目专用的手工修补状态，例如：
+
+```text
+手工创建并维护项目 venv
+手工复制 external/whisper.cpp
+手工编译 whisper-cli
+手工复制 dylib
+手工复制模型
+临时修改 PATH 以绕过正式流程
+只存在于新机器本地的修补脚本或 UI 修改
+```
+
+新机器测试发现缺失依赖或额外操作时，默认处理方式必须是：
+
+```text
+记录为 deployment bug
+-> 回旧开发机修复正式 Bootstrap / Build / App 流程
+-> Commit / Push main
+-> 新机器重新从正式入口验证
+```
+
+不得把一次性人工补救命令视为验收通过。
+
 旧机器用于：
 
 ```text
 开发
 单元测试
 构建验证
+clean-repo simulation
 稳定 ASR 回归
 Commit / Push
 ```
 
-旧机器已经存在历史环境，因此旧机器成功不能证明 Fresh Clone 可复现。
+旧机器已经存在历史环境，因此旧机器成功不能证明 Fresh Clone 可复现；旧机器上的 clean-repo simulation 也只能证明仓库状态较干净，不能替代真实 clean-machine 验收。
 
 新机器作为 Clean-machine 验收机，原则上：
 
