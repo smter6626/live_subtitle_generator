@@ -230,31 +230,78 @@ testCodes/test_runtime_manifest.py
 
 以及必要的最小 README / 工程文档同步。
 
-### 3.2 本 Step 需要冻结的已知事实
+### 3.2 已锁定需求
 
-平台：
+#### 平台与实际验收范围
 
 ```text
-macOS
-arm64 / Apple Silicon
+目标平台：macOS / Apple Silicon / arm64
+实际验收硬件：
+- MacBook Air / M5 / 16 GB / 512 GB / macOS 27 Beta
+- MacBook Pro / M4 Max / 48 GB / 1 TB / macOS 27 Beta
+
+实际支持声明目标：M4 / M5 两代在项目两台机器上通过验收
+M1 / M2 / M3：仅标记为理论兼容 Apple Silicon / arm64，未经项目实际验证，不作保证
+旧版 macOS：不作保证
+minimum_macos：保持未设置
 ```
 
-Python：
+#### 普通用户交付合同
 
 ```text
-minimum >= 3.11
-locked minor / patch 尚未决定
+普通用户不得被要求通过 Terminal 或其他技术手段安装 Git、Python、pip、uv、venv、CMake、whisper.cpp、whisper-cli 或 dylib。
+
+允许：
+- App / Installer 自动检查依赖并一键完成所需安装；
+- 将运行依赖直接打包进 App；
+- 用户通过 App 内 Model Manager 下载模型。
 ```
 
-Whisper.cpp 旧机器已观察：
+#### 开发者源码构建起点
 
 ```text
-repository: ggml-org/whisper.cpp
+git clone 视为开发者流程起点。
+Clone 之后的 Python、Python packages、项目环境、whisper.cpp Runtime、Packaging 所需准备应由正式流程尽可能自动处理。
+```
+
+#### Python 环境方案
+
+```text
+uv
++ pyproject.toml
++ uv.lock
++ 项目本地 .venv
+
+Python minimum：>= 3.11
+Python exact minor / patch：本 Step 不冻结
+```
+
+#### whisper.cpp 上游与版本
+
+```text
+repository: https://github.com/ggml-org/whisper.cpp.git
 commit: 8443cf05e3fa8ce1b32348e1bcbcf8fc31f7f3ae
-describe: v1.8.4-327-g8443cf05
+architecture target: arm64
 ```
 
-当前 Runtime 文件集合至少覆盖：
+#### whisper.cpp 第一版 Build Profile
+
+第一版冻结旧开发机当前已验证成功的完整 Build Profile。Step 2 实现时从旧开发机现有 `CMakeCache.txt` / 构建状态提取并写入正式 Runtime Manifest / Packaging 合同。
+
+当前已知至少包含：
+
+```text
+Build type: Release
+Shared libraries: ON
+Metal: ON
+Accelerate / BLAS: ON
+GGML_NATIVE: ON
+Generator: Unix Makefiles
+```
+
+#### Runtime 文件合同
+
+逻辑必需组件：
 
 ```text
 whisper-cli
@@ -266,13 +313,90 @@ libggml-blas
 libggml-metal
 ```
 
-Vendored Resource：
+Manifest 同时记录当前观察到的实际 ABI 文件名；后续正式构建通过 `otool -L` 验证实际 dependency closure。
+
+#### App Bundle Runtime 布局
 
 ```text
-vendor/whisper.cpp/download-ggml-model.sh
+沿用当前 Bundle / Resources 布局，不在本 Step 重构目录结构。
+主要 Runtime 资源继续以当前 Contents/Resources/bin/ 方向为基线。
 ```
 
-### 3.3 本 Step 禁止范围
+#### 模型与 Runtime Manifest 边界
+
+```text
+packaging/runtime_manifest.json 不包含模型文件。
+模型继续不进入 Git、不内置在 App。
+模型 URL / size / checksum 如需机器可读合同，后续使用独立 model manifest。
+```
+
+#### 正式 Build 失败策略
+
+```text
+正式构建关键 Runtime 缺失时必须 Fail Fast。
+不允许 Warning 后生成残缺 App。
+当前不建立 UI-only 正式构建模式。
+```
+
+#### 开发者双击入口
+
+```text
+Build ClassroomTranscriber.command
+-> scripts/bootstrap_and_build.sh
+```
+
+`.command` 只作为 Finder 入口；正式构建逻辑放在可测试脚本中。
+
+#### 普通用户第一版 Release 形式
+
+```text
+GitHub Release ZIP
+-> ClassroomTranscriber.app
+```
+
+当前 Deployment MVP 不要求 DMG / PKG / Developer ID / Notarization / GitHub Actions 自动 Release。
+
+#### Deployment MVP 完成标准
+
+```text
+Fresh Clone main
+-> 双击正式构建入口
+-> 自动准备所需环境
+-> 生成完整 App
+-> 启动 App
+-> Model Manager 下载模型
+-> 授予麦克风权限
+-> Start
+-> 实际录音与转录
+-> Stop
+-> 麦克风正常释放
+-> raw.txt / clean.txt / session.log / config.json 正常生成
+```
+
+### 3.3 当前为简化而保留、后续可能产生影响的内容
+
+1. 第一版直接冻结旧开发机当前成功的完整 whisper.cpp Build Profile，包括 `GGML_NATIVE=ON`；该选择可能影响不同 Apple Silicon 代际之间的 Runtime portability，必须在 M4 Max 与 M5 两台机器的后续 Clean-machine / E2E 验收中实际验证。
+2. 第一版沿用当前 App Bundle Runtime 布局，不在本阶段重构 `Contents/Resources/bin/` 等资源结构；后续如需更清晰的 `bin/lib/scripts` 分层，需要独立迁移并重新验证 RPath、Spec 和签名。
+3. 第一版 Runtime 组件以当前已知 `whisper-cli + whisper/ggml dylib` 集合为合同基线，同时通过 `otool -L` 校验实际依赖闭包；上游未来 ABI 或依赖新增可能要求更新 Manifest。
+4. 当前普通用户最小发布形式先采用 ZIP + `.app`，暂不要求 Developer ID / Notarization / DMG；后续正式公开分发仍可能需要补充这些发布层工作。
+
+### 3.4 当前未敲定、留待后续 Step 决定的参数
+
+```text
+Python exact minor / patch
+PySide6 version
+PyInstaller version
+numpy version
+sounddevice version
+uv / lock 具体版本与更新策略
+CMake 的自动获取 / 安装实现方式
+minimum macOS 版本（当前不承诺旧系统，保持未设置）
+模型 checksum / size manifest 的来源与维护策略
+Developer ID signing / notarization 的正式实施时间点
+GitHub Release 的正式版本号与自动发布流程
+```
+
+### 3.5 本 Step 禁止范围
 
 ```text
 重建 Python 环境
@@ -286,13 +410,13 @@ ASR 主链路修改
 LLM 开发
 ```
 
-### 3.4 验收信号
+### 3.6 验收信号
 
 - static 与 runtime 职责清晰；
 - Runtime Manifest 可机器读取；
 - Manifest 只包含仓库相对路径；
 - 不包含模型、用户绝对路径或 secret；
-- 已冻结值与 pending 值明确区分；
+- 已冻结值与未敲定值明确区分；
 - Manifest 测试可在没有 PySide6 / PyInstaller / external 的情况下运行；
 - 本 Step 不改变生产代码行为。
 
@@ -470,25 +594,23 @@ Step 9 及 Developer ID / Notarization / DMG / GitHub Actions 可以作为后续
 
 ---
 
-## 8. Pending Decisions
+## 8. 当前未敲定参数
 
-仍需后续验证后冻结：
+以下参数留待对应后续 Step 实测后确定：
 
-1. 正式 Python minor / patch；
-2. PySide6 / PyInstaller / numpy / sounddevice 版本；
-3. dependency lock 工具和格式；
-4. 是否使用 uv 管理 Python 与环境；
-5. 最低支持 macOS；
-6. `GGML_NATIVE` 是否适合可分发 Runtime；
-7. CMake 获取方式；
-8. whisper.cpp 正式 CMake 参数；
-9. Runtime dylib 使用固定文件名还是 `otool` 依赖闭包发现；
-10. post-build smoke test 最小命令；
-11. 模型 checksum / size manifest 来源和维护策略；
-12. Developer ID signing / notarization 实施时间点；
-13. GitHub Release ZIP 版本和发布流程。
-
-Pending decision 不得通过猜测自动转换为 static 合同。
+```text
+Python exact minor / patch
+PySide6 version
+PyInstaller version
+numpy version
+sounddevice version
+uv / lock 具体版本与更新策略
+CMake 的自动获取 / 安装实现方式
+minimum macOS（当前不承诺旧系统，保持未设置）
+模型 checksum / size manifest 来源与维护策略
+Developer ID signing / notarization 实施时间点
+GitHub Release 正式版本和自动发布流程
+```
 
 ---
 
