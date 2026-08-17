@@ -1,5 +1,6 @@
 import json
 import re
+import tomllib
 import unittest
 from pathlib import Path, PurePosixPath
 
@@ -15,6 +16,16 @@ REQUIRED_COMPONENTS = {
     "libggml-cpu",
     "libggml-blas",
     "libggml-metal",
+}
+EXPECTED_PYTHON_VERSION = "3.12.14"
+EXPECTED_UV_VERSION = "0.12.5"
+EXPECTED_RUNTIME_PACKAGES = {
+    "numpy": "2.5.2",
+    "PySide6": "6.11.1",
+    "sounddevice": "0.5.6",
+}
+EXPECTED_DEVELOPMENT_PACKAGES = {
+    "PyInstaller": "6.22.1",
 }
 
 
@@ -34,6 +45,9 @@ class RuntimeManifestContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.raw_manifest = MANIFEST_PATH.read_text(encoding="utf-8")
         cls.manifest = json.loads(cls.raw_manifest)
+        cls.pyproject = tomllib.loads(
+            (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        )
 
     def test_manifest_is_valid_json_with_schema_version(self):
         self.assertIsInstance(self.manifest, dict)
@@ -113,19 +127,55 @@ class RuntimeManifestContractTests(unittest.TestCase):
         minimum_macos = self.manifest["pending"]["minimum_macos"]
         self.assertIsNone(minimum_macos["value"])
 
-    def test_python_exact_version_and_packages_remain_pending(self):
+    def test_python_toolchain_and_direct_packages_are_frozen(self):
         python_contract = self.manifest["frozen"]["python"]
         self.assertEqual(python_contract["minimum_version"], ">=3.11")
-        self.assertNotIn("exact_version", python_contract)
-        self.assertIsNone(
-            self.manifest["pending"]["python_exact_minor_patch"]["value"]
+        self.assertEqual(python_contract["exact_version"], EXPECTED_PYTHON_VERSION)
+        self.assertEqual(python_contract["uv_exact_version"], EXPECTED_UV_VERSION)
+        self.assertEqual(
+            python_contract["direct_dependencies"]["runtime"],
+            EXPECTED_RUNTIME_PACKAGES,
         )
-        package_versions = self.manifest["pending"][
-            "python_package_exact_versions"
-        ]
-        for package in ("PySide6", "PyInstaller", "numpy", "sounddevice"):
-            self.assertIn(package, package_versions)
-            self.assertIsNone(package_versions[package])
+        self.assertEqual(
+            python_contract["direct_dependencies"]["development"],
+            EXPECTED_DEVELOPMENT_PACKAGES,
+        )
+
+        for completed_key in (
+            "python_exact_minor_patch",
+            "python_package_exact_versions",
+            "uv_exact_version_and_lock_update_policy",
+        ):
+            self.assertNotIn(completed_key, self.manifest["pending"])
+
+    def test_python_contract_matches_repository_declarations(self):
+        python_contract = self.manifest["frozen"]["python"]
+        version_file = (REPO_ROOT / ".python-version").read_text(encoding="utf-8").strip()
+        self.assertEqual(version_file, EXPECTED_PYTHON_VERSION)
+        self.assertEqual(
+            self.pyproject["project"]["requires-python"],
+            python_contract["requires_python"],
+        )
+        self.assertEqual(
+            set(self.pyproject["project"]["dependencies"]),
+            {
+                f"{name}=={version}"
+                for name, version in EXPECTED_RUNTIME_PACKAGES.items()
+            },
+        )
+        self.assertEqual(
+            set(self.pyproject["dependency-groups"]["dev"]),
+            {
+                f"{name}=={version}"
+                for name, version in EXPECTED_DEVELOPMENT_PACKAGES.items()
+            },
+        )
+        self.assertEqual(python_contract["sync_policy"], "uv sync --frozen")
+        self.assertEqual(
+            python_contract["bootstrap_script_path"],
+            "scripts/bootstrap_python_env.sh",
+        )
+        self.assertTrue((REPO_ROOT / python_contract["bootstrap_script_path"]).is_file())
 
     def test_hardware_claims_do_not_overstate_verification(self):
         hardware = self.manifest["observed"]["hardware_validation_targets"]

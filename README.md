@@ -52,7 +52,7 @@ Classroom Live Transcriber 是一个本地课堂实时转写工具，主要面�
 推荐环境：
 
 - macOS Apple Silicon
-- Python 3.11 或更高版本
+- Python 3.12.14（由正式 bootstrap 自动准备）
 - 可用麦克风权限
 - `whisper.cpp` Metal 构建，或使用打包版内置的 `whisper-cli`
 - 至少一个 Whisper ggml/gguf 模型文件
@@ -64,20 +64,14 @@ Classroom Live Transcriber 是一个本地课堂实时转写工具，主要面�
 
 ### 5. 安装依赖
 
-源码模式需要 Python 依赖。当前项目没有强制的 `requirements.txt`，最少需要：
+源码模式的 Python 与依赖由仓库中的精确版本合同重建：
 
 ```bash
 cd /path/to/whisper
-python -m venv venv
-source venv/bin/activate
-python -m pip install PySide6 numpy sounddevice
+scripts/bootstrap_python_env.sh
 ```
 
-如果要重新打包：
-
-```bash
-python -m pip install pyinstaller
-```
+该脚本准备项目局部的 uv 0.12.5、uv 管理的 Python 3.12.14 和 `.venv`，并按 `uv.lock` 执行 frozen sync。需要强制重建新环境时使用 `scripts/bootstrap_python_env.sh --recreate`。历史 `venv/` 不参与正式环境；PyInstaller 已作为冻结的开发依赖同步。
 
 如果要使用旧的 `faster-whisper` fallback，需要另外安装 `faster-whisper`，但这不是当前 UI 主路径。
 
@@ -87,8 +81,7 @@ python -m pip install pyinstaller
 
 ```bash
 cd /path/to/whisper
-source venv/bin/activate
-python ui_app.py
+.venv/bin/python ui_app.py
 ```
 
 打包版：
@@ -274,7 +267,7 @@ The legacy `stream_transcribe.py` CLI and old `faster-whisper` fallback remain f
 Recommended environment:
 
 - macOS Apple Silicon
-- Python 3.11 or newer
+- Python 3.12.14 (prepared by the formal bootstrap)
 - Microphone permission
 - A Metal-enabled `whisper.cpp` build, or the packaged app with bundled `whisper-cli`
 - At least one Whisper ggml/gguf model file
@@ -287,20 +280,14 @@ directory is a local source and build dependency and is not included in a clone.
 
 ### 5. Install Dependencies
 
-Source mode needs Python dependencies. There is currently no required `requirements.txt`; the minimum set is:
+The source-mode Python and dependencies are rebuilt from exact repository declarations:
 
 ```bash
 cd /path/to/whisper
-python -m venv venv
-source venv/bin/activate
-python -m pip install PySide6 numpy sounddevice
+scripts/bootstrap_python_env.sh
 ```
 
-For rebuilding the app:
-
-```bash
-python -m pip install pyinstaller
-```
+The script prepares project-local uv 0.12.5, uv-managed Python 3.12.14, and `.venv`, then performs a frozen sync from `uv.lock`. Use `scripts/bootstrap_python_env.sh --recreate` to force a clean rebuild of the new environment. The historical `venv/` is not used; frozen PyInstaller is included as a development dependency.
 
 The legacy `faster-whisper` fallback requires installing `faster-whisper` separately. It is not the current UI path.
 
@@ -310,8 +297,7 @@ Source mode:
 
 ```bash
 cd /path/to/whisper
-source venv/bin/activate
-python ui_app.py
+.venv/bin/python ui_app.py
 ```
 
 Packaged app:

@@ -27,11 +27,15 @@ An ordinary user must not install or configure Git, Python, pip, uv, a virtual e
 - `observed`: evidence read from the successful old-machine build without preserving machine-specific paths;
 - `pending`: values that a later Step must determine from evidence.
 
-The manifest is contract-only in Step 2. Existing build scripts and PyInstaller specs do not consume it yet.
+The Python contract is implemented by the Step 3 bootstrap and tests. Existing App build scripts and PyInstaller specs do not consume the manifest yet.
 
 ## Python environment
 
-The future reproducible environment is `uv` + `pyproject.toml` + `uv.lock` + a project-local `.venv`, with Python `>=3.11`. The exact Python minor/patch and exact PySide6, PyInstaller, numpy, and sounddevice versions remain pending Step 3. A virtual environment is rebuilt from the version contract and lock; it is never preserved, migrated, or repaired as a release environment.
+The reproducible environment is `uv` 0.12.5 + `pyproject.toml` + `uv.lock` + `.python-version` + a project-local `.venv`. Python is frozen at 3.12.14 (`>=3.12,<3.13`) for this project environment. Direct dependencies are frozen at PySide6 6.11.1, numpy 2.5.2, sounddevice 0.5.6, and build/development dependency PyInstaller 6.22.1. The legacy optional `faster-whisper` fallback is not part of the current UI dependency contract.
+
+Run `scripts/bootstrap_python_env.sh` from any working directory to ensure the environment, or pass `--recreate` to remove and rebuild only the project `.venv`. The script downloads the pinned macOS arm64 uv archive from the official Astral GitHub release, verifies its frozen SHA-256, and stores uv under `.tools/uv/`. uv installs its managed Python under `.tools/python/`, uses `.tools/cache/`, and performs `uv sync --frozen`; none of these generated directories are committed. It does not use the historical `venv/`, Homebrew, Conda, or the system Python to create the formal environment.
+
+Normal bootstrap never changes `uv.lock`. A dependency update is explicit maintenance: edit `pyproject.toml`, use the pinned uv to regenerate the lock, run the environment and project tests, and commit both files. A virtual environment is rebuilt from the version contract and lock; it is never preserved, migrated, or repaired as a release environment.
 
 ## whisper.cpp sources and pin
 
@@ -80,12 +84,12 @@ A formal Release build must fail when the Python environment or a critical packa
 
 ## Work still pending
 
-Step 2 defines contracts only. It does not create a Python environment, bootstrap whisper.cpp, add the Finder build entry, change current build behavior, harden model downloads, build the App, or perform clean-machine acceptance.
+The locked Python environment and bootstrap are implemented. The project has not yet bootstrapped whisper.cpp, added the Finder build entry, changed current App build behavior, hardened model downloads, built the final App, or performed clean-machine acceptance.
 
 The remaining implementation sequence is:
 
 ```text
-Step 3  Rebuildable locked Python environment
+Step 3  Rebuildable locked Python environment (implemented; audit status is tracked separately)
 Step 4  Pinned whisper.cpp Runtime bootstrap
 Step 5  Double-click build entry and orchestration
 Step 6  Strict packaging gates and post-build Runtime smoke

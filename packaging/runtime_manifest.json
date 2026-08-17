@@ -37,11 +37,41 @@
     },
     "python": {
       "minimum_version": ">=3.11",
+      "supported_minor_series": "3.12",
+      "requires_python": ">=3.12,<3.13",
+      "exact_version": "3.12.14",
       "environment_manager": "uv",
+      "uv_exact_version": "0.12.5",
+      "uv_install": {
+        "method": "verified official GitHub release artifact",
+        "release_url": "https://github.com/astral-sh/uv/releases/tag/0.12.5",
+        "asset": "uv-aarch64-apple-darwin.tar.gz",
+        "asset_sha256": "5bb0e5fe008a773c3dbcb97ff79cd89e1241464fe9d2f986d52ad8f1b037bd62",
+        "binary_path": ".tools/uv/0.12.5/uv"
+      },
       "project_metadata_path": "pyproject.toml",
       "lockfile_path": "uv.lock",
+      "python_version_file_path": ".python-version",
       "virtual_environment_path": ".venv",
-      "rebuild_policy": "rebuild from the version contract and lockfile; do not preserve, migrate, or repair an old virtual environment"
+      "managed_python_install_path": ".tools/python",
+      "cache_path": ".tools/cache",
+      "bootstrap_script_path": "scripts/bootstrap_python_env.sh",
+      "sync_policy": "uv sync --frozen",
+      "lock_update_policy": "only an explicit dependency maintenance change may update pyproject.toml and regenerate uv.lock",
+      "rebuild_policy": "rebuild from the exact Python version contract and lockfile; do not preserve, migrate, or repair an old virtual environment",
+      "direct_dependencies": {
+        "runtime": {
+          "numpy": "2.5.2",
+          "PySide6": "6.11.1",
+          "sounddevice": "0.5.6"
+        },
+        "development": {
+          "PyInstaller": "6.22.1"
+        }
+      },
+      "optional_dependencies_not_in_formal_environment": {
+        "faster-whisper": "legacy CLI fallback only; not used by the current UI or PyInstaller entry"
+      }
     },
     "whisper_cpp": {
       "repository": "https://github.com/ggml-org/whisper.cpp.git",
@@ -294,21 +324,6 @@
     "minimum_macos": {
       "value": null,
       "decision_step": "validation evidence required; do not infer"
-    },
-    "python_exact_minor_patch": {
-      "value": null,
-      "decision_step": "Step 3"
-    },
-    "python_package_exact_versions": {
-      "PySide6": null,
-      "PyInstaller": null,
-      "numpy": null,
-      "sounddevice": null,
-      "decision_step": "Step 3"
-    },
-    "uv_exact_version_and_lock_update_policy": {
-      "value": null,
-      "decision_step": "Step 3"
     },
     "cmake_acquisition_method": {
       "value": null,

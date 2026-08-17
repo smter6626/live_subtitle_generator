@@ -268,10 +268,12 @@ GGML_NATIVE ON
 保存重建环境所需的 Python 版本合同 + dependency lock + bootstrap
 ```
 
-当前已确认的最低要求：
+项目 Python 环境合同：
 
 ```text
 Python >= 3.11
+正式 minor 系列 >=3.12,<3.13
+实际冻结 Python 3.12.14
 ```
 
 正式环境方案固定为：
@@ -280,8 +282,14 @@ Python >= 3.11
 uv
 + pyproject.toml
 + uv.lock
++ .python-version
 + 项目本地 .venv
 ```
+
+uv 冻结为 0.12.5，由 `scripts/bootstrap_python_env.sh` 从 Astral 官方 release 获取并校验
+SHA-256；uv、managed Python 和 cache 保存在被 Git 忽略的项目 `.tools/` 下。正常重建固定执行
+`uv sync --frozen`，不得静默更新 lock。冻结的直接依赖为 PySide6 6.11.1、numpy 2.5.2、
+sounddevice 0.5.6，以及 build/development 依赖 PyInstaller 6.22.1。
 
 正式部署环境必须：
 
@@ -292,7 +300,7 @@ uv
 - 在构建前进行关键 package/import smoke test；
 - 构建过程始终使用项目选定的 Python 环境。
 
-Python minor/patch、PySide6、PyInstaller、numpy、sounddevice 和依赖锁格式必须经过独立 Step 验证后冻结，不得直接采用开发机偶然版本。
+Python minor/patch、uv、PySide6、PyInstaller、numpy、sounddevice 和依赖锁已经通过独立环境重建验证冻结；后续更新必须是显式维护并重新测试，不得采用开发机偶然版本。
 
 ---
 
