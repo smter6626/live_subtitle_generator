@@ -74,7 +74,14 @@ Universal2
 Windows
 ```
 
-最低支持 macOS 版本必须经过实际验证后才能冻结；在验证前不得猜测或写死。
+当前 Deployment 实际验收目标硬件仅为：
+
+```text
+MacBook Air / Apple M5 / 16 GB / 512 GB / macOS 27 Beta
+MacBook Pro / Apple M4 Max / 48 GB / 1 TB / macOS 27 Beta
+```
+
+M4 / M5 只有在上述对应机器完成实际验收后，才可声明“项目已实际验证”。M1 / M2 / M3 只能声明“理论兼容 Apple Silicon / arm64，但未经项目实际验证”，不得保证支持。当前不保证旧版 macOS；`minimum_macos` 保持 `null` / pending，必须经过实际验证后才能冻结，不得猜测或写死。
 
 正式 Developer ID signing / notarization 属于发布层工作，不是 Runtime 完整性的替代条件。即使当前仅使用 ad-hoc signing，正式构建仍必须保证完整可转录 Runtime。
 
@@ -222,29 +229,31 @@ vendor/whisper.cpp/download-ggml-model.sh
 
 Vendored 模型下载脚本只解决“模型如何下载”，不代表 `whisper-cli` Runtime 已被提供。
 
-### 5.3 当前已观察上游版本
+### 5.3 固定上游与第一版 Build Profile
 
-旧开发机已观察到 whisper.cpp：
+第一版正式 Runtime 固定为：
 
 ```text
-repository: ggml-org/whisper.cpp
+repository: https://github.com/ggml-org/whisper.cpp.git
 commit: 8443cf05e3fa8ce1b32348e1bcbcf8fc31f7f3ae
-describe: v1.8.4-327-g8443cf05
 architecture: arm64
 ```
 
-旧机器构建观察值包括：
+Bootstrap 必须使用该固定 Commit，不得跟随 upstream main。
+
+第一版同时冻结旧开发机已成功工作的 Runtime Build Profile：
 
 ```text
+CMake 4.2.3
+Unix Makefiles
 Release
 shared libraries
 Metal ON
 Accelerate / BLAS ON
 GGML_NATIVE ON
-Unix Makefiles
 ```
 
-这些值必须区分“旧机器观察值”和“正式冻结部署值”。未经后续验证，不得把所有旧 CMake 状态自动提升为永久合同。
+完整、去除机器路径和 cache 噪声后的 Profile 以 `packaging/runtime_manifest.json` 为准。`GGML_NATIVE=ON` 是当前为了简化而冻结的值，可能影响不同 Apple Silicon 代际之间的 portability；本阶段不修改，后续必须在 M4 Max 与 M5 的 Clean-machine / E2E 验收中确认。
 
 ---
 
@@ -263,6 +272,15 @@ Unix Makefiles
 
 ```text
 Python >= 3.11
+```
+
+正式环境方案固定为：
+
+```text
+uv
++ pyproject.toml
++ uv.lock
++ 项目本地 .venv
 ```
 
 正式部署环境必须：
@@ -440,7 +458,7 @@ Deployment 当前统一在 `main` 上推进，除非用户明确要求新分支�
 
 ## 11. Runtime Manifest 原则
 
-Deployment 后续必须建立机器可读 Runtime Manifest，作为：
+`packaging/runtime_manifest.json` 是机器可读 Runtime 合同，作为：
 
 ```text
 平台
@@ -454,7 +472,7 @@ Pending decisions
 
 的稳定事实源。
 
-Manifest 初次建立可以是 `contract-only`，后续再逐步被 Bootstrap、PyInstaller Spec、Build Script 和测试消费。
+Manifest 当前状态为 `contract-only`，后续再逐步被 Bootstrap、PyInstaller Spec、Build Script 和测试消费。
 
 Manifest 不得包含：
 

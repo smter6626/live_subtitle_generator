@@ -1,0 +1,330 @@
+{
+  "schema_version": "1.0.0",
+  "status": "contract-only",
+  "frozen": {
+    "platform": {
+      "os": "macOS",
+      "architecture": "arm64",
+      "distribution": "Apple Silicon"
+    },
+    "compatibility": {
+      "M4": {
+        "claim": "actual project verification is allowed only after the M4 Max acceptance target passes",
+        "current_verification_status": "pending_clean_machine_e2e"
+      },
+      "M5": {
+        "claim": "actual project verification is allowed only after the M5 acceptance target passes",
+        "current_verification_status": "pending_clean_machine_e2e"
+      },
+      "M1": {
+        "claim": "theoretical Apple Silicon arm64 compatibility only",
+        "current_verification_status": "theoretical_unverified",
+        "guaranteed": false
+      },
+      "M2": {
+        "claim": "theoretical Apple Silicon arm64 compatibility only",
+        "current_verification_status": "theoretical_unverified",
+        "guaranteed": false
+      },
+      "M3": {
+        "claim": "theoretical Apple Silicon arm64 compatibility only",
+        "current_verification_status": "theoretical_unverified",
+        "guaranteed": false
+      },
+      "older_macos": {
+        "claim": "not guaranteed"
+      }
+    },
+    "python": {
+      "minimum_version": ">=3.11",
+      "environment_manager": "uv",
+      "project_metadata_path": "pyproject.toml",
+      "lockfile_path": "uv.lock",
+      "virtual_environment_path": ".venv",
+      "rebuild_policy": "rebuild from the version contract and lockfile; do not preserve, migrate, or repair an old virtual environment"
+    },
+    "whisper_cpp": {
+      "repository": "https://github.com/ggml-org/whisper.cpp.git",
+      "commit": "8443cf05e3fa8ce1b32348e1bcbcf8fc31f7f3ae",
+      "architecture": "arm64",
+      "bootstrap_policy": "checkout the pinned commit; never follow the upstream default branch",
+      "local_rebuild_root_path": "external/whisper.cpp",
+      "build_profile": {
+        "provenance": "old-machine successful Runtime build",
+        "cmake_generator": "Unix Makefiles",
+        "cmake_version": "4.2.3",
+        "build_type": "Release",
+        "target_architecture": "arm64",
+        "cmake_options": {
+          "BUILD_SHARED_LIBS": true,
+          "GGML_STATIC": false,
+          "GGML_CPU": true,
+          "GGML_CPU_ALL_VARIANTS": false,
+          "GGML_CPU_KLEIDIAI": false,
+          "GGML_CPU_REPACK": true,
+          "GGML_ACCELERATE": true,
+          "GGML_BLAS": true,
+          "GGML_BLAS_VENDOR": "Apple",
+          "GGML_METAL": true,
+          "GGML_METAL_EMBED_LIBRARY": true,
+          "GGML_METAL_NDEBUG": false,
+          "GGML_METAL_SHADER_DEBUG": false,
+          "GGML_NATIVE": true,
+          "GGML_OPENMP": true,
+          "GGML_BACKEND_DL": false,
+          "GGML_LLAMAFILE": false,
+          "GGML_LTO": false,
+          "GGML_RPC": false,
+          "GGML_CUDA": false,
+          "GGML_HIP": false,
+          "GGML_MUSA": false,
+          "GGML_OPENCL": false,
+          "GGML_SYCL": false,
+          "GGML_VULKAN": false,
+          "GGML_WEBGPU": false,
+          "GGML_HEXAGON": false,
+          "GGML_VIRTGPU": false,
+          "GGML_ZDNN": false,
+          "GGML_ZENDNN": false,
+          "WHISPER_BUILD_EXAMPLES": true,
+          "WHISPER_BUILD_SERVER": true,
+          "WHISPER_BUILD_TESTS": true,
+          "WHISPER_COREML": false,
+          "WHISPER_CURL": false,
+          "WHISPER_OPENVINO": false,
+          "WHISPER_SDL2": false,
+          "WHISPER_USE_SYSTEM_GGML": false
+        },
+        "portability_caveats": [
+          "GGML_NATIVE=ON is frozen from the successful old-machine profile and may reduce portability across Apple Silicon generations; it must remain unchanged for this profile and be verified on the M4 Max and M5 acceptance targets."
+        ]
+      }
+    },
+    "runtime_components": [
+      {
+        "name": "whisper-cli",
+        "kind": "executable",
+        "required": true,
+        "bundle_directory": "Contents/Resources/bin"
+      },
+      {
+        "name": "libwhisper",
+        "kind": "dynamic_library",
+        "required": true,
+        "bundle_directory": "Contents/Resources/bin"
+      },
+      {
+        "name": "libggml",
+        "kind": "dynamic_library",
+        "required": true,
+        "bundle_directory": "Contents/Resources/bin"
+      },
+      {
+        "name": "libggml-base",
+        "kind": "dynamic_library",
+        "required": true,
+        "bundle_directory": "Contents/Resources/bin"
+      },
+      {
+        "name": "libggml-cpu",
+        "kind": "dynamic_library",
+        "required": true,
+        "bundle_directory": "Contents/Resources/bin"
+      },
+      {
+        "name": "libggml-blas",
+        "kind": "dynamic_library",
+        "required": true,
+        "bundle_directory": "Contents/Resources/bin"
+      },
+      {
+        "name": "libggml-metal",
+        "kind": "dynamic_library",
+        "required": true,
+        "bundle_directory": "Contents/Resources/bin"
+      }
+    ],
+    "vendored_resources": [
+      {
+        "name": "whisper.cpp model downloader",
+        "repository_path": "vendor/whisper.cpp/download-ggml-model.sh",
+        "upstream_repository": "https://github.com/ggml-org/whisper.cpp.git",
+        "upstream_source_path": "models/download-ggml-model.sh",
+        "upstream_commit": "8443cf05e3fa8ce1b32348e1bcbcf8fc31f7f3ae",
+        "bundle_target": "Contents/Resources/bin/download-ggml-model.sh",
+        "required": true
+      }
+    ],
+    "bundle_layout": {
+      "runtime_directory": "Contents/Resources/bin",
+      "whisper_cli_target": "Contents/Resources/bin/whisper-cli",
+      "dynamic_library_directory": "Contents/Resources/bin",
+      "model_downloader_target": "Contents/Resources/bin/download-ggml-model.sh",
+      "resource_resolution_contract_path": "resource_paths.py"
+    },
+    "build_fail_fast": [
+      "Python environment is missing",
+      "a required Python package is missing",
+      "whisper-cli is missing",
+      "a required dynamic library is missing",
+      "a Runtime binary has the wrong CPU architecture",
+      "RPath or dependency closure is incomplete",
+      "the vendored model downloader is missing",
+      "the post-build Runtime smoke test fails"
+    ],
+    "developer_build_entry": {
+      "finder_wrapper_path": "Build ClassroomTranscriber.command",
+      "implementation_path": "scripts/bootstrap_and_build.sh",
+      "wrapper_role": "thin Finder entry point"
+    },
+    "release": {
+      "artifact_name_template": "ClassroomTranscriber-<version>-macOS-AppleSilicon.zip",
+      "primary_payload": "ClassroomTranscriber.app"
+    },
+    "ordinary_user_flow": [
+      "download and extract the Release archive",
+      "launch ClassroomTranscriber.app",
+      "download a model in Model Manager",
+      "grant microphone permission",
+      "start and stop a real transcription session"
+    ],
+    "developer_source_build_flow": [
+      "git clone",
+      "launch Build ClassroomTranscriber.command",
+      "allow the formal project flow to prepare Python, packages, the project environment, whisper.cpp Runtime, and packaging dependencies",
+      "produce ClassroomTranscriber.app"
+    ]
+  },
+  "observed": {
+    "hardware_validation_targets": [
+      {
+        "computer": "MacBook Air",
+        "chip": "Apple M5",
+        "memory_gb": 16,
+        "storage_gb": 512,
+        "os_version": "macOS 27 Beta",
+        "deployment_validation_status": "pending_clean_machine_e2e"
+      },
+      {
+        "computer": "MacBook Pro",
+        "chip": "Apple M4 Max",
+        "memory_gb": 48,
+        "storage_gb": 1024,
+        "os_version": "macOS 27 Beta",
+        "deployment_validation_status": "pending_clean_machine_e2e"
+      }
+    ],
+    "old_machine_whisper_cpp_build": {
+      "repository_commit": "8443cf05e3fa8ce1b32348e1bcbcf8fc31f7f3ae",
+      "repository_describe": "v1.8.4-327-g8443cf05",
+      "cmake_generator": "Unix Makefiles",
+      "cmake_version": "4.2.3",
+      "build_type": "Release",
+      "cmake_osx_architectures_cache_value": null,
+      "cmake_system_processor": "arm64",
+      "effective_binary_architecture": "arm64",
+      "effective_openmp_enabled": false,
+      "runtime_artifacts": [
+        {
+          "component": "whisper-cli",
+          "observed_filename": "whisper-cli",
+          "source_path": "external/whisper.cpp/build/bin/whisper-cli",
+          "architecture": "arm64"
+        },
+        {
+          "component": "libwhisper",
+          "abi_filename": "libwhisper.1.dylib",
+          "resolved_filename": "libwhisper.1.8.4.dylib",
+          "source_path": "external/whisper.cpp/build/src/libwhisper.1.dylib",
+          "architecture": "arm64"
+        },
+        {
+          "component": "libggml",
+          "abi_filename": "libggml.0.dylib",
+          "resolved_filename": "libggml.0.11.1.dylib",
+          "source_path": "external/whisper.cpp/build/ggml/src/libggml.0.dylib",
+          "architecture": "arm64"
+        },
+        {
+          "component": "libggml-base",
+          "abi_filename": "libggml-base.0.dylib",
+          "resolved_filename": "libggml-base.0.11.1.dylib",
+          "source_path": "external/whisper.cpp/build/ggml/src/libggml-base.0.dylib",
+          "architecture": "arm64"
+        },
+        {
+          "component": "libggml-cpu",
+          "abi_filename": "libggml-cpu.0.dylib",
+          "resolved_filename": "libggml-cpu.0.11.1.dylib",
+          "source_path": "external/whisper.cpp/build/ggml/src/libggml-cpu.0.dylib",
+          "architecture": "arm64"
+        },
+        {
+          "component": "libggml-blas",
+          "abi_filename": "libggml-blas.0.dylib",
+          "resolved_filename": "libggml-blas.0.11.1.dylib",
+          "source_path": "external/whisper.cpp/build/ggml/src/ggml-blas/libggml-blas.0.dylib",
+          "architecture": "arm64"
+        },
+        {
+          "component": "libggml-metal",
+          "abi_filename": "libggml-metal.0.dylib",
+          "resolved_filename": "libggml-metal.0.11.1.dylib",
+          "source_path": "external/whisper.cpp/build/ggml/src/ggml-metal/libggml-metal.0.dylib",
+          "architecture": "arm64"
+        }
+      ],
+      "dynamic_linking": {
+        "runtime_dependency_reference_style": "@rpath",
+        "cli_declares_all_required_dynamic_libraries": true,
+        "contains_old_build_directory_absolute_rpaths": true,
+        "absolute_rpath_values_recorded": false,
+        "system_frameworks_observed": [
+          "Accelerate",
+          "Foundation",
+          "Metal",
+          "MetalKit",
+          "CoreFoundation"
+        ],
+        "bundle_dependency_closure_validation": "pending_step_6"
+      }
+    }
+  },
+  "pending": {
+    "minimum_macos": {
+      "value": null,
+      "decision_step": "validation evidence required; do not infer"
+    },
+    "python_exact_minor_patch": {
+      "value": null,
+      "decision_step": "Step 3"
+    },
+    "python_package_exact_versions": {
+      "PySide6": null,
+      "PyInstaller": null,
+      "numpy": null,
+      "sounddevice": null,
+      "decision_step": "Step 3"
+    },
+    "uv_exact_version_and_lock_update_policy": {
+      "value": null,
+      "decision_step": "Step 3"
+    },
+    "cmake_acquisition_method": {
+      "value": null,
+      "decision_step": "Step 4"
+    },
+    "model_checksum_and_model_manifest_strategy": {
+      "value": null,
+      "decision_step": "Step 7"
+    },
+    "developer_id_signing": {
+      "value": null,
+      "decision_step": "release polish"
+    },
+    "notarization": {
+      "value": null,
+      "decision_step": "release polish"
+    }
+  }
+}

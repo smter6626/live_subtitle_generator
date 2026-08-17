@@ -2,6 +2,13 @@
 
 github address: https://github.com/smter6626/live_subtitle_generator
 
+## Deployment / Packaging Documents
+
+- Deployment stable contract: [docs/deployment_static.md](docs/deployment_static.md)
+- Deployment current state: [docs/deployment_runtime.md](docs/deployment_runtime.md)
+- Packaging: [PACKAGING.md](PACKAGING.md)
+- Runtime manifest: [packaging/runtime_manifest.json](packaging/runtime_manifest.json)
+
 ## 中文版
 
 ### 1. 项目简介
