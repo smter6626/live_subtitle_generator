@@ -52,6 +52,7 @@ checkpoint 内容：fix: harden model downloads
 
 ```text
 M4 Max clean-machine 核心 E2E：PASS
+M4 Max packaged large-v3 Metal backend runtime evidence：PASS
 M5 当前 checkpoint 实机 App / transcription regression：PENDING
 Step 8：ACTIVE
 ```
@@ -362,7 +363,27 @@ model integrity manifest: PASS
 ad-hoc codesign verification: PASS
 bundled CLI smoke: PASS
 isolated Runtime smoke: PASS
+packaged large-v3 Metal backend runtime initialization: PASS
 ```
+
+为确认实际计算 backend，而不是仅依赖 UI 中的 `whisper.cpp Metal` 标签，使用**最终 App 内同一个 packaged `whisper-cli` + 同一份已验证 large-v3 + whisper.cpp `samples/jfk.wav`**执行独立 runtime probe。关键原生日志：
+
+```text
+use gpu = 1
+gpu_device = 0
+ggml_metal_library_init: using embedded metal library
+ggml_metal_device_init: GPU name: MTL0 (Apple M4 Max)
+whisper_model_load: MTL0 total size = 3094.36 MB
+whisper_backend_init_gpu: using MTL0 backend
+ggml_metal_init: found device: Apple M4 Max
+ggml_metal_init: picking default device: Apple M4 Max
+whisper_backend_init: using BLAS backend
+system_info: ... MTL : EMBED_LIBRARY = 1 ... ACCELERATE = 1 ...
+```
+
+11 秒 JFK sample 正常输出转写，`total time = 1316.25 ms`。因此可以确认 **packaged large-v3 inference 已实际启用 Apple M4 Max Metal GPU backend**；同时 whisper.cpp 也初始化 BLAS/Accelerate 和 CPU 路径，因此准确表述是“Metal GPU backend active / 参与主要推理”，而不是“整个 pipeline 100% 只使用 GPU”。
+
+其中 `tensor API disabled for pre-M5 and pre-A19 devices` 仅表示 M4 Max 不启用该较新的 Metal tensor API；后续日志明确初始化并使用 `MTL0 (Apple M4 Max)`，所以它不是 Metal fallback 或 GPU 未启用证据。
 
 CMake 在 macOS 27 SDK 下出现 whisper.cpp / Metal upstream deprecation warnings，但编译、链接和 Runtime verifier 均成功；当前不作为 blocker。
 
@@ -379,7 +400,7 @@ final state: available / selectable
 real transcription with large-v3 on M4 Max: PASS
 ```
 
-这证明当前冻结的 `GGML_NATIVE=ON` profile 至少在 M4 Max 上能够完成实际构建并运行 large-v3 推理，不再只是 `--help` smoke 证据。
+这证明当前冻结的 `GGML_NATIVE=ON` profile 至少在 M4 Max 上能够完成实际构建并运行 large-v3 推理，不再只是 `--help` smoke 证据；额外 packaged CLI probe 已确认 Metal GPU backend 实际 active。
 
 真实 session：
 
@@ -398,14 +419,16 @@ config.json   1150 bytes   非空
 
 未观察到此次 Deployment 功能破坏 evidence layer。session 已形成完整四文件结构。当前没有单独的系统级 instrumentation 去证明麦克风 resource release；若后续发现 Stop / 再次 Start 异常才升级为 blocker，否则不因缺少额外 instrumentation 阻塞当前 M4 acceptance。
 
-### 3.4 M4 Max 非阻塞 UX 观察
+### 3.4 M4 Max 非阻塞 UX / 功能观察
 
-M4 实机首次暴露两个 UI polish 项，不阻塞 Deployment MVP：
+M4 实机首次暴露以下 polish 项，不阻塞 Deployment MVP：
 
 1. **模型下载缺少明显进度反馈**：large-v3 下载期间后台 staging 文件持续增长且任务正常运行，但 Model Manager 控件被禁用、没有 progress/spinner/byte counter，视觉上容易误判为 UI 卡死；实际下载最终成功。
 2. **模型选择成功反馈不足**：建议选择模型成功后显示非模态短暂提示，例如 `已成功选择模型：large-v3`，约 2 秒后自动消失；不要使用必须点击 OK 的阻塞式对话框。
+3. **输出根目录应支持用户自定义**：当前 session 默认位于 `~/Documents/ClassroomTranscriber/outputs/<timestamp>/`。后续允许用户把根目录例如改为 `~/Workspace/transcriptionTXT/`，但 `outputs/<timestamp>/` 及 `raw.txt / clean.txt / session.log / config.json` 结构保持不变；应持久化选择、验证目录可写，并只影响后续新 session，不迁移正在进行的 session。
+4. **主界面“当前模型”区域长路径可读性不足**：当前模型名称、大小和绝对路径在窄区域换行后被下方控件截断，且无法滚动查看。后续应优化信息层级，例如模型名/大小优先显示、长路径 middle-elide + tooltip/可复制，必要时提供可滚动区域；不要让长路径破坏左侧 panel 布局。
 
-这两个项目记录为后续 UX improvement，不回滚 Step 7/8，也不为了当前验收临时改 UI。
+这些项目记录为后续 UX / product improvement，不回滚 Step 7/8，也不为了当前验收临时改 UI。
 
 ### 3.5 M5 回归要求
 
@@ -435,10 +458,11 @@ Step 8 只有在以下条件同时满足时 PASS：
 6. 下载后的 model 状态为 available，可正常选择；**PASS**
 7. App 获得音频输入能力并成功 Start；**PASS（实际转写已产生）**
 8. 实际音频产生真实非空 raw / clean 转写；**PASS**
-9. Stop / 麦克风释放无异常；**未单独 instrumentation，当前无异常报告**
-10. `raw.txt`、`clean.txt`、`session.log`、`config.json` 全部生成且保持 evidence-layer 语义；**PASS**
-11. M5 当前 checkpoint 实机 App / transcription regression PASS；**PENDING**
-12. 未把新机的一次性人工修补当作正式通过；**PASS**
+9. packaged large-v3 Runtime 实际启用 Metal GPU backend；**PASS（MTL0 / Apple M4 Max）**
+10. Stop / 麦克风释放无异常；**未单独 instrumentation，当前无异常报告**
+11. `raw.txt`、`clean.txt`、`session.log`、`config.json` 全部生成且保持 evidence-layer 语义；**PASS**
+12. M5 当前 checkpoint 实机 App / transcription regression PASS；**PENDING**
+13. 未把新机的一次性人工修补当作正式通过；**PASS**
 
 因此当前 Step 8 继续 ACTIVE，主要剩余 blocker 是 **M5 当前 checkpoint 实机 regression**。若 M5 regression PASS 且没有新 Stop/麦克风异常证据，即可完成 Step 8。
 
@@ -479,7 +503,7 @@ LLM 功能开发
 
 ## 4. 当前为简化而保留、后续可能产生影响的内容
 
-1. `GGML_NATIVE=ON` 已在 M4 Max clean-machine 上完成实际 build + large-v3 transcription PASS；M5 仍需当前 checkpoint 的实际 regression 才形成双机当前版本证据。
+1. `GGML_NATIVE=ON` 已在 M4 Max clean-machine 上完成实际 build + large-v3 transcription PASS，并由 packaged CLI probe 确认 Metal GPU backend active；M5 仍需当前 checkpoint 的实际 regression 才形成双机当前版本证据。
 2. 正式 `GGML_OPENMP=OFF` 已消除 host OpenMP availability 漂移；旧 requested ON / effective OFF 仅保留为历史证据。
 3. 第一版继续使用 `Contents/Resources/bin/` Runtime 布局；Step 6 已在该布局内建立严格 closure。
 4. Python 合同仍保留 broad floor `>=3.11`，但正式可复现 build environment 是 `3.12.14 / >=3.12,<3.13`。
@@ -490,9 +514,10 @@ LLM 功能开发
 9. Model integrity contract 当前冻结 Hugging Face revision `5359861c739e955e79d9a303bcbc70fb988958b1`；vendored downloader 仍解析 upstream `main`，但只有与冻结 size/SHA-256 完全匹配的 bytes 才会被接受。若 upstream main 后续替换为新 bytes，下载会 fail closed，需显式维护 manifest，而不能静默接受新 artifact。
 10. Integrity receipt 以当前合同 + size + mtime 作为快速 available 证据；文件 stat 变化会使 receipt 失效并要求重新验证。它是性能优化，不替代首次 cryptographic validation。
 11. 明确 Import 的 custom `.bin/.gguf` 不受官方 downloadable checksum contract 约束，仍只使用独立本地 import validation；这属于产品设计边界而非 official model integrity 保证。
-12. M4 Max 实测发现 Model Manager 下载过程缺少 progress feedback、选择模型成功缺少短暂确认 toast；两项均为非阻塞 UX polish。
+12. M4 Max 实测发现四个非阻塞 UX / product polish：Model Manager 下载缺少 progress feedback、选择模型成功缺少短暂 confirmation toast、输出根目录不可自定义、当前模型长路径显示被截断且不可访问完整内容。
 13. whisper.cpp pinned commit 在 macOS 27 SDK 下产生部分 Metal deprecated API compiler warning，但 M4 build/runtime/large-v3 inference PASS；当前只记录，不在 Deployment MVP 中升级 upstream。
-14. 旧 pseudo-oral 测试输出仍是既有非阻塞项，不归 Deployment Step 8 修复。
+14. M4 Max 的 Metal runtime probe 同时初始化 Metal GPU 与 BLAS/Accelerate/CPU 路径；支持“Metal GPU backend active”结论，但不应描述为整个 pipeline 100% GPU-only。
+15. 旧 pseudo-oral 测试输出仍是既有非阻塞项，不归 Deployment Step 8 修复。
 
 ---
 
@@ -504,9 +529,11 @@ M5 当前 checkpoint App / large-v3-or-other-valid-model / real transcription re
 M5 当前 checkpoint 的 GGML_NATIVE 实际运行结果
 是否需要额外独立做一次 Stop -> 再 Start 作为 microphone release UX 证据（若正常使用未出现异常，可不作为 blocker）
 
-# 后续 UX
+# 后续 UX / Product
 Model download progress / spinner / bytes feedback
 Model selection success transient toast（约 2 秒）
+Configurable output root（默认保持 ~/Documents/ClassroomTranscriber；session 子结构不变）
+Current-model panel long-path readability / tooltip / copy / optional scroll
 
 # 后续 Release
 minimum macOS（当前不承诺旧系统，保持未设置）
@@ -522,9 +549,9 @@ GitHub Release 正式版本和自动发布流程
 
 新 Mac：Clean-machine Acceptance Machine；当前实际硬件为 MacBook Pro / M4 Max / 48 GB / 1 TB / macOS 27 Beta。
 
-M4 Max 本次 clean-machine acceptance 已证明：Fresh Clone、Finder 正式构建入口、Python/CMake/whisper bootstrap、strict packaged Runtime、App launch、UI 自选模型路径、UI large-v3 下载+完整性验证、large-v3 实际转写、四文件 evidence layer 均 PASS，且没有通过手工复制 `.venv/.tools/external/Runtime/model` 或临时 PATH/DYLD 修补正式流程。
+M4 Max 本次 clean-machine acceptance 已证明：Fresh Clone、Finder 正式构建入口、Python/CMake/whisper bootstrap、strict packaged Runtime、App launch、UI 自选模型路径、UI large-v3 下载+完整性验证、large-v3 实际转写、四文件 evidence layer 均 PASS，且没有通过手工复制 `.venv/.tools/external/Runtime/model` 或临时 PATH/DYLD 修补正式流程。额外 packaged CLI runtime probe 已确认 `use gpu = 1`、`gpu_device = 0`、embedded Metal library、`MTL0 (Apple M4 Max)` 与 `using MTL0 backend`，因此实际 Metal GPU backend 使用已形成直接证据。
 
-对外支持声明：M4 Max 当前可以记录为**项目已实际验证当前 Deployment checkpoint 的 clean-machine build + large-v3 transcription**。M5 只有完成当前 checkpoint regression 后，才将当前版本的 M5 实际验证一并闭环。M1 / M2 / M3 仅理论兼容，不作保证。旧版 macOS 当前不作保证。
+对外支持声明：M4 Max 当前可以记录为**项目已实际验证当前 Deployment checkpoint 的 clean-machine build + large-v3 transcription + Metal GPU backend active**。M5 只有完成当前 checkpoint regression 后，才将当前版本的 M5 实际验证一并闭环。M1 / M2 / M3 仅理论兼容，不作保证。旧版 macOS 当前不作保证。
 
 ---
 
@@ -539,6 +566,8 @@ M4 Max 本次 clean-machine acceptance 已证明：Fresh Clone、Finder 正式�
 ### Whisper Runtime
 
 - `GGML_NATIVE=ON` 已在 M4 Max 上完成实际 build + large-v3 inference PASS。
+- 使用最终 App 内 packaged `whisper-cli` + 已验证 large-v3 + JFK sample 的 runtime probe 直接记录 `use gpu = 1`、`gpu_device = 0`、`ggml_metal_device_init: GPU name: MTL0 (Apple M4 Max)`、`whisper_backend_init_gpu: using MTL0 backend`、`ggml_metal_init: found device: Apple M4 Max`；因此 M4 Max 实际 Metal GPU backend 使用 PASS。
+- 同一日志同时存在 `using BLAS backend` 与 CPU/Accelerate capability，说明 GPU 与 CPU/BLAS backend 可协同存在；不得将其误述为“CPU 完全未参与”。
 - M5 的当前 checkpoint actual App transcription regression 仍待补齐，之后才能把双机 portability 当前版本证据闭环。
 
 ### Model Manager
@@ -547,12 +576,14 @@ M4 Max 本次 clean-machine acceptance 已证明：Fresh Clone、Finder 正式�
 - 用户可通过 UI 自选模型下载位置。
 - 下载 large-v3 期间后台工作正常，但 UI 没有 progress feedback，视觉上容易误判为“卡死”；本次最终成功，因此记录为非阻塞 UX issue。
 - 选择模型后建议增加 2 秒左右的 non-modal success toast；非阻塞 UX issue。
+- 主界面当前模型区域对长绝对路径显示不清、内容被截断且无法访问完整信息；记录为非阻塞 UX issue。
 - vendored downloader 指向 upstream `main`；若未来 bytes 与 frozen contract 不符，应继续 fail closed。
 
 ### ASR / Evidence
 
 - M4 Max 已通过实际 YouTube 音频 + large-v3 产生非空真实转写。
 - session `2026-08-19_13-57-05` 产生完整 `raw.txt / clean.txt / session.log / config.json`，四文件均非空。
+- 当前 session output root 默认为 `~/Documents/ClassroomTranscriber/`；用户希望后续可配置根目录，同时保持 `outputs/<timestamp>/` 与四文件 evidence 子结构不变。记录为非阻塞 product improvement。
 - 当前没有单独 instrumentation 的 microphone-release 证明；未报告实际 Stop/再次 Start 异常，因此不单独作为当前 blocker。
 
 ---
@@ -617,7 +648,7 @@ M4 Max 当前不需要为了 Step 8 重做 Fresh Clone；本次 clean-machine se
 5. packaging/model_manifest.json
 6. README.md
 7. docs/工程细节.md
-8. Step 8 M4 clean-machine / M5 regression 实测证据
+8. Step 8 M4 clean-machine / Metal runtime / M5 regression 实测证据
 ```
 
 恢复 LLM：
