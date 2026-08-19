@@ -38,12 +38,13 @@ Codex 执行当前 Step
 
 ```text
 当前分支：main
-当前实现 checkpoint：fa3652043993b3567a292876e8b5b148cdc09301
-checkpoint 内容：fix: harden model downloads
+当前实现 checkpoint：02cc099ee674631ce8d5f5886966846a6623caa5
+checkpoint 内容：chore: add reproducible release zip packaging
 当前工作线：Deployment / Packaging / Reproducibility / Bugfix
 Deployment Step 8：PASS
 Step 9 总体：ACTIVE
-唯一 ACTIVE：Deployment Step 9A - 补齐正式 Release ZIP 生成与本地验证入口
+Step 9A：PASS
+唯一 ACTIVE：Deployment Step 9B - 使用已审核入口实际创建并发布 GitHub Release
 ```
 
 当前一句话目标：
@@ -59,8 +60,8 @@ M5 current-checkpoint build / App / large-v3 / Chinese transcription regression�
 M5 packaged large-v3 Metal backend runtime evidence：PASS
 M5 Stop -> Start / audio input reacquire：PASS
 Deployment Developer MVP：PASS
-Step 9A：ACTIVE
-Step 9B：PENDING
+Step 9A Release ZIP tooling / round-trip verification：PASS
+Step 9B：ACTIVE
 Step 9C：PENDING
 ```
 
@@ -450,13 +451,13 @@ config.json    1121 bytes
 
 ---
 
-## 3. 当前唯一 ACTIVE Step：Deployment Step 9A
+## 3. 当前唯一 ACTIVE Step：Deployment Step 9B
 
 Step 9 总体拆分为 A / B / C 三个明确阶段。任一时刻只有一个子阶段 ACTIVE：
 
 ```text
-Step 9A：补齐正式 Release ZIP 生成与本地验证入口         ACTIVE
-Step 9B：使用已审核入口实际创建并发布 GitHub Release      PENDING
+Step 9A：补齐正式 Release ZIP 生成与本地验证入口         PASS
+Step 9B：使用已审核入口实际创建并发布 GitHub Release      ACTIVE
 Step 9C：人工从 GitHub Release 下载并做 ordinary-user 验收 PENDING
 ```
 
@@ -490,104 +491,92 @@ UX/Product backlog 修复
 
 这些仍属于后续工作，除非 Step 9 实际执行证明其为普通用户 ZIP 路径 blocker。
 
-### 3.2 Step 9A：补齐正式 Release ZIP 生成与本地验证入口
+### 3.2 Step 9A：正式 Release ZIP 生成与本地验证入口
 
-状态：**ACTIVE**。
+状态：**PASS / 已完成并经 GitHub 实际实现审核通过（2026-08-19）**。
 
-目标：当前产品实现视为冻结，只补 release engineering 缺口，使 `main` 能通过一个正式、可复现的入口把已通过 strict packaged Runtime gate 的 `ClassroomTranscriber.app` 生成普通用户 ZIP，并对“解压后的 App”重新验证。
-
-当前 repo 审查已确认 `PACKAGING.md` 定义了普通用户 ZIP 目标格式，但 `scripts/` 中未发现明确的正式 Release ZIP 生成入口；Codex 仍必须以实际 repo 再核实一次，不得仅依赖 runtime 结论。
-
-Step 9A 允许修改范围：
+实现 commit：
 
 ```text
-Release ZIP 生成 / 验证脚本
-对应 release artifact tests
-PACKAGING.md / README.md 的 release 使用说明
-极少量与 release artifact metadata 直接相关的 helper
+02cc099ee674631ce8d5f5886966846a6623caa5
+chore: add reproducible release zip packaging
 ```
 
-Step 9A 禁止借机修改：
+GitHub compare：相对 Step 9A 起点 `aff768978b9800bc10577cbef9f2314c5124f9bc` ahead 1 / behind 0，仅修改 4 个 Step 9A 允许范围文件：
 
 ```text
-ASR 主链路
-audio capture / ring buffer / chunk scheduling / resample
-WhisperCppBackend 行为
-simple_dedup / fuzzy_boundary_dedup
-TranscriptStore evidence 写入
-Start / Stop / microphone release
-UI 主线程
-Model Manager 功能逻辑
-model integrity contract / model manifest
-LLM sidecar
-Step 8 记录的四个 UX/Product backlog
+PACKAGING.md
+README.md
+scripts/build_release_zip.py
+testCodes/test_release_zip.py
 ```
 
-Release ZIP 合同：
+未修改稳定 ASR、UI、Model Manager、model integrity、model manifest 或 LLM sidecar。
+
+正式 Release ZIP 入口：
 
 ```text
-ClassroomTranscriber-<version>-macOS-AppleSilicon.zip
+./Build\ ClassroomTranscriber.command
+.venv/bin/python scripts/build_release_zip.py --version <version>
 ```
 
-ZIP 必须：
+`--version` 为必填显式输入；脚本从 `packaging/runtime_manifest.json` 读取 artifact filename / payload contract，不自动猜版本、不修改项目版本、不创建 tag / GitHub Release、不上传 asset。
 
-1. 包含完整 `ClassroomTranscriber.app`；
-2. 不包含模型；
-3. 不包含 `.venv`、`.tools`、`external/whisper.cpp`、source tree、build cache 或本机开发配置；
-4. 保持 App bundle symlink、executable permission、Runtime dylib、RPath、resource 与现有 signing 状态；
-5. 生成后解压到 source tree 之外的全新临时目录；
-6. 对解压后的 App 重新执行适用的 packaged Runtime / architecture / dependency closure / signature / CLI smoke；
-7. 记录 artifact filename、exact bytes、SHA-256、source commit；
-8. release version 必须是显式输入，不允许脚本静默自增或从日期猜版本。
-
-Step 9A 的重点是**建立并验证发布入口，不创建 GitHub tag，不创建 GitHub Release，不上传正式 Release asset**。
-
-若当前 repo 已有完整等价入口，则不重复造轮子，只补缺失测试/合同并证明可用。
-
-M4 Max 可为 Step 9A 使用一次性的 release-engineering workspace，例如：
+ZIP 实现采用 macOS `/usr/bin/zip -r -y -X`，其中 `-y` 保留 symlink、`-X` 排除易变 ZIP extra fields；解压采用 macOS `ditto`。正式脚本会：
 
 ```text
-~/Workspace/Tools/classroom-transcriber-step9-release/whisper
+验证 clean source / locked project Python
+-> 对 dist/ClassroomTranscriber.app 复用现有 packaged Runtime verifier
+-> snapshot App bundle bytes / mode / symlink target
+-> 生成 staging ZIP
+-> 校验 ZIP entry boundary + CRC
+-> 解压到 source tree 外的临时目录
+-> 比较完整 bundle structure / bytes / permissions / symlinks
+-> 对 extracted App 再次复用 packaged Runtime verifier
+-> 所有验证 PASS 后才 os.replace 发布最终 ZIP
+-> 输出 version / source commit / exact bytes / SHA-256
 ```
 
-必须 fresh clone 当前 `main`，不得修改或复用 Step 8 clean-machine acceptance clone。该一次性 workspace 是受控 release engineering 例外，不代表把 M4 Max 长期改成第二 Developer Machine；Step 9 完成后可删除。
+脚本额外拒绝模型 binary、`.venv`、`.tools`、`external`、Git/source metadata、用户 settings、broken/out-of-bundle symlink 等非 Release payload。
 
-Git 规则：
+Step 9A 单元测试新增 10 项，覆盖：显式安全 version、locked project Python、dirty worktree rejection、bytes/mode/symlink round-trip、同一 App byte-identical ZIP、extracted verifier failure 不发布 artifact、model/dev file rejection、ZIP boundary、host symlink rejection、SHA-256 exactness。
+
+M5 Developer / Reference Machine 实测：
 
 ```text
-使用 main
-不自行创建 branch
-不 merge / rebase / reset / stash
-不 force push
-发现 worktree dirty / branch 错误 / origin/main 意外前进 -> 立即停止汇报
-一个明确 Step 一个 commit
-Step 9A 自检通过后 push main
-Codex 默认不修改 deployment_runtime.md
+正式 one-entry build / Python / whisper Runtime / Step 6 packaged verifier PASS
+release tests                                                   PASS / 10
+全 testCodes suite                                              PASS / 75
+git diff --check                                                PASS
+final worktree                                                  clean
 ```
 
-Step 9A 验收标准：
+Step 9A dry-run artifact：
 
 ```text
-repo current main / clean                              PASS
-正式 App build + Step 6 packaged Runtime gate          PASS
-正式 Release ZIP 入口存在并可复现                      PASS
-ZIP 内容边界                                           PASS
-ZIP 不包含模型/开发环境/source tree                    PASS
-解压后的 App Runtime verifier / smoke                  PASS
-artifact exact bytes + SHA-256 + source commit         RECORDED
-release tooling tests                                  PASS
-git diff --check                                       PASS
-Step 9A 单一 commit + push main                        PASS
-GitHub tag / Release                                   NOT CREATED（符合 9A 边界）
+version: 0.0.0-step9a
+source commit: 02cc099ee674631ce8d5f5886966846a6623caa5
+artifact: ClassroomTranscriber-0.0.0-step9a-macOS-AppleSilicon.zip
+exact bytes: 46,564,856
+SHA-256: 9aad6f881a8f8ed54600e5079998a7564701972714edee5b0f3362a114fc5529
+ZIP entries: 492
+source/extracted symlinks: 117 / 117
+same App second packaging: byte-identical PASS
 ```
 
-Step 9A 完成后由 ChatGPT / 人工审核 GitHub 实际 diff；审核通过后再更新 runtime：`9A PASS -> 9B ACTIVE`。
+独立 extracted-App 验证再次 PASS：Runtime components、arm64-only、dependency closure / RPath、codesign、downloader、model manifest、bundled CLI smoke、isolated Runtime smoke 全部正常；ZIP 顶层唯一 payload 为 `ClassroomTranscriber.app`，模型 / `.venv` / `.tools` / `external` / source metadata / 用户配置均为 0。
+
+ChatGPT GitHub 审核确认：实现复用现有 `verify_packaged_runtime`，没有复制第二套 Runtime contract；最终 artifact 只在 source App verifier、ZIP CRC/boundary、round-trip snapshot 和 extracted-App verifier 全部 PASS 后发布。Step 9A 可接受。
+
+非阻塞 release-engineering caveat：`build_release_zip.py` 的正式合同是“**先正式 build，再 package**”；脚本本身验证 clean worktree 和当前 source commit，但不单独嵌入/比对 App 的源码构建 provenance marker。因此 Step 9B 必须在目标 source commit 上重新执行正式 one-entry build，并紧接着从该次 `dist/ClassroomTranscriber.app` 生成唯一 Release ZIP；不得复用来源不明的旧 `dist` App 后仅凭 clean HEAD 宣布 source binding。
+
+Step 9A 未创建 tag、未创建 GitHub Release、未上传 asset，符合边界。
 
 ### 3.3 Step 9B：实际 GitHub Release 发布
 
-状态：**PENDING**。
+状态：**ACTIVE**。
 
-前置条件：Step 9A implementation 已 push main 且经人工 / ChatGPT 审核 ACCEPTED。
+前置条件：Step 9A implementation 已 push main 且经人工 / ChatGPT 审核 ACCEPTED；当前满足。
 
 Step 9B 原则上不再改产品代码。使用 Step 9A 已审核的正式入口，从指定 source commit 构建**唯一一份** Release ZIP，并发布为 GitHub Release asset。
 
@@ -596,7 +585,8 @@ Step 9B 原则上不再改产品代码。使用 Step 9A 已审核的正式入口
 ```text
 main / clean worktree / HEAD == origin/main
 Step 9A accepted commit 已包含
-正式 build + release ZIP local verification PASS
+正式 one-entry build 在同一 source commit 上重新执行并 PASS
+紧接该 build 生成 Release ZIP，local extracted-App verification PASS
 GitHub CLI / GitHub authentication 可用，或存在等价受控发布方式
 ```
 
@@ -608,7 +598,7 @@ release version/tag
 release title（若需要）
 ```
 
-考虑当前仅 ad-hoc signing、尚未 notarize，是否作为 prerelease 发布必须由用户显式决定，不由 Codex静默决定。
+考虑当前仅 ad-hoc signing、尚未 notarize，是否作为 prerelease 发布必须由用户显式决定，不由 Codex 静默决定。
 
 Step 9B 发布产物必须绑定并记录：
 
@@ -618,10 +608,10 @@ source commit
 ZIP filename
 exact bytes
 SHA-256
-GitHub Release asset
+GitHub Release URL / asset
 ```
 
-上传后应通过 GitHub 重新获取/下载 asset 或使用等价方式确认远端 asset 与本地已验证 artifact 一致；不得发布一个未经 Step 9A verifier 验证的重新压缩版本。
+必须发布**本地已通过 Step 9A 全部验证的同一 ZIP bytes**；不得上传后重新压缩或重新生成另一个 ZIP。上传后应通过 GitHub 重新获取 / 下载 asset 或使用等价方式计算远端下载 bytes 的 SHA-256，确认与本地已验证 artifact 完全一致。
 
 Step 9B 不要求修改 `deployment_runtime.md`；发布完成后汇报证据，由 ChatGPT / 人工审核并更新 `9B PASS -> 9C ACTIVE`。
 
@@ -666,7 +656,7 @@ Release ZIP browser download
 
 #### 9C-2 M5 same-artifact portability check
 
-由于 `GGML_NATIVE=ON` 仍是当前 build profile，Step 8 证明的是 M4 Max 与 M5 **各自在本机构建**时均可运行；Step 9 还需要确认由 Step 9B 发布的**同一个 M4 Max-built ZIP artifact**在 M5 上不会因 native code generation 失效。
+由于 `GGML_NATIVE=ON` 仍是当前 build profile，Step 8 证明的是 M4 Max 与 M5 **各自在本机构建**时均可运行；Step 9 还需要确认由 Step 9B 发布的**同一个 Release ZIP artifact**在 M5 上不会因 native code generation 失效。
 
 该检查不需要 M5 Codex。人工在 M5 上从同一个 GitHub Release 下载同一 ZIP，不重新 build；至少完成：
 
@@ -683,12 +673,12 @@ Step 9 完整 PASS 条件：
 
 ```text
 9A release ZIP tooling / extracted-App verification            PASS
-9B exact verified artifact published to GitHub Release         PASS
-9C-1 M4 Max browser-download ordinary-user E2E                 PASS
-9C-1 Gatekeeper/quarantine 无 Terminal-only workaround         PASS
-9C-1 Model Manager fresh download                              PASS
-9C-1 transcription / Stop / evidence layer                     PASS
-9C-2 same Release artifact on M5 launch + transcription         PASS
+9B exact verified artifact published to GitHub Release         PENDING
+9C-1 M4 Max browser-download ordinary-user E2E                 PENDING
+9C-1 Gatekeeper/quarantine 无 Terminal-only workaround         PENDING
+9C-1 Model Manager fresh download                              PENDING
+9C-1 transcription / Stop / evidence layer                     PENDING
+9C-2 same Release artifact on M5 launch + transcription         PENDING
 ```
 
 若 9C-2 暴露 `GGML_NATIVE=ON` 的真实 cross-generation artifact incompatibility，则 Step 9 不得 PASS；回到 release/runtime engineering 处理 portable build profile，而不是为单机绕过。
@@ -708,7 +698,9 @@ Step 9 完整 PASS 条件：
 9. Integrity receipt 以当前合同 + size + mtime 作为快速 available 证据；它是性能优化，不替代首次 cryptographic validation。
 10. 明确 Import 的 custom `.bin/.gguf` 不受官方 downloadable checksum contract 约束，仍只使用独立 local import validation。
 11. whisper.cpp pinned commit 在 macOS 27 SDK 下会产生部分 Metal deprecated API compiler warning；M4/M5 build/runtime inference 均 PASS，当前不升级 upstream。
-12. 旧 pseudo-oral 测试输出仍是既有非阻塞项。
+12. Step 9A Release ZIP 对同一个 App 的重复打包已证明 byte-identical；这不等同于声明“不同时间重新 build 出的 App/ZIP 必然 byte-identical”。
+13. Step 9A package script 依赖 documented `formal build -> package` 顺序；Step 9B 必须重新 build 后立即 package，避免旧 dist App 与当前 source commit 绑定错误。
+14. 旧 pseudo-oral 测试输出仍是既有非阻塞项。
 
 ---
 
@@ -754,13 +746,13 @@ GitHub Actions release automation
 
 ## 7. 开发机与验收机状态
 
-旧 MacBook：Developer / Reference Machine；MacBook Air / Apple M5 / 16 GB / 512 GB / macOS 27 Beta。Step 8 current-checkpoint build + packaged Runtime + large-v3 Metal + Chinese transcription + Stop/Start regression：PASS。
+旧 MacBook：Developer / Reference Machine；MacBook Air / Apple M5 / 16 GB / 512 GB / macOS 27 Beta。Step 8 current-checkpoint build + packaged Runtime + large-v3 Metal + Chinese transcription + Stop/Start regression：PASS。Step 9A Release ZIP tooling / dry-run / extracted-App verification 也在该机完成并 PASS。
 
-新 Mac：Clean-machine Acceptance Machine；MacBook Pro / Apple M4 Max / 48 GB / 1 TB / macOS 27 Beta。Step 8 clean-machine build + UI large-v3 download/integrity + packaged Metal + actual transcription + evidence：PASS。
+新 Mac：Clean-machine Acceptance Machine；MacBook Pro / Apple M4 Max / 48 GB / 1 TB / macOS 27 Beta。Step 8 clean-machine build + UI large-v3 download/integrity + packaged Metal + actual transcription + evidence：PASS。Step 9B 计划在 M4 Max 的一次性 release-engineering workspace 中构建并发布唯一 Release artifact；Step 9C-1 随后必须从 GitHub Release 浏览器下载该 artifact 做 ordinary-user 验收。
 
 当前可以记录：**项目已在 Apple M4 Max 与 Apple M5 设备上实际验证当前 Deployment checkpoint。** M1 / M2 / M3 仅理论兼容，不作保证；旧版 macOS 当前不作保证。
 
-长期职责仍以 `deployment_static.md` 为准：默认旧 M5 为 Developer / Reference，M4 Max 为 Acceptance Machine。由于当前 M5 Codex 额度不可用，Step 9A/B 允许在 M4 Max 的**一次性 fresh release-engineering workspace**中由 Codex执行 release-only 工作；该例外不得复用 Step 8 clean-machine clone，不得扩展为产品功能开发，不改变长期角色合同。Step 9 完成后可删除该 workspace。
+长期职责仍以 `deployment_static.md` 为准：默认旧 M5 为 Developer / Reference，M4 Max 为 Acceptance Machine。Step 9B 允许在 M4 Max 使用一次性 fresh release-engineering workspace 执行 release-only 工作；不得复用 Step 8 clean-machine clone，不得扩展为产品功能开发，不改变长期角色合同。Step 9 完成后可删除该 workspace。
 
 ---
 
@@ -775,8 +767,8 @@ Step 5：可双击的一键构建入口与 Orchestration                        
 Step 6：严格打包门禁与 post-build smoke                              已完成
 Step 7：模型下载完整性、失败恢复与重试                                已完成
 Step 8：新机器 Clean-machine App / Model / Microphone / Transcription E2E 已完成 / PASS
-Step 9A：正式 Release ZIP 生成与本地验证入口                         ACTIVE
-Step 9B：实际 GitHub Release 发布                                    PENDING
+Step 9A：正式 Release ZIP 生成与本地验证入口                         已完成 / PASS
+Step 9B：实际 GitHub Release 发布                                    ACTIVE
 Step 9C：人工 Release 下载 / ordinary-user / same-artifact 验收       PENDING
 ```
 
@@ -794,20 +786,21 @@ Step 9 完成后，若用户选择继续产品 polish，应新建独立 Product 
 
 ## 9. 下一步执行提示
 
-继续 `main` Deployment 时只执行 Step 9A：
+继续 `main` Deployment 时只执行 Step 9B：
 
 ```text
-1. 在 M4 Max 创建一次性 fresh release-engineering workspace，不复用 Step 8 clean clone
-2. fresh clone 当前 main；确认 main + clean worktree + HEAD == origin/main
-3. 读取 deployment_static.md / deployment_runtime.md / PACKAGING.md / README.md
-4. 审查当前 repo 是否已有正式 Release ZIP 入口；若等价能力已存在则复用，不重复造轮子
-5. 若缺失，只实现最小 release ZIP 生成 + extracted-App verification + tests/docs
-6. 产品实现与 ASR/UI/Model Manager 视为冻结，不处理 UX/Product backlog
-7. 正式 build 必须继续经过现有 Step 6 packaged Runtime hard gate
-8. ZIP 解压到 source tree 外重新验证；记录 filename / bytes / SHA-256 / source commit
-9. Step 9A 不创建 tag、不创建 GitHub Release、不上传正式 asset
-10. tests + git diff --check PASS 后一个 commit push main
-11. Codex 默认不修改 deployment_runtime.md；由 ChatGPT / 人工审核后推进 9B
+1. 用户先显式给出 release version/tag、是否 prerelease；Codex 不得自行决定
+2. 在 M4 Max 创建一次性 fresh release-engineering workspace，不复用 Step 8 clean-machine clone
+3. fresh clone 当前 main；确认 main + clean worktree + HEAD == origin/main
+4. 读取 deployment_static.md / deployment_runtime.md / PACKAGING.md / README.md
+5. 不修改产品代码；Step 9B 原则上是 build + package + publish
+6. 在目标 source commit 上重新执行正式 one-entry build，全部 Step 6 hard gate PASS
+7. 紧接该 build 执行 `build_release_zip.py --version <explicit-version>`；不得复用来源不明的旧 dist App
+8. 记录 local ZIP filename / exact bytes / SHA-256 / source commit / extracted-App verification
+9. 创建显式 tag / GitHub Release，并上传这一个已经验证的 ZIP bytes；不得重新压缩
+10. 从 GitHub 重新下载或等价获取远端 asset，计算 SHA-256，与本地已验证 ZIP 完全一致
+11. 若发布动作需要额外 signing/notarization 才能继续，停止并汇报，不擅自扩大 scope
+12. Codex 默认不修改 deployment_runtime.md；由 ChatGPT / 人工审核后推进 9C
 ```
 
 ---
@@ -825,7 +818,8 @@ Step 9 完成后，若用户选择继续产品 polish，应新建独立 Product 
 6. README.md
 7. docs/工程细节.md
 8. Step 8 M4 clean-machine / M4+M5 Metal runtime / M5 regression 实测证据
-9. Step 9A/B/C release artifact 证据（形成后）
+9. Step 9A commit 02cc099ee674631ce8d5f5886966846a6623caa5 / dry-run artifact evidence
+10. Step 9B/C release artifact 证据（形成后）
 ```
 
 恢复 LLM：
