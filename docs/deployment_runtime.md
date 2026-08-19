@@ -42,7 +42,8 @@ Codex 执行当前 Step
 checkpoint 内容：fix: harden model downloads
 当前工作线：Deployment / Packaging / Reproducibility / Bugfix
 Deployment Step 8：PASS
-唯一 ACTIVE：Deployment Step 9 - 普通用户 GitHub Release ZIP 验收
+Step 9 总体：ACTIVE
+唯一 ACTIVE：Deployment Step 9A - 补齐正式 Release ZIP 生成与本地验证入口
 ```
 
 当前一句话目标：
@@ -58,7 +59,9 @@ M5 current-checkpoint build / App / large-v3 / Chinese transcription regression�
 M5 packaged large-v3 Metal backend runtime evidence：PASS
 M5 Stop -> Start / audio input reacquire：PASS
 Deployment Developer MVP：PASS
-Step 9：ACTIVE
+Step 9A：ACTIVE
+Step 9B：PENDING
+Step 9C：PENDING
 ```
 
 ---
@@ -447,13 +450,17 @@ config.json    1121 bytes
 
 ---
 
-## 3. 当前唯一 ACTIVE Step
+## 3. 当前唯一 ACTIVE Step：Deployment Step 9A
+
+Step 9 总体拆分为 A / B / C 三个明确阶段。任一时刻只有一个子阶段 ACTIVE：
 
 ```text
-ACTIVE: Deployment Step 9 - 普通用户 GitHub Release ZIP 验收
+Step 9A：补齐正式 Release ZIP 生成与本地验证入口         ACTIVE
+Step 9B：使用已审核入口实际创建并发布 GitHub Release      PENDING
+Step 9C：人工从 GitHub Release 下载并做 ordinary-user 验收 PENDING
 ```
 
-### 3.1 Step 9 目标
+### 3.1 Step 9 总目标
 
 验证普通用户交付路径，而不是再次验证源码开发环境：
 
@@ -462,14 +469,12 @@ GitHub Release ZIP
 -> 解压 ClassroomTranscriber.app
 -> 双击启动
 -> Model Manager 获取模型
--> 授予音频输入权限
+-> 音频输入权限
 -> Start Recording
 -> 正常转录
 -> Stop
 -> 完整 session evidence layer
 ```
-
-### 3.2 Step 9 当前边界
 
 Step 9 不默认扩大为：
 
@@ -480,34 +485,224 @@ DMG
 GitHub Actions release automation
 minimum macOS 冻结
 M1 / M2 / M3 实机支持
+UX/Product backlog 修复
 ```
 
-这些仍属于后续 Release polish，除非执行中发现它们是 ZIP 普通用户路径的真实 blocker。
+这些仍属于后续工作，除非 Step 9 实际执行证明其为普通用户 ZIP 路径 blocker。
 
-### 3.3 Step 9 下一次执行前先确认
+### 3.2 Step 9A：补齐正式 Release ZIP 生成与本地验证入口
 
-当前 runtime 只冻结了 Step 9 的交付目标，尚不假设 repo 已存在完整的 Release ZIP 生成 / 发布脚本。执行时先基于当前 `README.md`、`PACKAGING.md`、build/release scripts 与实际 repo 检查：
+状态：**ACTIVE**。
+
+目标：当前产品实现视为冻结，只补 release engineering 缺口，使 `main` 能通过一个正式、可复现的入口把已通过 strict packaged Runtime gate 的 `ClassroomTranscriber.app` 生成普通用户 ZIP，并对“解压后的 App”重新验证。
+
+当前 repo 审查已确认 `PACKAGING.md` 定义了普通用户 ZIP 目标格式，但 `scripts/` 中未发现明确的正式 Release ZIP 生成入口；Codex 仍必须以实际 repo 再核实一次，不得仅依赖 runtime 结论。
+
+Step 9A 允许修改范围：
 
 ```text
-1. 是否已有正式 ZIP 生成入口
-2. ZIP 是否只包含完整 .app 及必要 release 文件，不包含模型/开发环境
-3. 解压后 App bundle 是否保持 Runtime / dylib / signature / resource 完整性
-4. 应如何在 GitHub Release 上发布并下载同一 artifact
-5. Acceptance machine 如何以 ordinary-user 路径验证，而不借用 source tree
+Release ZIP 生成 / 验证脚本
+对应 release artifact tests
+PACKAGING.md / README.md 的 release 使用说明
+极少量与 release artifact metadata 直接相关的 helper
 ```
 
-若正式 ZIP 入口缺失，再在旧 Developer / Reference Machine 上实现最小、可复现的 Release ZIP 流程；一个明确 Step 一个 commit，测试通过后 push `main`，再由 Acceptance Machine 测真实下载 artifact。
+Step 9A 禁止借机修改：
+
+```text
+ASR 主链路
+audio capture / ring buffer / chunk scheduling / resample
+WhisperCppBackend 行为
+simple_dedup / fuzzy_boundary_dedup
+TranscriptStore evidence 写入
+Start / Stop / microphone release
+UI 主线程
+Model Manager 功能逻辑
+model integrity contract / model manifest
+LLM sidecar
+Step 8 记录的四个 UX/Product backlog
+```
+
+Release ZIP 合同：
+
+```text
+ClassroomTranscriber-<version>-macOS-AppleSilicon.zip
+```
+
+ZIP 必须：
+
+1. 包含完整 `ClassroomTranscriber.app`；
+2. 不包含模型；
+3. 不包含 `.venv`、`.tools`、`external/whisper.cpp`、source tree、build cache 或本机开发配置；
+4. 保持 App bundle symlink、executable permission、Runtime dylib、RPath、resource 与现有 signing 状态；
+5. 生成后解压到 source tree 之外的全新临时目录；
+6. 对解压后的 App 重新执行适用的 packaged Runtime / architecture / dependency closure / signature / CLI smoke；
+7. 记录 artifact filename、exact bytes、SHA-256、source commit；
+8. release version 必须是显式输入，不允许脚本静默自增或从日期猜版本。
+
+Step 9A 的重点是**建立并验证发布入口，不创建 GitHub tag，不创建 GitHub Release，不上传正式 Release asset**。
+
+若当前 repo 已有完整等价入口，则不重复造轮子，只补缺失测试/合同并证明可用。
+
+M4 Max 可为 Step 9A 使用一次性的 release-engineering workspace，例如：
+
+```text
+~/Workspace/Tools/classroom-transcriber-step9-release/whisper
+```
+
+必须 fresh clone 当前 `main`，不得修改或复用 Step 8 clean-machine acceptance clone。该一次性 workspace 是受控 release engineering 例外，不代表把 M4 Max 长期改成第二 Developer Machine；Step 9 完成后可删除。
+
+Git 规则：
+
+```text
+使用 main
+不自行创建 branch
+不 merge / rebase / reset / stash
+不 force push
+发现 worktree dirty / branch 错误 / origin/main 意外前进 -> 立即停止汇报
+一个明确 Step 一个 commit
+Step 9A 自检通过后 push main
+Codex 默认不修改 deployment_runtime.md
+```
+
+Step 9A 验收标准：
+
+```text
+repo current main / clean                              PASS
+正式 App build + Step 6 packaged Runtime gate          PASS
+正式 Release ZIP 入口存在并可复现                      PASS
+ZIP 内容边界                                           PASS
+ZIP 不包含模型/开发环境/source tree                    PASS
+解压后的 App Runtime verifier / smoke                  PASS
+artifact exact bytes + SHA-256 + source commit         RECORDED
+release tooling tests                                  PASS
+git diff --check                                       PASS
+Step 9A 单一 commit + push main                        PASS
+GitHub tag / Release                                   NOT CREATED（符合 9A 边界）
+```
+
+Step 9A 完成后由 ChatGPT / 人工审核 GitHub 实际 diff；审核通过后再更新 runtime：`9A PASS -> 9B ACTIVE`。
+
+### 3.3 Step 9B：实际 GitHub Release 发布
+
+状态：**PENDING**。
+
+前置条件：Step 9A implementation 已 push main 且经人工 / ChatGPT 审核 ACCEPTED。
+
+Step 9B 原则上不再改产品代码。使用 Step 9A 已审核的正式入口，从指定 source commit 构建**唯一一份** Release ZIP，并发布为 GitHub Release asset。
+
+发布前必须确认：
+
+```text
+main / clean worktree / HEAD == origin/main
+Step 9A accepted commit 已包含
+正式 build + release ZIP local verification PASS
+GitHub CLI / GitHub authentication 可用，或存在等价受控发布方式
+```
+
+版本 / tag 是显式发布输入。若 repo 尚无明确 version/tag convention，Codex 不得自行发明正式版本号；在创建 tag / Release 前停止并请求用户给出：
+
+```text
+release version/tag
+是否 prerelease
+release title（若需要）
+```
+
+考虑当前仅 ad-hoc signing、尚未 notarize，是否作为 prerelease 发布必须由用户显式决定，不由 Codex静默决定。
+
+Step 9B 发布产物必须绑定并记录：
+
+```text
+release tag/version
+source commit
+ZIP filename
+exact bytes
+SHA-256
+GitHub Release asset
+```
+
+上传后应通过 GitHub 重新获取/下载 asset 或使用等价方式确认远端 asset 与本地已验证 artifact 一致；不得发布一个未经 Step 9A verifier 验证的重新压缩版本。
+
+Step 9B 不要求修改 `deployment_runtime.md`；发布完成后汇报证据，由 ChatGPT / 人工审核并更新 `9B PASS -> 9C ACTIVE`。
+
+### 3.4 Step 9C：人工 ordinary-user Release 验收
+
+状态：**PENDING**。
+
+Step 9C 必须由人工按普通用户路径验证，Codex 不能用 source tree / Terminal 启动替代 GUI 用户体验。
+
+#### 9C-1 M4 Max primary ordinary-user acceptance
+
+在 M4 Max 上从 GitHub Release 页面实际下载 Step 9B 发布的 ZIP，不使用 Step 9B 本地 artifact，不从 repo 的 `dist/` 打开 App。
+
+建议使用独立下载/解压目录，避免 source tree 参与运行。路径：
+
+```text
+GitHub Release 页面
+-> 浏览器下载 ZIP
+-> Finder 解压
+-> Finder 双击 ClassroomTranscriber.app
+```
+
+记录 Gatekeeper / quarantine 的真实行为。正常 macOS GUI 权限提示或系统“Open Anyway”类标准交互可以记录；若必须使用 Terminal `xattr` / `spctl` 或手工修改 bundle 才能启动，则视为 Release blocker，不得用 workaround 后宣布 PASS。
+
+Model Manager 应使用一个新的空模型目录，通过 Release App 自己下载 manifest-managed model。为降低重复下载成本，优先可使用 `base.en` 完成 ordinary-user downloader E2E；若用户希望也可使用 large-v3。模型不允许从 source tree 手工复制进去冒充下载成功。
+
+验收路径：
+
+```text
+Release ZIP browser download
+-> Finder unzip
+-> Finder launch
+-> Model Manager download model
+-> model available / selectable
+-> audio permission
+-> Start
+-> 真实非空转写
+-> Stop
+-> App 回 idle
+-> raw.txt / clean.txt / session.log / config.json 全部存在且非空
+```
+
+#### 9C-2 M5 same-artifact portability check
+
+由于 `GGML_NATIVE=ON` 仍是当前 build profile，Step 8 证明的是 M4 Max 与 M5 **各自在本机构建**时均可运行；Step 9 还需要确认由 Step 9B 发布的**同一个 M4 Max-built ZIP artifact**在 M5 上不会因 native code generation 失效。
+
+该检查不需要 M5 Codex。人工在 M5 上从同一个 GitHub Release 下载同一 ZIP，不重新 build；至少完成：
+
+```text
+Finder unzip / launch
+packaged App 可启动
+使用可用模型完成一次真实非空转写
+Stop 正常
+```
+
+若需要更强 Runtime 证据，可额外对该**同一 Release App 内** packaged `whisper-cli` + M5 现有 verified large-v3 + JFK sample 做一次 Metal probe，但这不是 ordinary-user GUI 路径的替代品。
+
+Step 9 完整 PASS 条件：
+
+```text
+9A release ZIP tooling / extracted-App verification            PASS
+9B exact verified artifact published to GitHub Release         PASS
+9C-1 M4 Max browser-download ordinary-user E2E                 PASS
+9C-1 Gatekeeper/quarantine 无 Terminal-only workaround         PASS
+9C-1 Model Manager fresh download                              PASS
+9C-1 transcription / Stop / evidence layer                     PASS
+9C-2 same Release artifact on M5 launch + transcription         PASS
+```
+
+若 9C-2 暴露 `GGML_NATIVE=ON` 的真实 cross-generation artifact incompatibility，则 Step 9 不得 PASS；回到 release/runtime engineering 处理 portable build profile，而不是为单机绕过。
 
 ---
 
 ## 4. 当前为简化而保留、后续可能产生影响的内容
 
-1. `GGML_NATIVE=ON` 已在 M4 Max 与 M5 上分别完成当前 profile 的实际 build + packaged large-v3 Metal inference PASS。注意这证明两个目标机器各自从当前源码构建出的 Runtime 可工作；未来单一 Release artifact 的跨代分发仍应由 Step 9 artifact acceptance 补充证据。
+1. `GGML_NATIVE=ON` 已在 M4 Max 与 M5 上分别完成当前 profile 的实际 build + packaged large-v3 Metal inference PASS。注意这证明两个目标机器各自从当前源码构建出的 Runtime 可工作；单一 M4 Max-built Release artifact 的跨代分发由 Step 9C-2 补充证据。
 2. 正式 `GGML_OPENMP=OFF` 已消除 host OpenMP availability 漂移；旧 requested ON / effective OFF 仅保留为历史证据。
 3. 第一版继续使用 `Contents/Resources/bin/` Runtime 布局；Step 6 已在该布局内建立严格 closure。
 4. Python 合同仍保留 broad floor `>=3.11`，但正式可复现 build environment 是 `3.12.14 / >=3.12,<3.13`。
 5. Developer source build 仍依赖 Git、网络、Apple Command Line Tools 与 macOS host 工具；普通 Release 用户不承担这些源码构建前提。
-6. Step 6 当前使用 ad-hoc codesign；Developer ID / notarization 仍属于 Release polish。
+6. Step 6 当前使用 ad-hoc codesign；Developer ID / notarization 仍属于 Release polish，但如果 Step 9C 证明其为普通用户 ZIP 启动 blocker，则必须升级处理。
 7. minimum macOS 仍为 pending；当前只验证 macOS 27 Beta，不据此推断旧版本。
 8. Model integrity contract 当前冻结 Hugging Face revision `5359861c739e955e79d9a303bcbc70fb988958b1`；vendored downloader 仍解析 upstream `main`，只有与冻结 size/SHA-256 完全匹配的 bytes 才接受；upstream bytes 漂移应 fail closed。
 9. Integrity receipt 以当前合同 + size + mtime 作为快速 available 证据；它是性能优化，不替代首次 cryptographic validation。
@@ -526,26 +721,29 @@ Step 8 实机验收暴露以下项目，均不回滚 Deployment MVP：
 3. **Configurable output root**：默认继续 `~/Documents/ClassroomTranscriber/`，允许用户改根目录；`outputs/<timestamp>/raw.txt|clean.txt|session.log|config.json` 子结构必须保持不变；配置持久化，只影响后续新 session。
 4. **Current-model panel readability**：长绝对路径在当前模型区域被截断且无法访问完整内容；后续优先模型名/大小，路径 middle-elide + tooltip/可复制，必要时提供滚动。
 
-这些项目可在 Step 9 之后处理，或由用户显式调整优先级后作为独立 product-polish step 处理；不要把它们混入稳定 ASR 主链路修改。
+这些项目不进入 Step 9A/B/C。Step 9 完成后建议新建独立的 Product / UX task 文档管理，逐项定义优先级、允许修改范围、验收和回归；不要继续把长期产品 backlog 堆在 deployment runtime 中，也不要把这些修改混入稳定 ASR 主链路。
 
 ---
 
 ## 6. 当前未敲定参数
 
 ```text
-# Step 9
-正式 Release ZIP 生成 / 发布入口是否已经存在
-单一 Release artifact 在 M4 Max / M5 间的实际 portability
-GitHub Release 下载后的 Gatekeeper / quarantine 行为
-ordinary-user Model Manager / audio permission / transcription / evidence E2E
+# Step 9B publication gate
+正式 release version / tag
+是否 prerelease
+release title / release notes 最小内容
 
-# UX / Product backlog
+# Step 9C
+GitHub Release 下载后的 Gatekeeper / quarantine 实际行为
+同一 M4 Max-built Release artifact 在 M5 的实际 portability
+
+# 后续 UX / Product task 文档
 Model download progress / spinner / bytes feedback
 Model selection success transient toast（约 2 秒）
 Configurable output root
 Current-model panel long-path readability / tooltip / copy / optional scroll
 
-# 后续 Release
+# 后续 Release polish
 minimum macOS（当前不承诺旧系统，保持未设置）
 Developer ID signing / notarization 实施时间点
 DMG
@@ -562,7 +760,7 @@ GitHub Actions release automation
 
 当前可以记录：**项目已在 Apple M4 Max 与 Apple M5 设备上实际验证当前 Deployment checkpoint。** M1 / M2 / M3 仅理论兼容，不作保证；旧版 macOS 当前不作保证。
 
-长期职责仍以 `deployment_static.md` 为准：默认继续在旧 Developer / Reference Machine 实现和回归，在 M4 Max Acceptance Machine 验证正式 artifact。若未来希望把 M4 Max 改成第二开发机，应先显式调整长期角色合同，而不是在验收机上直接积累项目专用手工开发状态。
+长期职责仍以 `deployment_static.md` 为准：默认旧 M5 为 Developer / Reference，M4 Max 为 Acceptance Machine。由于当前 M5 Codex 额度不可用，Step 9A/B 允许在 M4 Max 的**一次性 fresh release-engineering workspace**中由 Codex执行 release-only 工作；该例外不得复用 Step 8 clean-machine clone，不得扩展为产品功能开发，不改变长期角色合同。Step 9 完成后可删除该 workspace。
 
 ---
 
@@ -577,7 +775,9 @@ Step 5：可双击的一键构建入口与 Orchestration                        
 Step 6：严格打包门禁与 post-build smoke                              已完成
 Step 7：模型下载完整性、失败恢复与重试                                已完成
 Step 8：新机器 Clean-machine App / Model / Microphone / Transcription E2E 已完成 / PASS
-Step 9：普通用户 GitHub Release ZIP 验收                              ACTIVE
+Step 9A：正式 Release ZIP 生成与本地验证入口                         ACTIVE
+Step 9B：实际 GitHub Release 发布                                    PENDING
+Step 9C：人工 Release 下载 / ordinary-user / same-artifact 验收       PENDING
 ```
 
 Deployment Developer MVP 暂停点已经达到：
@@ -588,27 +788,27 @@ Step 8 PASS
 -> 可以恢复 llm-sidecar-phase1 开发
 ```
 
-Step 9 及 Developer ID / Notarization / DMG / GitHub Actions 属于后续 Release 路线，不无限阻塞 LLM。
+Step 9 完成后，若用户选择继续产品 polish，应新建独立 Product / UX task 文档；Developer ID / Notarization / DMG / GitHub Actions 继续作为 Release polish 管理，除非 Step 9C 实证其为 blocker。
 
 ---
 
 ## 9. 下一步执行提示
 
-继续 `main` Deployment 时只执行 Step 9：
+继续 `main` Deployment 时只执行 Step 9A：
 
 ```text
-1. 在 Developer / Reference Machine pull 当前 main，确认 main + clean worktree
-2. 读取 deployment_static.md / deployment_runtime.md / PACKAGING.md / README.md
-3. 先审查 repo 现有 Release ZIP / release artifact 生成方式，不假设已有或缺失
-4. 若已存在正式 ZIP 入口：验证它只打包完整 App，不打包模型/开发环境，并检查解压后 Runtime 完整性
-5. 若不存在：设计并实现最小可复现 ZIP 生成入口，一个 Step 一个 commit，不改稳定 ASR 主链路
-6. push main 后，在 Acceptance Machine 从 GitHub Release 实际下载同一 ZIP artifact
-7. ordinary-user 路径：解压 -> 双击 App -> Model Manager -> audio permission -> Start -> 非空转写 -> Stop -> evidence layer
-8. 记录 Gatekeeper / quarantine / signing 实际行为；只有成为普通用户路径 blocker 时才升级 Developer ID/notarization
-9. Codex 默认只读取 deployment_runtime.md，不主动修改；实现后由 ChatGPT / 人工审核再更新 runtime
+1. 在 M4 Max 创建一次性 fresh release-engineering workspace，不复用 Step 8 clean clone
+2. fresh clone 当前 main；确认 main + clean worktree + HEAD == origin/main
+3. 读取 deployment_static.md / deployment_runtime.md / PACKAGING.md / README.md
+4. 审查当前 repo 是否已有正式 Release ZIP 入口；若等价能力已存在则复用，不重复造轮子
+5. 若缺失，只实现最小 release ZIP 生成 + extracted-App verification + tests/docs
+6. 产品实现与 ASR/UI/Model Manager 视为冻结，不处理 UX/Product backlog
+7. 正式 build 必须继续经过现有 Step 6 packaged Runtime hard gate
+8. ZIP 解压到 source tree 外重新验证；记录 filename / bytes / SHA-256 / source commit
+9. Step 9A 不创建 tag、不创建 GitHub Release、不上传正式 asset
+10. tests + git diff --check PASS 后一个 commit push main
+11. Codex 默认不修改 deployment_runtime.md；由 ChatGPT / 人工审核后推进 9B
 ```
-
-若用户选择先恢复 LLM，可直接切回 `llm-sidecar-phase1`；Step 9 保持 Deployment ACTIVE，不与 LLM runtime 混用。
 
 ---
 
@@ -625,6 +825,7 @@ Step 9 及 Developer ID / Notarization / DMG / GitHub Actions 属于后续 Relea
 6. README.md
 7. docs/工程细节.md
 8. Step 8 M4 clean-machine / M4+M5 Metal runtime / M5 regression 实测证据
+9. Step 9A/B/C release artifact 证据（形成后）
 ```
 
 恢复 LLM：
