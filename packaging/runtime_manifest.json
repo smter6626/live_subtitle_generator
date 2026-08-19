@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "status": "bootstrap-source",
+  "status": "packaged-runtime-gated",
   "frozen": {
     "platform": {
       "os": "macOS",
@@ -169,6 +169,7 @@
         "required": true,
         "source_path": "external/whisper.cpp/build/bin/whisper-cli",
         "expected_filename": "whisper-cli",
+        "bundle_filename": "whisper-cli",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
@@ -177,6 +178,7 @@
         "required": true,
         "source_path": "external/whisper.cpp/build/src/libwhisper.1.dylib",
         "abi_filename": "libwhisper.1.dylib",
+        "bundle_filename": "libwhisper.1.dylib",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
@@ -185,6 +187,7 @@
         "required": true,
         "source_path": "external/whisper.cpp/build/ggml/src/libggml.0.dylib",
         "abi_filename": "libggml.0.dylib",
+        "bundle_filename": "libggml.0.dylib",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
@@ -193,6 +196,7 @@
         "required": true,
         "source_path": "external/whisper.cpp/build/ggml/src/libggml-base.0.dylib",
         "abi_filename": "libggml-base.0.dylib",
+        "bundle_filename": "libggml-base.0.dylib",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
@@ -201,6 +205,7 @@
         "required": true,
         "source_path": "external/whisper.cpp/build/ggml/src/libggml-cpu.0.dylib",
         "abi_filename": "libggml-cpu.0.dylib",
+        "bundle_filename": "libggml-cpu.0.dylib",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
@@ -209,6 +214,7 @@
         "required": true,
         "source_path": "external/whisper.cpp/build/ggml/src/ggml-blas/libggml-blas.0.dylib",
         "abi_filename": "libggml-blas.0.dylib",
+        "bundle_filename": "libggml-blas.0.dylib",
         "bundle_directory": "Contents/Resources/bin"
       },
       {
@@ -217,6 +223,7 @@
         "required": true,
         "source_path": "external/whisper.cpp/build/ggml/src/ggml-metal/libggml-metal.0.dylib",
         "abi_filename": "libggml-metal.0.dylib",
+        "bundle_filename": "libggml-metal.0.dylib",
         "bundle_directory": "Contents/Resources/bin"
       }
     ],
@@ -237,6 +244,23 @@
       "dynamic_library_directory": "Contents/Resources/bin",
       "model_downloader_target": "Contents/Resources/bin/download-ggml-model.sh",
       "resource_resolution_contract_path": "resource_paths.py"
+    },
+    "packaged_runtime": {
+      "packaging_helper_path": "scripts/package_runtime.py",
+      "verifier_path": "scripts/verify_packaged_runtime.py",
+      "runtime_rpath": "@loader_path",
+      "dependency_reference_style": "@rpath/<Manifest bundle_filename>",
+      "allowed_system_dependency_prefixes": [
+        "/usr/lib/",
+        "/System/Library/"
+      ],
+      "isolated_runtime_smoke_required": true,
+      "source_tree_dependency_allowed": false,
+      "ad_hoc_codesign": {
+        "required_after_runtime_normalization": true,
+        "verification_required": true,
+        "developer_id_required": false
+      }
     },
     "build_fail_fast": [
       "Python environment is missing",
@@ -259,7 +283,7 @@
       "release_build_script_path": "scripts/build_macos.sh",
       "expected_app_path": "dist/ClassroomTranscriber.app",
       "orchestration_policy": "run the formal Python bootstrap, run the pinned whisper Runtime bootstrap, then inject the formal project Python into the existing Release build",
-      "validation_boundary": "Step 5 requires a generated App and basic bundle structure; strict packaged Runtime closure and smoke remain Step 6"
+      "validation_boundary": "Build PASS requires the Step 6 packaged Runtime verifier after Runtime normalization and ad-hoc signing"
     },
     "release": {
       "artifact_name_template": "ClassroomTranscriber-<version>-macOS-AppleSilicon.zip",

@@ -1,15 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from pathlib import Path
+import json
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(SPECPATH).resolve().parent
-
-
-def existing_resource(relative_path, destination):
-    source = ROOT / relative_path
-    if source.exists():
-        return (str(source), destination)
-    return None
 
 
 def required_resource(relative_path, destination):
@@ -19,20 +13,27 @@ def required_resource(relative_path, destination):
     return (str(source), destination)
 
 
-resource_specs = [
-    ("external/whisper.cpp/build/bin/whisper-cli", "bin"),
-    ("external/whisper.cpp/build/src/libwhisper.1.dylib", "bin"),
-    ("external/whisper.cpp/build/ggml/src/libggml.0.dylib", "bin"),
-    ("external/whisper.cpp/build/ggml/src/libggml-cpu.0.dylib", "bin"),
-    ("external/whisper.cpp/build/ggml/src/ggml-blas/libggml-blas.0.dylib", "bin"),
-    ("external/whisper.cpp/build/ggml/src/ggml-metal/libggml-metal.0.dylib", "bin"),
-    ("external/whisper.cpp/build/ggml/src/libggml-base.0.dylib", "bin"),
+def pyinstaller_destination(bundle_path):
+    relative = PurePosixPath(bundle_path).relative_to("Contents/Resources")
+    return relative.as_posix()
+
+
+manifest = json.loads((ROOT / "packaging/runtime_manifest.json").read_text())
+datas = [
+    required_resource(
+        component["source_path"],
+        pyinstaller_destination(component["bundle_directory"]),
+    )
+    for component in manifest["frozen"]["runtime_components"]
+    if component["required"] is True
 ]
-datas = [required_resource("vendor/whisper.cpp/download-ggml-model.sh", "bin")]
 datas.extend(
-    resource
-    for resource in (existing_resource(path, destination) for path, destination in resource_specs)
-    if resource is not None
+    required_resource(
+        resource["repository_path"],
+        pyinstaller_destination(str(PurePosixPath(resource["bundle_target"]).parent)),
+    )
+    for resource in manifest["frozen"]["vendored_resources"]
+    if resource["required"] is True
 )
 
 

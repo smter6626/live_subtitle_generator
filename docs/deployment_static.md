@@ -333,7 +333,7 @@ Warning 后继续生成残缺 App
 Build complete 但无法实际转录
 ```
 
-PyInstaller Spec、Build Script 和 Runtime Manifest 最终应共享同一套 Runtime 事实源，避免多处独立硬编码后漂移。
+PyInstaller Spec、Build Script、packaged Runtime helper / verifier 和 Runtime Manifest 共享同一套 required Runtime 事实源，避免多处独立硬编码后漂移。正式 Release build 只在 App 内组件、arm64、Mach-O dependency closure、下载脚本、ad-hoc 签名和 bundled/isolated CLI smoke 全部通过后报告成功。
 
 ---
 
@@ -484,7 +484,7 @@ Pending decisions
 
 的稳定事实源。
 
-Manifest 的 Python、CMake、whisper.cpp Build Profile 与正式开发者构建入口已经被 Bootstrap、orchestrator 和测试消费；PyInstaller Spec 与严格 post-build gate 仍在后续逐步接入。
+Manifest 的 Python、CMake、whisper.cpp Build Profile、正式开发者构建入口和 Runtime component / bundle contract 已被 Bootstrap、orchestrator、PyInstaller Spec、packaging helper、严格 post-build verifier 与测试消费。
 
 Manifest 不得包含：
 

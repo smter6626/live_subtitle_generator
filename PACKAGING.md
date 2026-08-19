@@ -27,7 +27,7 @@ An ordinary user must not install or configure Git, Python, pip, uv, a virtual e
 - `observed`: evidence read from the successful old-machine build without preserving machine-specific paths;
 - `pending`: values that a later Step must determine from evidence.
 
-The Python and whisper.cpp source-build contracts are implemented by their bootstrap scripts and tests. The whisper Runtime bootstrap consumes the Manifest Build Profile directly, and the Step 5 developer build entry paths and interpreter injection are also recorded in the Manifest. Existing App build scripts and PyInstaller specs do not yet consume the Runtime component contract.
+The Python and whisper.cpp source-build contracts are implemented by their bootstrap scripts and tests. The whisper Runtime bootstrap consumes the Manifest Build Profile directly. The Release and Debug specs, Runtime source preflight, packaged-copy normalization, and post-build verifier consume the same Manifest component and bundle records, so the required Runtime list is not duplicated across packaging stages.
 
 ## Python environment
 
@@ -69,9 +69,9 @@ libggml-blas
 libggml-metal
 ```
 
-Logical component names are separate from the old build's observed ABI filenames in the manifest. Later builds must validate the actual dependency closure with `otool`.
+Logical component names are separate from the old build's observed ABI filenames in the manifest. The final packaged-copy gate validates their actual dependency closure with `otool`.
 
-Step 2 preserves the current layout:
+The existing bundle layout remains:
 
 ```text
 ClassroomTranscriber.app/Contents/Resources/bin/
@@ -84,6 +84,8 @@ ClassroomTranscriber.app/Contents/Resources/bin/
 
 A formal Release build must fail when the Python environment or a critical package is missing, a required Runtime component is absent, a binary has the wrong architecture, RPath/dependency closure is incomplete, the vendored downloader is absent, or the post-build Runtime smoke fails. It must not emit a nominally complete but non-transcribing App after a warning.
 
+`scripts/package_runtime.py` performs a strict Manifest-driven source preflight and normalizes only the Runtime copies inside the completed App: dylib install names and declared dependencies use `@rpath/<ABI filename>`, and every required component has the sole Runtime RPath `@loader_path`. The build then applies required ad-hoc signing and invokes `scripts/verify_packaged_runtime.py`. The verifier checks components, permissions, arm64-only Mach-O identity, semantic dependency closure, allowed system-library boundaries, downloader syntax, signature validity, bundled CLI smoke, and a second smoke from an isolated temporary Runtime directory. Any failure is nonzero and occurs before the build reports completion.
+
 ## One-entry developer build
 
 The formal source-build chain is:
@@ -94,14 +96,16 @@ Build ClassroomTranscriber.command
 -> scripts/bootstrap_python_env.sh
 -> scripts/bootstrap_whisper_runtime.sh
 -> PYTHON=.venv/bin/python scripts/build_macos.sh
+-> Manifest source preflight / packaged-copy normalization / ad-hoc signing
+-> scripts/verify_packaged_runtime.py
 -> dist/ClassroomTranscriber.app
 ```
 
-The `.command` file only resolves the repository and transfers control. The orchestrator propagates failures and performs a basic App/bundle structure check. It deliberately retains the current Release build and Spec behavior; strict packaged Runtime closure, final RPath validation, codesign policy, and bundled CLI smoke remain Step 6.
+The `.command` file only resolves the repository and transfers control. The orchestrator propagates failures and performs a basic App/bundle structure check. The Release build itself owns the strict packaged Runtime gate, so the formal one-entry flow cannot report success before verification passes. Ad-hoc signing is only the current development-bundle integrity step; Developer ID and notarization remain pending release work.
 
 ## Work still pending
 
-The locked Python environment, whisper Runtime bootstrap, and one-entry developer build orchestration are present. Their audit state is tracked separately. The project has not yet added strict packaging gates, hardened model downloads, or performed clean-machine acceptance and real transcription E2E.
+The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, and strict packaged Runtime gate are present. Their audit state is tracked separately. The project has not yet hardened model downloads or performed clean-machine acceptance and real transcription E2E.
 
 The remaining implementation sequence is:
 
@@ -109,7 +113,7 @@ The remaining implementation sequence is:
 Step 3  Rebuildable locked Python environment (implemented; audit status is tracked separately)
 Step 4  Pinned whisper.cpp Runtime bootstrap (implementation supplied; audit status is tracked separately)
 Step 5  Double-click build entry and orchestration (implemented; audit status is tracked separately)
-Step 6  Strict packaging gates and post-build Runtime smoke
+Step 6  Strict packaging gates and post-build Runtime smoke (implemented; audit status is tracked separately)
 Step 7  Model download integrity, recovery, and retry
 Step 8  Fresh Clone -> App -> real transcription acceptance
 ```

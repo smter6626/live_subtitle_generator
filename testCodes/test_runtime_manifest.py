@@ -58,7 +58,7 @@ class RuntimeManifestContractTests(unittest.TestCase):
         for section in ("frozen", "observed", "pending"):
             self.assertIn(section, self.manifest)
             self.assertIsInstance(self.manifest[section], dict)
-        self.assertEqual(self.manifest.get("status"), "bootstrap-source")
+        self.assertEqual(self.manifest.get("status"), "packaged-runtime-gated")
 
     def test_platform_is_macos_arm64(self):
         platform = self.manifest["frozen"]["platform"]
@@ -284,6 +284,37 @@ class RuntimeManifestContractTests(unittest.TestCase):
             {
                 artifact["component"]: artifact["source_path"]
                 for artifact in artifacts
+            },
+        )
+
+    def test_packaged_runtime_gate_is_frozen_and_manifest_driven(self):
+        packaged = self.manifest["frozen"]["packaged_runtime"]
+        self.assertEqual(packaged["runtime_rpath"], "@loader_path")
+        self.assertEqual(
+            packaged["allowed_system_dependency_prefixes"],
+            ["/usr/lib/", "/System/Library/"],
+        )
+        self.assertTrue(packaged["isolated_runtime_smoke_required"])
+        self.assertFalse(packaged["source_tree_dependency_allowed"])
+        self.assertTrue(
+            packaged["ad_hoc_codesign"]["required_after_runtime_normalization"]
+        )
+        self.assertFalse(packaged["ad_hoc_codesign"]["developer_id_required"])
+        for path_key in ("packaging_helper_path", "verifier_path"):
+            path = REPO_ROOT / packaged[path_key]
+            self.assertTrue(path.is_file())
+
+        components = self.manifest["frozen"]["runtime_components"]
+        self.assertEqual(
+            {component["bundle_filename"] for component in components},
+            {
+                "whisper-cli",
+                "libwhisper.1.dylib",
+                "libggml.0.dylib",
+                "libggml-base.0.dylib",
+                "libggml-cpu.0.dylib",
+                "libggml-blas.0.dylib",
+                "libggml-metal.0.dylib",
             },
         )
 

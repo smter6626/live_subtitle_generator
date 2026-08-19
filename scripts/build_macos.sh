@@ -7,6 +7,8 @@ cd "$ROOT_DIR"
 APP_PATH="dist/ClassroomTranscriber.app"
 SPEC_PATH="packaging/ClassroomTranscriber.spec"
 DOWNLOAD_SCRIPT="vendor/whisper.cpp/download-ggml-model.sh"
+PACKAGE_RUNTIME_HELPER="scripts/package_runtime.py"
+PACKAGED_RUNTIME_VERIFIER="scripts/verify_packaged_runtime.py"
 
 python_exists() {
   [[ -x "$1" ]] || command -v "$1" >/dev/null 2>&1
@@ -86,45 +88,39 @@ if ! sh -n "$DOWNLOAD_SCRIPT"; then
   exit 1
 fi
 
-if [[ ! -x "external/whisper.cpp/build/bin/whisper-cli" ]]; then
-  echo "Warning: whisper-cli was not found or is not executable."
-  echo "Expected: external/whisper.cpp/build/bin/whisper-cli"
-  echo "The app will still build, but packaged whisper-cli may be missing."
-fi
+[[ -f "$PACKAGE_RUNTIME_HELPER" ]] || {
+  echo "Packaging Runtime helper not found: $PACKAGE_RUNTIME_HELPER"
+  exit 1
+}
+[[ -f "$PACKAGED_RUNTIME_VERIFIER" ]] || {
+  echo "Packaged Runtime verifier not found: $PACKAGED_RUNTIME_VERIFIER"
+  exit 1
+}
+for required_tool in file otool install_name_tool codesign; do
+  command -v "$required_tool" >/dev/null 2>&1 || {
+    echo "Required macOS packaging tool not found: $required_tool"
+    exit 1
+  }
+done
+
+echo "Validating required Manifest Runtime sources..."
+"$PYTHON_BIN" "$PACKAGE_RUNTIME_HELPER" validate-sources
 
 echo "Cleaning old build artifacts..."
 rm -rf build dist
 
 echo "Building ClassroomTranscriber.app with PyInstaller..."
-"$PYTHON_BIN" -m PyInstaller "$SPEC_PATH" --noconfirm --clean
+"$PYTHON_BIN" -m PyInstaller "$SPEC_PATH" --noconfirm --clean --log-level WARN
+echo "PyInstaller build PASS"
 
-BIN_DIR="$APP_PATH/Contents/Resources/bin"
-BUNDLED_DOWNLOAD_SCRIPT="$BIN_DIR/download-ggml-model.sh"
-if [[ ! -f "$BUNDLED_DOWNLOAD_SCRIPT" ]]; then
-  echo "Packaged model download script not found: $BUNDLED_DOWNLOAD_SCRIPT"
-  exit 1
-fi
-chmod +x "$BUNDLED_DOWNLOAD_SCRIPT"
+echo "Normalizing packaged Runtime install names and RPaths..."
+"$PYTHON_BIN" "$PACKAGE_RUNTIME_HELPER" normalize-app "$APP_PATH"
 
-if [[ -d "$BIN_DIR" ]]; then
-  chmod +x "$BIN_DIR/whisper-cli" 2>/dev/null || true
+echo "Applying required ad-hoc codesign after Runtime normalization..."
+codesign --force --deep --sign - "$APP_PATH"
 
-  if [[ -x "$BIN_DIR/whisper-cli" ]]; then
-    install_name_tool -add_rpath "@executable_path" "$BIN_DIR/whisper-cli" 2>/dev/null || true
-  fi
-
-  for dylib in "$BIN_DIR"/*.dylib; do
-    [[ -e "$dylib" ]] || continue
-    install_name_tool -add_rpath "@loader_path" "$dylib" 2>/dev/null || true
-  done
-fi
-
-if command -v codesign >/dev/null 2>&1 && [[ -d "$APP_PATH" ]]; then
-  echo "Applying ad-hoc codesign..."
-  codesign --force --deep --sign - "$APP_PATH" || {
-    echo "Warning: ad-hoc codesign failed. The app was still built at $APP_PATH"
-  }
-fi
+echo "Verifying final packaged Runtime..."
+"$PYTHON_BIN" "$PACKAGED_RUNTIME_VERIFIER" "$APP_PATH"
 
 echo
 echo "Build complete:"
