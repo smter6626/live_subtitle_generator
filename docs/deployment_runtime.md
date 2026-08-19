@@ -1,6 +1,6 @@
 # deployment_runtime.md
 
-最后更新：2026-08-17  
+最后更新：2026-08-18  
 文档角色：Deployment 工作线动态执行状态（runtime state）
 
 本文件只记录 Classroom Live Transcriber 在 `main` 分支上的 deployment / packaging / clean-machine reproducibility / bugfix 执行状态。
@@ -38,10 +38,10 @@ Codex 执行当前 Step
 
 ```text
 当前分支：main
-当前实现 checkpoint：cc4d3bde05c110e14bac8185e3485a70ddb98565
-checkpoint 内容：chore: add reproducible whisper runtime bootstrap
+当前实现 checkpoint：fdefbc10e945f693def35d9896e0101c6f766b00
+checkpoint 内容：chore: add one-click build orchestration
 当前工作线：Deployment / Packaging / Reproducibility / Bugfix
-唯一 ACTIVE：Deployment Step 5 - 可双击的一键构建入口与 Orchestration
+唯一 ACTIVE：Deployment Step 6 - 严格打包门禁与 post-build Runtime smoke
 ```
 
 当前一句话目标：
@@ -234,102 +234,162 @@ GitHub 审核确认该 commit 相对 Step 4 runtime checkpoint ahead 1 / behind 
 
 ---
 
-## 3. 当前唯一 ACTIVE Step
+### Deployment Step 5：可双击的一键构建入口与 Orchestration
+
+状态：已完成，并经 GitHub 实际实现审核通过。
+
+实现 commit：
 
 ```text
-ACTIVE: Deployment Step 5 - 可双击的一键构建入口与 Orchestration
+fdefbc10e945f693def35d9896e0101c6f766b00
+chore: add one-click build orchestration
 ```
 
-### 3.1 目标
-
-把已经可独立重建的 Python 环境与 whisper Runtime 串成正式源码构建主入口，使开发者从 Fresh Clone 后只需要启动一个入口即可得到 `ClassroomTranscriber.app`。
-
-正式调用链目标：
+正式调用链：
 
 ```text
 Build ClassroomTranscriber.command
 -> scripts/bootstrap_and_build.sh
 -> scripts/bootstrap_python_env.sh
 -> scripts/bootstrap_whisper_runtime.sh
--> 使用正式 .venv/bin/python 执行现有 macOS Release build
+-> PYTHON=.venv/bin/python scripts/build_macos.sh
 -> dist/ClassroomTranscriber.app
 ```
 
-`.command` 只做 Finder thin wrapper；全部可测试逻辑必须位于 `scripts/bootstrap_and_build.sh`。
+正式仓库产物：
 
-### 3.2 Step 5 预期工作
+```text
+Build ClassroomTranscriber.command
+scripts/bootstrap_and_build.sh
+testCodes/test_build_orchestration.py
+```
 
-1. 创建仓库根目录 `Build ClassroomTranscriber.command`，设置可执行位，能够从 Finder 双击进入正式构建流程；
-2. 创建 `scripts/bootstrap_and_build.sh`，使用 `set -euo pipefail`、仓库相对路径，并正确处理路径空格；
-3. Orchestrator 必须按固定顺序调用 Python bootstrap、whisper Runtime bootstrap，再进入现有 Release build；
-4. 正式 build interpreter 必须明确为 `.venv/bin/python`，不得重新回退到历史 `venv/`、Conda、Homebrew 或系统 Python；
-5. 优先利用现有 `scripts/build_macos.sh` 已支持的 `PYTHON` override，将 `.venv/bin/python` 显式传入，而不是在 Step 5 顺带重写 packaging 逻辑；
-6. 保留 `scripts/build_macos.sh` / PyInstaller Spec 当前 packaging 行为的 Step 6 边界：Step 5 的职责是 orchestration，不在本 Step 完成 strict Runtime gate / final dependency closure；
-7. 入口失败必须传播非零退出码并打印可理解阶段信息，不允许前序 bootstrap 失败后继续构建；
-8. 成功后必须明确打印最终 App 路径；
-9. 创建 orchestration contract/unit test，验证 wrapper、调用顺序、正式 Python injection、路径处理和禁止旧 venv fallback；
-10. 在旧开发机实际运行正式 orchestrator，完成至少一次真实 PyInstaller App build；
-11. 使用 throwaway clean repo 从无 `.venv`、无 `.tools`、无 `external/` 的状态执行正式 orchestrator，并确认能够生成 App；
-12. 不在本 Step 做模型下载、麦克风录音、新机器完整 E2E 或 LLM 工作。
+同时最小同步 Runtime Manifest、PACKAGING、README、deployment static 与工程文档；未修改 `scripts/build_macos.sh`、ASR 主链路、模型下载或 LLM。
 
-### 3.3 Step 5 验收方向
+GitHub 审核确认：
+
+- commit 相对 Step 5 runtime checkpoint ahead 1 / behind 0；
+- 修改范围仅为 8 个 Step 5 entry / orchestration / test / manifest / doc 文件；
+- `.command` 仅解析 repo root，并以 `exec` 将控制权交给 orchestrator；
+- orchestrator 按固定顺序调用 Python bootstrap、whisper Runtime bootstrap、Release build；
+- Release build 通过 `PYTHON=<repo>/.venv/bin/python` 显式使用正式 Python，不重新依赖历史 `venv/` / Conda / Homebrew Python；
+- orchestrator 使用 `set -euo pipefail` 并传播失败；
+- 成功后检查 App、Contents、Resources 和主 executable 基本结构；
+- orchestration tests 验证 executable bit、thin wrapper、调用顺序、正式 Python injection、repo-relative path，以及不提前加入 Step 6 的 `otool/install_name_tool/codesign` gate。
+
+实施验证：
+
+```text
+主工作区正式 orchestrator                            PASS
+生成 dist/ClassroomTranscriber.app                   PASS
+第二次 / idempotent orchestration                    PASS
+throwaway Fresh Clone / 无 .venv/.tools/external     PASS
+.command shell 等价调用（主工作区 + throwaway）       PASS
+联合 unittest                                         PASS / 36 tests
+git diff --check                                      PASS
+```
+
+远程模式没有声称 Finder GUI 真实双击已验收；当前仅验证 `.command` 可执行位与 shell 等价调用。
+
+---
+
+## 3. 当前唯一 ACTIVE Step
+
+```text
+ACTIVE: Deployment Step 6 - 严格打包门禁与 post-build Runtime smoke
+```
+
+### 3.1 目标
+
+把 Step 5 已能“生成 App”的正式构建流程升级为“只有 Runtime 完整、架构正确、动态链接闭包可在 App bundle 内成立时才允许 Build PASS”。
+
+本 Step 解决的是最终 App Packaging 完整性，不改变 ASR 算法，也不处理模型下载完整性。
+
+### 3.2 Step 6 预期工作
+
+1. 审查当前 Release Spec、`scripts/build_macos.sh`、Runtime Manifest 与实际 `dist/ClassroomTranscriber.app` 布局，先以当前代码为事实，不凭文档猜 bundle 结构；
+2. 让正式 Packaging 对 Manifest 中所有 required Runtime component 执行 Fail Fast，不再允许缺 CLI / dylib 后 Warning 或 optional skip 继续生成名义 App；
+3. 尽量让 Runtime component source / bundle target 由 `packaging/runtime_manifest.json` 驱动，避免 Spec、build script、验证脚本维护多份独立硬编码文件列表；
+4. 对最终 App 内 `whisper-cli` 和 required dylib 验证文件存在、可执行/可读、Mach-O arm64 架构；
+5. 通过 `otool -L` / `otool -l` 建立最终 App dependency closure / RPath gate，禁止 packaged Runtime 依赖旧 `external/whisper.cpp/build` 或其他开发机绝对路径；
+6. 对 bundle 内 Runtime 做必要且最小的 install-name / RPath 处理，并使处理失败成为明确失败，不再用 `|| true` 静默吞掉关键错误；
+7. 建立 packaged `whisper-cli` 无模型 smoke（优先沿用 Manifest 的 `--help` 合同或经实际验证的等价命令），必须从 App bundle 内路径直接启动并退出 0；
+8. 验证 vendored model downloader 确实进入正式 bundle 且保持可用；
+9. 建立一个明确的 post-build verifier / test surface，使 `scripts/build_macos.sh` 或正式 orchestrator 在报告成功前必须通过该 verifier；
+10. 在旧开发机和 throwaway Fresh Clone one-entry flow 中实际执行完整 build + post-build gate；
+11. 不在本 Step 下载模型、不做麦克风真实转录、不做新机器完整 E2E、不进入 LLM 工作。
+
+### 3.3 Step 6 验收方向
 
 至少证明：
 
 ```text
-Fresh Clone / 无 .venv / 无 .tools / 无 external
--> 一个正式构建入口
--> Python bootstrap
--> whisper Runtime bootstrap
--> PyInstaller Release build
--> dist/ClassroomTranscriber.app 存在
+Fresh Clone
+-> 正式 one-entry build
+-> App 生成
+-> required Runtime 全部进入 bundle
+-> CLI / dylib arm64
+-> packaged dependency closure 只依赖 bundle-relative / 系统合法路径
+-> packaged whisper-cli no-model smoke PASS
+-> vendored downloader 存在
+-> post-build verifier PASS
+-> Build 才允许报告成功
 ```
 
-当前 Step 5 只证明“正式入口可以完成构建编排并生成 App”。
-
-以下仍明确属于 Step 6，而不是 Step 5 PASS 的必要条件：
+反向失败测试至少覆盖：
 
 ```text
-Spec 将所有 Runtime 从 optional 改为 required
-缺 whisper-cli / dylib 时严格 Fail Fast
-install_name_tool 错误不再被吞掉
-最终 App 内 arm64 / dylib closure / RPath gate
-post-build bundled whisper-cli smoke
-完整 packaging completeness 判定
+缺一个 required Runtime component -> build FAIL
+错误 / 非法 dependency path -> verify FAIL
+缺 bundled downloader -> verify FAIL
+packaged CLI smoke 非零 -> verify FAIL
 ```
 
-Step 5 commit + push 后仍由人工 / ChatGPT 基于 GitHub 实现与测试审核；审核通过后才激活 Step 6。
+具体测试注入方式根据当前代码实现选择，避免破坏旧开发机 reference Runtime。
+
+### 3.4 Step 6 边界
+
+本 Step不做：
+
+```text
+模型 checksum / atomic download / retry
+真实模型下载
+真实麦克风录音与转录
+新机器 Fresh Clone E2E
+GitHub Release ZIP acceptance
+Developer ID / notarization / DMG polish
+ASR 主链路修改
+LLM 开发
+```
+
+Ad-hoc codesign 当前只作为现有构建行为存在。其失败是否属于 Step 6 hard gate，先以“Runtime completeness 是否依赖该签名步骤”为依据审查当前代码和产物后再定，不要在没有证据时扩大到正式 Developer ID / notarization 范围。
 
 ---
 
 ## 4. 当前为简化而保留、后续可能产生影响的内容
 
-1. 第一版冻结 `GGML_NATIVE=ON`；当前旧开发机 bootstrap 已 PASS，但不同 Apple Silicon 代际 portability 仍必须在 M4 Max / M5 实际验收。
+1. 第一版冻结 `GGML_NATIVE=ON`；旧开发机与 throwaway source build 已 PASS，但不同 Apple Silicon 代际 portability 仍必须在 M4 Max / M5 实际验收。
 2. 正式 `GGML_OPENMP=OFF` 已解决 host OpenMP availability 漂移；旧 `requested ON / effective OFF` 继续作为历史证据保留。
-3. Step 4 source Runtime 允许当前 build tree absolute LC_RPATH；最终 App 不得依赖这些路径，Step 6 必须建立 final bundle dependency closure / RPath gate。
-4. 第一版沿用 `Contents/Resources/bin/` Bundle Runtime 布局，不在当前阶段重构目录。
-5. 当前 Runtime component 集合以 pinned build 为合同基线；Step 6 仍必须通过最终 App 的 `otool -L` closure 验证实际 bundle 完整性。
-6. Python 合同同时保留历史 broad floor `>=3.11` 与正式 managed environment `3.12.14 / >=3.12,<3.13`；实际可复现构建环境以 3.12.14 为准。
-7. Source-build bootstrap 依赖 macOS host 提供 `git/curl/tar/shasum/xcrun/clang/make/file/otool` 和 Apple Command Line Tools；旧机 / throwaway 已验证，最终 clean-machine 仍需确认无需额外人工技术修补。普通 Release 用户不承担这些 source-build prerequisites。
-8. Step 5 将继续复用现有 `build_macos.sh` 与 Spec 的非严格 packaging 行为以保持任务边界；因此 Step 5 生成 App 不等于最终 Packaging 完整性 PASS，严格门禁属于 Step 6。
-9. 当前普通用户最小发布形式为 ZIP + `.app`，暂不要求 Developer ID / Notarization / DMG。
-10. 远程自动化可以验证 `.command` 文件、可执行位及其 shell 等价调用；真实 Finder 双击交互仍需在后续本机 / clean-machine 验收中确认，不因远程 shell 调用自动视为 Finder UX 已实际验证。
+3. Step 4 source Runtime 允许 build-tree absolute LC_RPATH；Step 6 必须保证最终 App 不再依赖这些 source-build 绝对路径。
+4. 第一版继续沿用 `Contents/Resources/bin/` Runtime 布局；Step 6 优先在现有布局内建立严格 closure，不为目录美化做额外迁移。
+5. Python 合同同时保留历史 broad floor `>=3.11` 与正式 managed environment `3.12.14 / >=3.12,<3.13`；实际可复现构建环境以 3.12.14 为准。
+6. Source-build 仍依赖 Git、网络、Apple Command Line Tools 与 macOS host 工具；普通 Release 用户不承担这些源码构建前提。
+7. Finder GUI 双击尚未在 remote 模式真实验收；Step 5 仅证明 `.command` shell 等价调用。该项继续留到本机 / clean-machine acceptance。
+8. Step 5 已证明“Fresh Clone 可以生成 App”，但该 PASS 不代表当前 commit 的 packaged Runtime 已经完整；Step 6 正是关闭该缺口。
+9. 当前普通用户最小发布形式仍为 ZIP + `.app`，Developer ID / Notarization / DMG 不是 Deployment MVP blocker。
+10. 旧 `test_pseudo_real_chunk_sequences.py` 的 pseudo-oral 期望失败输出仍是既有非阻塞项，不归 Deployment Step 6 修复。
 
 ---
 
 ## 5. 当前未敲定参数
 
 ```text
-# Step 5
-Build ClassroomTranscriber.command 的最小 Finder wrapper 行为
-bootstrap_and_build.sh 的阶段日志 / 失败展示细节
-远程环境下 Finder 双击的实际交互验证方式
-
 # Step 6
-最终 App dependency closure / RPath gate 细节
-Runtime components 如何从 Manifest 驱动 Spec / build gate
-post-build bundled whisper-cli smoke 形式
-codesign failure 的正式 Build 判定边界
+最终 App 内 exact Runtime destination / symlink 处理（以实际 bundle 结构审计为准）
+Manifest 驱动 Spec / build / verifier 的具体接口
+final install-name / RPath 修复实现方式
+post-build verifier 的具体文件/入口形式
+ad-hoc codesign failure 的 hard-fail 边界
 
 # 后续
 minimum macOS（当前不承诺旧系统，保持未设置）
@@ -359,18 +419,19 @@ M4 / M5 支持声明必须分别有项目实际验证证据；M1 / M2 / M3 仅�
 
 ## 7. 当前已知 Failure Modes
 
-### Python / Orchestration
+### Orchestration
 
-- Python 与 whisper Runtime 已可分别重建，但尚无统一 `bootstrap_and_build.sh` 和 Finder `.command` 正式入口；Step 5 解决。
-- 当前 `build_macos.sh` 仍包含历史 interpreter selection fallback；Step 5 必须通过 orchestrator 显式注入 `.venv/bin/python`，后续是否进一步移除 fallback 可在不扩大风险时再治理。
+- Python bootstrap、Whisper Runtime bootstrap 与 Release build 已串成一个正式入口；主工作区与 throwaway Fresh Clone 均能生成 App。
+- Finder GUI 双击仍未在 remote 模式实际验证。
 
 ### Packaging
 
-- 缺 `whisper-cli` 当前仍只 Warning；Spec 对 CLI/dylib 仍使用 optional collection。
-- `install_name_tool` 部分错误仍被 `|| true` 吞掉。
-- 尚无最终 App 内 CLI / dylib / architecture / closure / RPath / dyld smoke。
-- source Runtime build tree 的绝对 RPath 尚未转换为正式 App bundle closure。
-- 这些都是 Step 6 的 ACTIVE-next 风险，不阻塞 Step 5 orchestration 本身。
+- 当前 Release Spec 对 whisper CLI / dylib 仍可 optional collection；缺 Runtime 可能不阻止 PyInstaller 生成 App。
+- `scripts/build_macos.sh` 对缺 whisper-cli 仍可能只 Warning。
+- `install_name_tool` 部分错误仍被忽略。
+- 当前尚无最终 App 内 CLI / dylib / architecture / dependency closure / RPath / dyld smoke 的统一 hard gate。
+- source Runtime build-tree absolute RPath 必须在最终 bundle 中消除其作为运行前提的影响。
+- 这些是当前 Step 6 的直接目标。
 
 ### Whisper Runtime
 
@@ -379,7 +440,7 @@ M4 / M5 支持声明必须分别有项目实际验证证据；M1 / M2 / M3 仅�
 
 ### 模型下载
 
-- 当前仍直接写最终 `.bin`；中断 / HTTP failure / partial file / retry / checksum 问题尚未解决。
+- 当前仍直接写最终 `.bin`；中断 / HTTP failure / partial file / retry / checksum 问题尚未解决，留 Step 7。
 
 ---
 
@@ -390,8 +451,8 @@ Step 1：Clean-machine Gap Audit                     已完成
 Step 2：部署合同与 Runtime Manifest                已完成
 Step 3：建立可重建的 Python 环境                   已完成
 Step 4：Whisper Runtime Bootstrap                   已完成
-Step 5：可双击的一键构建入口与 Orchestration       ACTIVE
-Step 6：严格打包门禁与 post-build smoke             待做
+Step 5：可双击的一键构建入口与 Orchestration       已完成
+Step 6：严格打包门禁与 post-build smoke             ACTIVE
 Step 7：模型下载完整性、失败恢复与重试               待做
 Step 8：新机器 Clone -> App -> 转录端到端验收         待做
 Step 9：普通用户 GitHub Release ZIP 验收              待做
@@ -417,13 +478,14 @@ Step 9 及 Developer ID / Notarization / DMG / GitHub Actions 属于后续 Relea
 1. 远程模式主动 git fetch + git pull --ff-only origin main
 2. 确认 main / clean worktree / HEAD == origin/main
 3. 读取 deployment_static.md / deployment_runtime.md / PACKAGING.md / runtime_manifest.json
-4. 检查 bootstrap_python_env.sh / bootstrap_whisper_runtime.sh / build_macos.sh / Release Spec
-5. 只执行 Deployment Step 5
+4. 审查 build_macos.sh / Release Spec / 当前 dist App 实际布局，不凭旧假设设计 final RPath
+5. 只执行 Deployment Step 6
 6. Codex 不修改 deployment_runtime.md
-7. Orchestrator 显式使用正式 .venv/bin/python，不复用旧 venv
-8. 允许实际 PyInstaller build；不把当前 App build 成功误报为 Step 6 packaging completeness PASS
-9. 实现、自检通过后一个 commit 并 push main
-10. 人工 / ChatGPT 审核后再推进 Step 6
+7. 先建立 packaged Runtime verifier，再将其接入正式 Build PASS 路径
+8. required Runtime 缺失或 closure/smoke 失败必须 fail fast
+9. 不下载模型、不做真实转录、不提前进入 Step 7
+10. 实现、自检通过后一个 commit 并 push main
+11. 人工 / ChatGPT 审核后再推进 Step 7
 ```
 
 ---
