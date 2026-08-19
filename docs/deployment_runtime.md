@@ -41,20 +41,24 @@ Codex 执行当前 Step
 当前实现 checkpoint：fa3652043993b3567a292876e8b5b148cdc09301
 checkpoint 内容：fix: harden model downloads
 当前工作线：Deployment / Packaging / Reproducibility / Bugfix
-唯一 ACTIVE：Deployment Step 8 - 新机器 Clean-machine App / Model / Microphone / Transcription E2E
+Deployment Step 8：PASS
+唯一 ACTIVE：Deployment Step 9 - 普通用户 GitHub Release ZIP 验收
 ```
 
 当前一句话目标：
 
 > **让符合硬件要求的 macOS Apple Silicon 机器无需手动配置开发或运行环境，仅需安装 App、下载模型，即可直接完成本地实时转录。**
 
-当前 Step 8 状态：
+当前状态：
 
 ```text
-M4 Max clean-machine 核心 E2E：PASS
+M4 Max clean-machine build / App / large-v3 / evidence E2E：PASS
 M4 Max packaged large-v3 Metal backend runtime evidence：PASS
-M5 当前 checkpoint 实机 App / transcription regression：PENDING
-Step 8：ACTIVE
+M5 current-checkpoint build / App / large-v3 / Chinese transcription regression：PASS
+M5 packaged large-v3 Metal backend runtime evidence：PASS
+M5 Stop -> Start / audio input reacquire：PASS
+Deployment Developer MVP：PASS
+Step 9：ACTIVE
 ```
 
 ---
@@ -246,19 +250,7 @@ models:
 
 Manifest 记录 exact size、SHA-256、upstream blob id、revision-pinned artifact URL 和 metadata API provenance。GitHub / upstream 审核确认 large-v3、large-v3-turbo、medium.en、small.en、base.en 的 SHA-256 与公开 Hugging Face artifact/LFS metadata 一致；实现未使用旧开发机模型文件作为 checksum authority。
 
-下载事务审核确认：
-
-- vendored upstream downloader 保持原样；
-- downloader 只在 `.classroom-model-download-*` 隐藏 staging 中运行；
-- downloader nonzero、缺输出、size mismatch、SHA mismatch 都不会 publish final；
-- 验证成功后 `os.replace` 发布 final，再原子写 contract + file-stat bound receipt；
-- existing final 有 current receipt 时快速复用；无 receipt 时在后台全量 size/SHA 验证后才能复用；
-- corrupt final 不 available、不 selected，并允许 retry 用 verified staging 原子替换；
-- stale managed staging 不会被 scan，retry 会自动清理；
-- 明确 Import 的 custom `.bin/.gguf` 保留独立 use-in-place 校验，不强制进入 downloadable checksum contract；
-- 网络下载和 SHA-256 继续在后台 daemon worker，不进入 Qt 主线程；失败恢复 UI controls 并允许再次下载。
-
-Packaging 审核确认 `model_manifest.json` 是 required App resource，source/frozen path 均由 `resource_paths.py` 解析；Step 6 strict Runtime verifier 继续 PASS，model binary 仍不进入 Git / App / Runtime components。
+下载事务审核确认：vendored upstream downloader 保持原样；downloader 只在 `.classroom-model-download-*` 隐藏 staging 中运行；nonzero、缺输出、size mismatch、SHA mismatch 均不得 publish final；验证成功后 `os.replace` 发布并原子写 receipt；无 receipt existing final 必须后台全量验证后才能复用；invalid final unavailable；retry 清理 managed stale staging；明确 Import 的 custom `.bin/.gguf` 继续走独立 local validation；网络下载和 SHA-256 均在后台 worker，不进入 Qt 主线程。
 
 实施验证：
 
@@ -271,62 +263,31 @@ Deployment unittest                                     PASS / 65
 正式 one-entry App build + Step 6 verifier              PASS
 model manifest packaged                                 PASS
 git diff --check                                        PASS
-真实大型模型自动下载                                    未执行（符合 Step 7 边界）
 ```
 
 Step 8 已补充真实大型模型证据：M4 Max clean-machine App 通过 Model Manager 实际下载并验证 `large-v3` 成功，可选择并用于真实转写。
 
 ---
 
-## 3. 当前唯一 ACTIVE Step
+### Deployment Step 8：新机器 Clean-machine App / Model / Microphone / Transcription E2E
 
-```text
-ACTIVE: Deployment Step 8 - 新机器 Clean-machine App / Model / Microphone / Transcription E2E
-```
+状态：**PASS / 已完成（2026-08-19）**。
 
-### 3.1 目标
+#### M4 Max Clean-machine acceptance
 
-在真实验收机上验证 Developer Deployment MVP：不靠旧开发机历史环境、不靠临时人工修补，从干净 `main` 的正式入口得到 App，再通过 App 自己完成模型获取与真实音频转写，最终生成完整 session evidence layer。
-
-Primary clean-machine acceptance target：
+Primary acceptance machine：
 
 ```text
 MacBook Pro / Apple M4 Max / 48 GB / 1 TB / macOS 27 Beta
 ```
 
-M5 Developer / Reference Machine 仍需做当前 checkpoint 的实际 App/runtime/ASR regression，用于形成 M5 当前 checkpoint 实际验证证据；但它不是 clean-machine 证据的替代品。
-
-### 3.2 Clean-machine 硬约束
-
-新 M4 Max 必须保持验收机角色。不得先手工准备或复制：
-
-```text
-项目 .venv / .tools
-external/whisper.cpp
-whisper-cli / dylib
-模型文件
-项目专用 CMake / Python 修补
-临时 PATH / DYLD 修补
-只存在于新机器本地的脚本或代码修改
-```
-
-允许的正常 host / OS 交互：Git clone 所需 Git、网络、Apple Command Line Tools（如正式源码构建入口确实需要并由系统正常提供/提示）、macOS Gatekeeper 正常提示、麦克风权限。
-
-任何为成功而额外执行、但没有进入正式项目流程的技术命令，默认视为 deployment bug：记录证据 -> 回旧开发机修正式流程 -> commit/push main -> 新机重新从干净状态验证。
-
-### 3.3 M4 Max Clean-machine 实测结果（2026-08-19）
-
-状态：**核心 E2E PASS**。
-
-实际验收路径：
+真实路径：
 
 ```text
 fresh clone main
 -> Finder 真实双击 Build ClassroomTranscriber.command
--> 自动下载并准备 uv 0.12.5
--> 自动安装 managed Python 3.12.14
--> uv.lock frozen sync / .venv
--> 自动下载并校验 CMake 4.2.3
+-> 自动准备 uv / Python 3.12.14 / .venv
+-> 自动准备 CMake 4.2.3
 -> 自动获取 pinned whisper.cpp 8443cf05...
 -> M4 Max 本机编译 whisper-cli + required dylib
 -> source Runtime architecture / closure / --help smoke PASS
@@ -338,35 +299,11 @@ fresh clone main
 -> UI 正式下载 large-v3
 -> hidden staging / exact-size / SHA-256 / atomic publish PASS
 -> large-v3 available / selectable
--> 使用实际 YouTube 音频进行转写
--> UI 出现真实非空转写
--> session evidence files 生成
+-> 实际音频转写 PASS
+-> session evidence files PASS
 ```
 
-关键 Build / Runtime 证据：
-
-```text
-Python: 3.12.14
-PyInstaller: 6.22.1
-PySide6 / Qt: 6.11.1
-whisper.cpp: 8443cf05e3fa8ce1b32348e1bcbcf8fc31f7f3ae
-architecture: arm64
-GGML_NATIVE=ON build on M4 Max: PASS
-CLI + 6 dylib architecture: PASS
-source dependency closure: PASS
-source whisper-cli --help: PASS
-packaged Runtime components: PASS
-packaged architecture: PASS
-packaged dependency closure / RPath: PASS
-bundled downloader: PASS
-model integrity manifest: PASS
-ad-hoc codesign verification: PASS
-bundled CLI smoke: PASS
-isolated Runtime smoke: PASS
-packaged large-v3 Metal backend runtime initialization: PASS
-```
-
-为确认实际计算 backend，而不是仅依赖 UI 中的 `whisper.cpp Metal` 标签，使用**最终 App 内同一个 packaged `whisper-cli` + 同一份已验证 large-v3 + whisper.cpp `samples/jfk.wav`**执行独立 runtime probe。关键原生日志：
+M4 Max packaged Metal runtime probe 使用最终 App 内 `whisper-cli` + 同一份 verified large-v3 + `samples/jfk.wav`，原生日志确认：
 
 ```text
 use gpu = 1
@@ -377,214 +314,255 @@ whisper_model_load: MTL0 total size = 3094.36 MB
 whisper_backend_init_gpu: using MTL0 backend
 ggml_metal_init: found device: Apple M4 Max
 ggml_metal_init: picking default device: Apple M4 Max
-whisper_backend_init: using BLAS backend
-system_info: ... MTL : EMBED_LIBRARY = 1 ... ACCELERATE = 1 ...
 ```
 
-11 秒 JFK sample 正常输出转写，`total time = 1316.25 ms`。因此可以确认 **packaged large-v3 inference 已实际启用 Apple M4 Max Metal GPU backend**；同时 whisper.cpp 也初始化 BLAS/Accelerate 和 CPU 路径，因此准确表述是“Metal GPU backend active / 参与主要推理”，而不是“整个 pipeline 100% 只使用 GPU”。
+11 秒 JFK sample 正常输出，`total time = 1316.25 ms`。因此确认 packaged large-v3 inference 实际启用 Apple M4 Max Metal GPU backend。日志同时初始化 BLAS/Accelerate/CPU 路径，所以准确表述是“Metal GPU backend active”，不是“整个 pipeline 100% GPU-only”。
 
-其中 `tensor API disabled for pre-M5 and pre-A19 devices` 仅表示 M4 Max 不启用该较新的 Metal tensor API；后续日志明确初始化并使用 `MTL0 (Apple M4 Max)`，所以它不是 Metal fallback 或 GPU 未启用证据。
-
-CMake 在 macOS 27 SDK 下出现 whisper.cpp / Metal upstream deprecation warnings，但编译、链接和 Runtime verifier 均成功；当前不作为 blocker。
-
-真实模型证据：
-
-```text
-model: large-v3
-expected exact bytes: 3,095,033,483
-下载方式: App -> Model Manager
-下载位置: 用户通过 UI 自选
-staging: .classroom-model-download-*
-integrity transaction: PASS
-final state: available / selectable
-real transcription with large-v3 on M4 Max: PASS
-```
-
-这证明当前冻结的 `GGML_NATIVE=ON` profile 至少在 M4 Max 上能够完成实际构建并运行 large-v3 推理，不再只是 `--help` smoke 证据；额外 packaged CLI probe 已确认 Metal GPU backend 实际 active。
-
-真实 session：
+M4 真实 session：
 
 ```text
 /Users/smterpro/Documents/ClassroomTranscriber/outputs/2026-08-19_13-57-05
+raw.txt        421 bytes
+clean.txt      421 bytes
+session.log   3014 bytes
+config.json   1150 bytes
 ```
 
-Evidence layer 实测：
+#### M5 current-checkpoint regression
+
+Developer / Reference Machine：
 
 ```text
-raw.txt        421 bytes   非空
-clean.txt      421 bytes   非空
-session.log   3014 bytes   非空
-config.json   1150 bytes   非空
+MacBook Air / Apple M5 / 16 GB / 512 GB / macOS 27 Beta
 ```
 
-未观察到此次 Deployment 功能破坏 evidence layer。session 已形成完整四文件结构。当前没有单独的系统级 instrumentation 去证明麦克风 resource release；若后续发现 Stop / 再次 Start 异常才升级为 blocker，否则不因缺少额外 instrumentation 阻塞当前 M4 acceptance。
-
-### 3.4 M4 Max 非阻塞 UX / 功能观察
-
-M4 实机首次暴露以下 polish 项，不阻塞 Deployment MVP：
-
-1. **模型下载缺少明显进度反馈**：large-v3 下载期间后台 staging 文件持续增长且任务正常运行，但 Model Manager 控件被禁用、没有 progress/spinner/byte counter，视觉上容易误判为 UI 卡死；实际下载最终成功。
-2. **模型选择成功反馈不足**：建议选择模型成功后显示非模态短暂提示，例如 `已成功选择模型：large-v3`，约 2 秒后自动消失；不要使用必须点击 OK 的阻塞式对话框。
-3. **输出根目录应支持用户自定义**：当前 session 默认位于 `~/Documents/ClassroomTranscriber/outputs/<timestamp>/`。后续允许用户把根目录例如改为 `~/Workspace/transcriptionTXT/`，但 `outputs/<timestamp>/` 及 `raw.txt / clean.txt / session.log / config.json` 结构保持不变；应持久化选择、验证目录可写，并只影响后续新 session，不迁移正在进行的 session。
-4. **主界面“当前模型”区域长路径可读性不足**：当前模型名称、大小和绝对路径在窄区域换行后被下方控件截断，且无法滚动查看。后续应优化信息层级，例如模型名/大小优先显示、长路径 middle-elide + tooltip/可复制，必要时提供可滚动区域；不要让长路径破坏左侧 panel 布局。
-
-这些项目记录为后续 UX / product improvement，不回滚 Step 7/8，也不为了当前验收临时改 UI。
-
-### 3.5 M5 回归要求
-
-旧 M5 Developer / Reference Machine 在当前 Step 8 checkpoint 上仍需至少验证：
+Git preflight：
 
 ```text
-pull 当前 main
-正式 App build / packaged Runtime gate PASS
-App 启动
-至少一个 integrity-valid model 可用
-Start / Stop
-真实非空转写
-完整 evidence layer
+branch: main
+HEAD before final Step 8 governance update: b59bae4c73bc4215964d048502067ba637e83a8a
+origin/main: b59bae4c73bc4215964d048502067ba637e83a8a
+worktree: clean
 ```
 
-该结果用于证明当前 checkpoint 在 M5 上实际运行；它不能被描述为 fresh clean-machine acceptance。
-
-### 3.6 Step 8 PASS 判定
-
-Step 8 只有在以下条件同时满足时 PASS：
-
-1. M4 Max clean-machine 正式流程无隐藏手工修补；**PASS**
-2. Finder `.command` 真实双击入口至少一次实际 PASS；**PASS**
-3. Fresh Clone 自动准备 Python/CMake/whisper Runtime 并构建 App；**PASS**
-4. Step 6 packaged Runtime verifier 在新机 PASS；**PASS**
-5. Model Manager 实际下载 manifest-managed model，Step 7 integrity transaction PASS；**PASS（large-v3）**
-6. 下载后的 model 状态为 available，可正常选择；**PASS**
-7. App 获得音频输入能力并成功 Start；**PASS（实际转写已产生）**
-8. 实际音频产生真实非空 raw / clean 转写；**PASS**
-9. packaged large-v3 Runtime 实际启用 Metal GPU backend；**PASS（MTL0 / Apple M4 Max）**
-10. Stop / 麦克风释放无异常；**未单独 instrumentation，当前无异常报告**
-11. `raw.txt`、`clean.txt`、`session.log`、`config.json` 全部生成且保持 evidence-layer 语义；**PASS**
-12. M5 当前 checkpoint 实机 App / transcription regression PASS；**PENDING**
-13. 未把新机的一次性人工修补当作正式通过；**PASS**
-
-因此当前 Step 8 继续 ACTIVE，主要剩余 blocker 是 **M5 当前 checkpoint 实机 regression**。若 M5 regression PASS 且没有新 Stop/麦克风异常证据，即可完成 Step 8。
-
-### 3.7 失败处理
-
-Step 8 原则上是验收，不主动新增功能。出现失败时先完整记录：机器、macOS、入口、错误日志、缺失依赖、是否发生 Gatekeeper / permission / network 问题。
-
-如果属于项目正式路径缺口：
+正式 one-entry build 实测：
 
 ```text
-验收机停止修补
--> 回 Developer / Reference Machine 定位和实现最小修复
--> 一个明确 bugfix commit + push main
--> ChatGPT / 人工审核
--> 验收机重新验证相关路径
+Python 3.12.14 bootstrap / smoke                         PASS
+whisper.cpp pinned commit 8443cf05...                  PASS
+GGML_NATIVE / -mcpu=native profile on M5               PASS
+Metal + BLAS build                                     PASS
+CLI + 6 dylib arm64                                    PASS
+source dependency closure / --help smoke               PASS
+PyInstaller                                            PASS
+Runtime normalization                                  PASS
+packaged architecture / dependency closure / RPath     PASS
+model manifest / downloader                            PASS
+ad-hoc codesign                                        PASS
+bundled CLI smoke / isolated Runtime smoke             PASS
+post-build Runtime verifier                            PASS
+Build ClassroomTranscriber.command                     PASS
 ```
 
-不得直接在验收机手工复制缺失资源后宣布 PASS。
-
-### 3.8 Step 8 边界
-
-本 Step不要求：
+现有 large-v3：
 
 ```text
-GitHub Release ZIP acceptance（Step 9）
+/Users/smter-mac/Documents/personalAPPS/whisper/external/whisper.cpp/models/ggml-large-v3.bin
+exact bytes: 3,095,033,483
+```
+
+M5 packaged Metal runtime probe 使用最终 App 内 `whisper-cli` + large-v3 + JFK sample，原生日志确认：
+
+```text
+use gpu = 1
+gpu_device = 0
+ggml_metal_device_init: GPU name: MTL0 (Apple M5)
+ggml_metal_device_init: GPU family: MTLGPUFamilyApple10
+ggml_metal_device_init: has tensor = true
+whisper_model_load: MTL0 total size = 3094.36 MB
+whisper_backend_init_gpu: using MTL0 backend
+ggml_metal_init: found device: Apple M5
+ggml_metal_init: picking default device: Apple M5
+```
+
+11 秒 JFK sample 正常输出，`total time = 2673.73 ms`。因此确认当前 packaged Runtime 在 Apple M5 上也实际启用 Metal GPU backend；M4 Max 与 M5 两代机器的 `GGML_NATIVE=ON` 当前版本实机运行证据均已闭环。
+
+M5 App regression 额外选择 `Chinese`，使用 large-v3 实际转写中文音频成功，输出为连续可读中文。该结果用于 deployment regression，不视为正式 WER benchmark。
+
+同一轮 UI 实测执行：
+
+```text
+Start
+-> 实际中文非空转写
+-> Stop
+-> 再次 Start
+-> 再次产生真实转写
+-> Stop
+```
+
+截图中第一段时间轴运行至约 50+ 秒，Stop 后再次 Start 的新段从 `00:00` 重新计时并继续正常转写。由此记录：
+
+```text
+Stop / idle transition: PASS
+second Start: PASS
+audio input release / reacquire: no observed issue
+second transcription: PASS
+```
+
+M5 最终 session evidence：
+
+```text
+/Users/smter-mac/Documents/ClassroomTranscriber/outputs/2026-08-19_15-30-15
+raw.txt        1091 bytes
+clean.txt      1091 bytes
+session.log    2938 bytes
+config.json    1121 bytes
+```
+
+四文件全部存在且非空。测试完成后仓库 `git status --short` 无输出。
+
+#### Step 8 最终 PASS 判定
+
+```text
+1. M4 Max clean-machine 正式流程无隐藏手工修补                         PASS
+2. Finder .command 真实双击                                           PASS
+3. Fresh Clone 自动 Python/CMake/whisper Runtime + App build           PASS
+4. M4 packaged Runtime strict verifier                                PASS
+5. Model Manager 真实 large-v3 download + integrity transaction        PASS
+6. model available / selectable                                       PASS
+7. M4 actual non-empty transcription                                  PASS
+8. M4 evidence layer                                                  PASS
+9. M4 packaged large-v3 Metal GPU backend                             PASS
+10. M5 current checkpoint formal build / packaged Runtime             PASS
+11. M5 packaged large-v3 Metal GPU backend                            PASS
+12. M5 actual Chinese transcription                                   PASS
+13. M5 Stop -> Start / reacquire                                      PASS
+14. M5 evidence layer                                                 PASS
+15. final M5 worktree clean                                           PASS
+```
+
+**Deployment Step 8 PASS。Developer Deployment MVP 已达到。**
+
+按长期合同，完成 Step 8 后已经允许恢复 `llm-sidecar-phase1`；Step 9 / Developer ID / notarization / DMG / GitHub Actions 不无限阻塞 LLM。
+
+---
+
+## 3. 当前唯一 ACTIVE Step
+
+```text
+ACTIVE: Deployment Step 9 - 普通用户 GitHub Release ZIP 验收
+```
+
+### 3.1 Step 9 目标
+
+验证普通用户交付路径，而不是再次验证源码开发环境：
+
+```text
+GitHub Release ZIP
+-> 解压 ClassroomTranscriber.app
+-> 双击启动
+-> Model Manager 获取模型
+-> 授予音频输入权限
+-> Start Recording
+-> 正常转录
+-> Stop
+-> 完整 session evidence layer
+```
+
+### 3.2 Step 9 当前边界
+
+Step 9 不默认扩大为：
+
+```text
 Developer ID signing
 Notarization
 DMG
 GitHub Actions release automation
-M1 / M2 / M3 实机验证
-旧版 macOS compatibility
-LLM 功能开发
+minimum macOS 冻结
+M1 / M2 / M3 实机支持
 ```
 
-达到 Step 8 Developer MVP 后即可建立干净 main checkpoint，并允许恢复 `llm-sidecar-phase1`；Step 9 / signing / notarization / DMG 属于 Release polish，不无限阻塞 LLM。
+这些仍属于后续 Release polish，除非执行中发现它们是 ZIP 普通用户路径的真实 blocker。
+
+### 3.3 Step 9 下一次执行前先确认
+
+当前 runtime 只冻结了 Step 9 的交付目标，尚不假设 repo 已存在完整的 Release ZIP 生成 / 发布脚本。执行时先基于当前 `README.md`、`PACKAGING.md`、build/release scripts 与实际 repo 检查：
+
+```text
+1. 是否已有正式 ZIP 生成入口
+2. ZIP 是否只包含完整 .app 及必要 release 文件，不包含模型/开发环境
+3. 解压后 App bundle 是否保持 Runtime / dylib / signature / resource 完整性
+4. 应如何在 GitHub Release 上发布并下载同一 artifact
+5. Acceptance machine 如何以 ordinary-user 路径验证，而不借用 source tree
+```
+
+若正式 ZIP 入口缺失，再在旧 Developer / Reference Machine 上实现最小、可复现的 Release ZIP 流程；一个明确 Step 一个 commit，测试通过后 push `main`，再由 Acceptance Machine 测真实下载 artifact。
 
 ---
 
 ## 4. 当前为简化而保留、后续可能产生影响的内容
 
-1. `GGML_NATIVE=ON` 已在 M4 Max clean-machine 上完成实际 build + large-v3 transcription PASS，并由 packaged CLI probe 确认 Metal GPU backend active；M5 仍需当前 checkpoint 的实际 regression 才形成双机当前版本证据。
+1. `GGML_NATIVE=ON` 已在 M4 Max 与 M5 上分别完成当前 profile 的实际 build + packaged large-v3 Metal inference PASS。注意这证明两个目标机器各自从当前源码构建出的 Runtime 可工作；未来单一 Release artifact 的跨代分发仍应由 Step 9 artifact acceptance 补充证据。
 2. 正式 `GGML_OPENMP=OFF` 已消除 host OpenMP availability 漂移；旧 requested ON / effective OFF 仅保留为历史证据。
 3. 第一版继续使用 `Contents/Resources/bin/` Runtime 布局；Step 6 已在该布局内建立严格 closure。
 4. Python 合同仍保留 broad floor `>=3.11`，但正式可复现 build environment 是 `3.12.14 / >=3.12,<3.13`。
 5. Developer source build 仍依赖 Git、网络、Apple Command Line Tools 与 macOS host 工具；普通 Release 用户不承担这些源码构建前提。
 6. Step 6 当前使用 ad-hoc codesign；Developer ID / notarization 仍属于 Release polish。
-7. 当前普通用户最小发布形式仍为 ZIP + `.app`；Step 9 不阻塞 Step 8 Developer MVP。
-8. minimum macOS 仍为 pending；当前只验证 macOS 27 Beta，不据此推断旧版本。
-9. Model integrity contract 当前冻结 Hugging Face revision `5359861c739e955e79d9a303bcbc70fb988958b1`；vendored downloader 仍解析 upstream `main`，但只有与冻结 size/SHA-256 完全匹配的 bytes 才会被接受。若 upstream main 后续替换为新 bytes，下载会 fail closed，需显式维护 manifest，而不能静默接受新 artifact。
-10. Integrity receipt 以当前合同 + size + mtime 作为快速 available 证据；文件 stat 变化会使 receipt 失效并要求重新验证。它是性能优化，不替代首次 cryptographic validation。
-11. 明确 Import 的 custom `.bin/.gguf` 不受官方 downloadable checksum contract 约束，仍只使用独立本地 import validation；这属于产品设计边界而非 official model integrity 保证。
-12. M4 Max 实测发现四个非阻塞 UX / product polish：Model Manager 下载缺少 progress feedback、选择模型成功缺少短暂 confirmation toast、输出根目录不可自定义、当前模型长路径显示被截断且不可访问完整内容。
-13. whisper.cpp pinned commit 在 macOS 27 SDK 下产生部分 Metal deprecated API compiler warning，但 M4 build/runtime/large-v3 inference PASS；当前只记录，不在 Deployment MVP 中升级 upstream。
-14. M4 Max 的 Metal runtime probe 同时初始化 Metal GPU 与 BLAS/Accelerate/CPU 路径；支持“Metal GPU backend active”结论，但不应描述为整个 pipeline 100% GPU-only。
-15. 旧 pseudo-oral 测试输出仍是既有非阻塞项，不归 Deployment Step 8 修复。
+7. minimum macOS 仍为 pending；当前只验证 macOS 27 Beta，不据此推断旧版本。
+8. Model integrity contract 当前冻结 Hugging Face revision `5359861c739e955e79d9a303bcbc70fb988958b1`；vendored downloader 仍解析 upstream `main`，只有与冻结 size/SHA-256 完全匹配的 bytes 才接受；upstream bytes 漂移应 fail closed。
+9. Integrity receipt 以当前合同 + size + mtime 作为快速 available 证据；它是性能优化，不替代首次 cryptographic validation。
+10. 明确 Import 的 custom `.bin/.gguf` 不受官方 downloadable checksum contract 约束，仍只使用独立 local import validation。
+11. whisper.cpp pinned commit 在 macOS 27 SDK 下会产生部分 Metal deprecated API compiler warning；M4/M5 build/runtime inference 均 PASS，当前不升级 upstream。
+12. 旧 pseudo-oral 测试输出仍是既有非阻塞项。
 
 ---
 
-## 5. 当前未敲定参数
+## 5. 非阻塞 UX / Product backlog
+
+Step 8 实机验收暴露以下项目，均不回滚 Deployment MVP：
+
+1. **Model download progress feedback**：large-v3 下载期间后台正常运行，但 UI 没有 progress/spinner/byte counter，视觉上容易误判为卡死。
+2. **Model selection confirmation**：选择模型成功后增加约 2 秒 non-modal transient toast，例如 `已成功选择模型：large-v3`。
+3. **Configurable output root**：默认继续 `~/Documents/ClassroomTranscriber/`，允许用户改根目录；`outputs/<timestamp>/raw.txt|clean.txt|session.log|config.json` 子结构必须保持不变；配置持久化，只影响后续新 session。
+4. **Current-model panel readability**：长绝对路径在当前模型区域被截断且无法访问完整内容；后续优先模型名/大小，路径 middle-elide + tooltip/可复制，必要时提供滚动。
+
+这些项目可在 Step 9 之后处理，或由用户显式调整优先级后作为独立 product-polish step 处理；不要把它们混入稳定 ASR 主链路修改。
+
+---
+
+## 6. 当前未敲定参数
 
 ```text
-# Step 8
-M5 当前 checkpoint App / large-v3-or-other-valid-model / real transcription regression
-M5 当前 checkpoint 的 GGML_NATIVE 实际运行结果
-是否需要额外独立做一次 Stop -> 再 Start 作为 microphone release UX 证据（若正常使用未出现异常，可不作为 blocker）
+# Step 9
+正式 Release ZIP 生成 / 发布入口是否已经存在
+单一 Release artifact 在 M4 Max / M5 间的实际 portability
+GitHub Release 下载后的 Gatekeeper / quarantine 行为
+ordinary-user Model Manager / audio permission / transcription / evidence E2E
 
-# 后续 UX / Product
+# UX / Product backlog
 Model download progress / spinner / bytes feedback
 Model selection success transient toast（约 2 秒）
-Configurable output root（默认保持 ~/Documents/ClassroomTranscriber；session 子结构不变）
+Configurable output root
 Current-model panel long-path readability / tooltip / copy / optional scroll
 
 # 后续 Release
 minimum macOS（当前不承诺旧系统，保持未设置）
 Developer ID signing / notarization 实施时间点
-GitHub Release 正式版本和自动发布流程
+DMG
+GitHub Actions release automation
 ```
 
 ---
 
-## 6. 开发机与验收机状态
+## 7. 开发机与验收机状态
 
-旧 MacBook：Developer / Reference Machine，用于开发、自动测试、clean-repo simulation、构建验证、稳定 ASR 回归、Commit / Push；当前实际硬件为 MacBook Air / M5 / 16 GB / 512 GB / macOS 27 Beta。当前 Step 8 regression：PENDING。
+旧 MacBook：Developer / Reference Machine；MacBook Air / Apple M5 / 16 GB / 512 GB / macOS 27 Beta。Step 8 current-checkpoint build + packaged Runtime + large-v3 Metal + Chinese transcription + Stop/Start regression：PASS。
 
-新 Mac：Clean-machine Acceptance Machine；当前实际硬件为 MacBook Pro / M4 Max / 48 GB / 1 TB / macOS 27 Beta。
+新 Mac：Clean-machine Acceptance Machine；MacBook Pro / Apple M4 Max / 48 GB / 1 TB / macOS 27 Beta。Step 8 clean-machine build + UI large-v3 download/integrity + packaged Metal + actual transcription + evidence：PASS。
 
-M4 Max 本次 clean-machine acceptance 已证明：Fresh Clone、Finder 正式构建入口、Python/CMake/whisper bootstrap、strict packaged Runtime、App launch、UI 自选模型路径、UI large-v3 下载+完整性验证、large-v3 实际转写、四文件 evidence layer 均 PASS，且没有通过手工复制 `.venv/.tools/external/Runtime/model` 或临时 PATH/DYLD 修补正式流程。额外 packaged CLI runtime probe 已确认 `use gpu = 1`、`gpu_device = 0`、embedded Metal library、`MTL0 (Apple M4 Max)` 与 `using MTL0 backend`，因此实际 Metal GPU backend 使用已形成直接证据。
+当前可以记录：**项目已在 Apple M4 Max 与 Apple M5 设备上实际验证当前 Deployment checkpoint。** M1 / M2 / M3 仅理论兼容，不作保证；旧版 macOS 当前不作保证。
 
-对外支持声明：M4 Max 当前可以记录为**项目已实际验证当前 Deployment checkpoint 的 clean-machine build + large-v3 transcription + Metal GPU backend active**。M5 只有完成当前 checkpoint regression 后，才将当前版本的 M5 实际验证一并闭环。M1 / M2 / M3 仅理论兼容，不作保证。旧版 macOS 当前不作保证。
-
----
-
-## 7. 当前已知 Failure Modes / Step 8 观察点
-
-### Build / Packaging
-
-- M4 Max Fresh Clone Finder `.command` 已实际 PASS；自动 Python/CMake/whisper Runtime 准备与 strict packaged Runtime gate 均 PASS。
-- M4 编译期间出现 pinned whisper.cpp 对 macOS 27 Metal SDK 的 deprecation warning；非 fatal，当前不阻塞。
-- 新机未发现需要项目外手工准备 Runtime、CMake、Python 或模型的 deployment gap。
-
-### Whisper Runtime
-
-- `GGML_NATIVE=ON` 已在 M4 Max 上完成实际 build + large-v3 inference PASS。
-- 使用最终 App 内 packaged `whisper-cli` + 已验证 large-v3 + JFK sample 的 runtime probe 直接记录 `use gpu = 1`、`gpu_device = 0`、`ggml_metal_device_init: GPU name: MTL0 (Apple M4 Max)`、`whisper_backend_init_gpu: using MTL0 backend`、`ggml_metal_init: found device: Apple M4 Max`；因此 M4 Max 实际 Metal GPU backend 使用 PASS。
-- 同一日志同时存在 `using BLAS backend` 与 CPU/Accelerate capability，说明 GPU 与 CPU/BLAS backend 可协同存在；不得将其误述为“CPU 完全未参与”。
-- M5 的当前 checkpoint actual App transcription regression 仍待补齐，之后才能把双机 portability 当前版本证据闭环。
-
-### Model Manager
-
-- Step 7 的 checksum/staging/atomic publish 已在 M4 Max 首次真实 large-v3 upstream download 中 PASS。
-- 用户可通过 UI 自选模型下载位置。
-- 下载 large-v3 期间后台工作正常，但 UI 没有 progress feedback，视觉上容易误判为“卡死”；本次最终成功，因此记录为非阻塞 UX issue。
-- 选择模型后建议增加 2 秒左右的 non-modal success toast；非阻塞 UX issue。
-- 主界面当前模型区域对长绝对路径显示不清、内容被截断且无法访问完整信息；记录为非阻塞 UX issue。
-- vendored downloader 指向 upstream `main`；若未来 bytes 与 frozen contract 不符，应继续 fail closed。
-
-### ASR / Evidence
-
-- M4 Max 已通过实际 YouTube 音频 + large-v3 产生非空真实转写。
-- session `2026-08-19_13-57-05` 产生完整 `raw.txt / clean.txt / session.log / config.json`，四文件均非空。
-- 当前 session output root 默认为 `~/Documents/ClassroomTranscriber/`；用户希望后续可配置根目录，同时保持 `outputs/<timestamp>/` 与四文件 evidence 子结构不变。记录为非阻塞 product improvement。
-- 当前没有单独 instrumentation 的 microphone-release 证明；未报告实际 Stop/再次 Start 异常，因此不单独作为当前 blocker。
+长期职责仍以 `deployment_static.md` 为准：默认继续在旧 Developer / Reference Machine 实现和回归，在 M4 Max Acceptance Machine 验证正式 artifact。若未来希望把 M4 Max 改成第二开发机，应先显式调整长期角色合同，而不是在验收机上直接积累项目专用手工开发状态。
 
 ---
 
@@ -598,41 +576,39 @@ Step 4：Whisper Runtime Bootstrap                                    已完成
 Step 5：可双击的一键构建入口与 Orchestration                        已完成
 Step 6：严格打包门禁与 post-build smoke                              已完成
 Step 7：模型下载完整性、失败恢复与重试                                已完成
-Step 8：新机器 Clean-machine App / Model / Microphone / Transcription E2E ACTIVE（M4 PASS / M5 regression pending）
-Step 9：普通用户 GitHub Release ZIP 验收                              待做
+Step 8：新机器 Clean-machine App / Model / Microphone / Transcription E2E 已完成 / PASS
+Step 9：普通用户 GitHub Release ZIP 验收                              ACTIVE
 ```
 
-Deployment MVP 暂停点：
+Deployment Developer MVP 暂停点已经达到：
 
 ```text
-完成 Step 8
--> 建立干净可复现 main checkpoint
+Step 8 PASS
+-> 干净可复现 main checkpoint 已形成
 -> 可以恢复 llm-sidecar-phase1 开发
 ```
 
-Step 9 及 Developer ID / Notarization / DMG / GitHub Actions 属于后续 Release polish，不无限阻塞 LLM。
+Step 9 及 Developer ID / Notarization / DMG / GitHub Actions 属于后续 Release 路线，不无限阻塞 LLM。
 
 ---
 
 ## 9. 下一步执行提示
 
-继续时只做 Step 8 收尾：
+继续 `main` Deployment 时只执行 Step 9：
 
 ```text
-1. M5 Developer / Reference Machine git fetch + git pull --ff-only origin main
-2. 确认 main / clean worktree / HEAD == origin/main
-3. 读取 deployment_static.md / deployment_runtime.md
-4. 使用当前正式入口完成 App build / packaged Runtime gate
-5. 启动 App，使用 integrity-valid model
-6. Start -> 实际非空转写 -> Stop
-7. 检查 raw.txt / clean.txt / session.log / config.json
-8. 若 M5 regression PASS，不额外改代码；汇报实际证据
-9. 若失败，先记录并判定是否 deployment bug，不为通过而临时修改 ASR / Runtime
-10. Codex 默认不修改 deployment_runtime.md；最终 Step 8 状态由人工 / ChatGPT 更新
-11. 不提前进入 Step 9 / Developer ID / notarization / LLM
+1. 在 Developer / Reference Machine pull 当前 main，确认 main + clean worktree
+2. 读取 deployment_static.md / deployment_runtime.md / PACKAGING.md / README.md
+3. 先审查 repo 现有 Release ZIP / release artifact 生成方式，不假设已有或缺失
+4. 若已存在正式 ZIP 入口：验证它只打包完整 App，不打包模型/开发环境，并检查解压后 Runtime 完整性
+5. 若不存在：设计并实现最小可复现 ZIP 生成入口，一个 Step 一个 commit，不改稳定 ASR 主链路
+6. push main 后，在 Acceptance Machine 从 GitHub Release 实际下载同一 ZIP artifact
+7. ordinary-user 路径：解压 -> 双击 App -> Model Manager -> audio permission -> Start -> 非空转写 -> Stop -> evidence layer
+8. 记录 Gatekeeper / quarantine / signing 实际行为；只有成为普通用户路径 blocker 时才升级 Developer ID/notarization
+9. Codex 默认只读取 deployment_runtime.md，不主动修改；实现后由 ChatGPT / 人工审核再更新 runtime
 ```
 
-M4 Max 当前不需要为了 Step 8 重做 Fresh Clone；本次 clean-machine sequence 已形成有效证据。只有发现新的 M4 blocker 或需要复现特定失败时才重跑对应路径。
+若用户选择先恢复 LLM，可直接切回 `llm-sidecar-phase1`；Step 9 保持 Deployment ACTIVE，不与 LLM runtime 混用。
 
 ---
 
@@ -648,7 +624,7 @@ M4 Max 当前不需要为了 Step 8 重做 Fresh Clone；本次 clean-machine se
 5. packaging/model_manifest.json
 6. README.md
 7. docs/工程细节.md
-8. Step 8 M4 clean-machine / Metal runtime / M5 regression 实测证据
+8. Step 8 M4 clean-machine / M4+M5 Metal runtime / M5 regression 实测证据
 ```
 
 恢复 LLM：
