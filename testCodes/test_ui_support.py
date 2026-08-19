@@ -177,7 +177,7 @@ def test_app_settings_save_load():
             default_beam_size=5,
             download_model_dir=model_dir,
             model_dirs=default_scan_model_dirs(model_dir, [model_dir]),
-            imported_model_paths=[],
+            imported_model_paths=[selected_model],
         )
         save_app_settings(app_settings, settings_path=settings_path)
         loaded = load_app_settings(settings_path=settings_path)
@@ -218,7 +218,7 @@ def test_download_dir_persists_in_settings():
             default_beam_size=5,
             download_model_dir=download_dir,
             model_dirs=default_scan_model_dirs(download_dir, []),
-            imported_model_paths=[],
+            imported_model_paths=[selected_model],
         )
         save_app_settings(app_settings, settings_path=settings_path)
         loaded = load_app_settings(settings_path=settings_path)

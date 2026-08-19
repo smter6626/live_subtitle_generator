@@ -54,15 +54,13 @@ from settings import (
 )
 from model_manager import (
     DOWNLOADABLE_MODELS,
-    DOWNLOAD_SCRIPT_PATH,
-    build_download_command,
     choose_default_model,
     default_scan_model_dirs,
+    download_and_publish_model,
     download_target_path,
     ensure_model_dir,
     format_model_path,
     load_app_settings,
-    run_download_command,
     save_app_settings,
     scan_model_dirs,
     validate_import_model,
@@ -481,19 +479,6 @@ class ModelManagerDialog(QDialog):
             self.log_message.emit(str(exc), "ERROR")
             return
 
-        target_path = download_target_path(model_name, download_dir)
-        if target_path.exists():
-            QMessageBox.information(self, tr("download_model"), tr("model_already_exists"))
-            self.refresh_models()
-            return
-        if not DOWNLOAD_SCRIPT_PATH.exists():
-            QMessageBox.critical(
-                self,
-                tr("model_download_error"),
-                f"download-ggml-model.sh not found:\n{DOWNLOAD_SCRIPT_PATH}",
-            )
-            return
-
         self.downloading = True
         self.downloading_model_name = model_name
         self.app_settings.download_model_dir = download_dir
@@ -507,36 +492,35 @@ class ModelManagerDialog(QDialog):
 
         def worker():
             try:
-                command = build_download_command(model_name, target_dir=download_dir)
-                self.log_message.emit("download command: " + " ".join(command), "INFO")
-                return_code = run_download_command(
-                    command,
-                    cwd=download_dir,
+                result = download_and_publish_model(
+                    model_name,
+                    target_dir=download_dir,
                     log_callback=lambda line: self.log_message.emit(line, "INFO"),
                 )
-                if return_code == 0:
-                    self.download_finished.emit(True, f"{tr('model_download_complete')}: {model_name}")
-                else:
-                    self.download_finished.emit(
-                        False,
-                        f"{tr('model_download_failed')}: exit code {return_code}",
-                    )
+                action = "verified existing model" if result.disposition == "reused" else "downloaded"
+                self.download_finished.emit(
+                    True,
+                    f"{tr('model_download_complete')}: {model_name} ({action})",
+                )
             except Exception as exc:
                 self.download_finished.emit(False, str(exc))
 
         threading.Thread(target=worker, daemon=True).start()
 
     def _handle_download_finished(self, ok: bool, message: str):
+        model_name = self.downloading_model_name
         self.downloading = False
+        self.downloading_model_name = None
         self._set_download_controls(True)
         self.log_message.emit(message, "INFO" if ok else "ERROR")
         if not ok:
+            self.refresh_models()
             QMessageBox.critical(self, tr("model_download_error"), message)
             return
 
         self.refresh_models()
         target_path = download_target_path(
-            self.downloading_model_name,
+            model_name,
             self.app_settings.download_model_dir,
         )
         selected = self._model_by_path(target_path)

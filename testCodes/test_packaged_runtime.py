@@ -97,6 +97,14 @@ class PackagedRuntimeTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             path.chmod(0o755)
+        model_integrity = self.manifest["frozen"]["model_integrity"]
+        model_manifest = app.joinpath(
+            *Path(model_integrity["manifest_bundle_target"]).parts
+        )
+        model_manifest.parent.mkdir(parents=True, exist_ok=True)
+        model_manifest.write_bytes(
+            (REPO_ROOT / model_integrity["manifest_repository_path"]).read_bytes()
+        )
         return app
 
     def verifier_exit(self, app: Path, fake: FakeMacOSTools) -> int:
@@ -117,6 +125,7 @@ class PackagedRuntimeTests(unittest.TestCase):
             with self.subTest(spec=spec_path.name):
                 self.assertIn("runtime_manifest.json", text)
                 self.assertIn("required_resource", text)
+                self.assertIn('manifest["frozen"]["model_integrity"]', text)
                 self.assertNotIn("existing_resource", text)
                 self.assertTrue(all(source_path not in text for source_path in source_paths))
 
@@ -182,6 +191,17 @@ class PackagedRuntimeTests(unittest.TestCase):
                 ).parts
             )
             downloader.unlink()
+            self.assertNotEqual(self.verifier_exit(app, fake), 0)
+
+    def test_missing_model_integrity_manifest_returns_nonzero(self):
+        fake = FakeMacOSTools()
+        with tempfile.TemporaryDirectory() as temp:
+            app = self.make_app_fixture(Path(temp))
+            contract = self.manifest["frozen"]["model_integrity"]
+            model_manifest = app.joinpath(
+                *Path(contract["manifest_bundle_target"]).parts
+            )
+            model_manifest.unlink()
             self.assertNotEqual(self.verifier_exit(app, fake), 0)
 
     def test_packaged_cli_smoke_failure_returns_nonzero(self):

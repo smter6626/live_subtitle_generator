@@ -26,6 +26,10 @@ from verify_packaged_runtime import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from model_integrity import load_model_contract  # noqa: E402
 
 
 def assert_source_file(repo_root: Path, relative_path: str) -> Path:
@@ -60,6 +64,16 @@ def validate_sources(
             continue
         source = assert_source_file(repo_root, resource["repository_path"])
         checked_run(runner, ["sh", "-n", str(source)])
+
+    model_integrity = manifest["frozen"]["model_integrity"]
+    if model_integrity["required_packaged_resource"] is True:
+        model_manifest = assert_source_file(
+            repo_root, model_integrity["manifest_repository_path"]
+        )
+        try:
+            load_model_contract(model_manifest)
+        except RuntimeError as exc:
+            raise VerificationError(f"invalid model integrity manifest: {exc}") from exc
     print("[package-runtime] required source preflight PASS")
 
 

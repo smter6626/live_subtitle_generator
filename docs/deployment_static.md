@@ -355,6 +355,20 @@ PyInstaller Spec、Build Script、packaged Runtime helper / verifier 和 Runtime
 
 现有大于最小文件大小的检查不能作为最终模型完整性验证方案。
 
+正式 downloadable model metadata 由独立 `packaging/model_manifest.json` 管理，与 Runtime
+component contract 分离。合同冻结 Hugging Face 官方 `ggerganov/whisper.cpp` repository
+revision 的 blob/LFS SHA-256、exact byte size、upstream blob id 与 immutable artifact URL；
+不得使用开发机已有模型反推真值。downloadable 名单必须由该 Manifest 驱动，UI 与测试不得
+维护可静默漂移的第二份名单。
+
+Vendored upstream downloader 保持原样，只允许在目标文件系统内的隐藏 staging directory
+中运行。downloader nonzero、缺输出、size mismatch 或 SHA-256 mismatch 均不得发布 final。
+验证通过后以 `os.replace` 原子发布，并以匹配当前合同和文件 stat 的 verification receipt 作为
+Model Manager available 的快速证据。所有非明确 Import 且使用官方下载文件名的模型均受此
+约束；无 receipt 的既有 final 必须在后台完成全量验证后才能复用。invalid final 保持 unavailable，
+retry 会清理受管的旧 staging，不要求用户手工删除 partial。明确 Import 的自定义 `.bin/.gguf`
+继续使用独立的本地 import 校验，不要求出现在官方 downloadable Manifest。
+
 ---
 
 ## 9. Clean-machine 验收合同

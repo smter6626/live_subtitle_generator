@@ -18,6 +18,10 @@ from typing import Any, Callable
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST_PATH = REPO_ROOT / "packaging" / "runtime_manifest.json"
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from model_integrity import load_model_contract  # noqa: E402
 
 
 class VerificationError(RuntimeError):
@@ -269,6 +273,25 @@ def verify_downloader(
     print("[packaged-runtime] downloader PASS")
 
 
+def verify_model_integrity_resource(
+    app_path: Path,
+    manifest: dict[str, Any],
+) -> None:
+    model_integrity = manifest["frozen"]["model_integrity"]
+    if model_integrity["required_packaged_resource"] is not True:
+        raise VerificationError("model integrity manifest is not a required packaged resource")
+    relative = PurePosixPath(model_integrity["manifest_bundle_target"])
+    if relative.is_absolute() or ".." in relative.parts:
+        raise VerificationError(f"unsafe model manifest bundle path: {relative}")
+    target = app_path.joinpath(*relative.parts)
+    resolved = resolve_bundle_file(app_path, target)
+    try:
+        load_model_contract(resolved)
+    except RuntimeError as exc:
+        raise VerificationError(f"invalid bundled model integrity manifest: {exc}") from exc
+    print("[packaged-runtime] model integrity manifest PASS")
+
+
 def smoke_environment() -> dict[str, str]:
     environment = dict(os.environ)
     for variable in (
@@ -336,6 +359,7 @@ def verify_packaged_runtime(
     verify_architectures(resolved_paths, runner)
     verify_dependency_closure(app_path, manifest, resolved_paths, runner)
     verify_downloader(app_path, manifest, runner)
+    verify_model_integrity_resource(app_path, manifest)
     checked_run(
         runner,
         ["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app_path)],

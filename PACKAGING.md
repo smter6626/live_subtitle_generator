@@ -51,6 +51,14 @@ architecture: arm64
 
 `vendor/whisper.cpp` is tracked and contains the pinned upstream model download resource and its provenance. It does not contain whisper.cpp source, Runtime binaries, or models. The vendored script remains `vendor/whisper.cpp/download-ggml-model.sh` and is bundled as `Contents/Resources/bin/download-ggml-model.sh`.
 
+## Model download integrity
+
+`packaging/model_manifest.json` is the separate machine-readable contract for the five downloadable model artifacts. It freezes exact byte sizes and SHA-256 values from the official `ggerganov/whisper.cpp` Hugging Face repository blob/LFS metadata at revision `5359861c739e955e79d9a303bcbc70fb988958b1`; these values do not come from an old-machine model file. The Manifest records the official metadata endpoint, immutable artifact URLs, and upstream blob IDs. Model binaries remain outside Git, the App, and Runtime components.
+
+Model Manager runs the unchanged vendored upstream downloader only inside a hidden temporary directory on the selected target filesystem. `model_integrity.py` rejects downloader failures, missing output, exact-size mismatch, or SHA-256 mismatch. Only a verified staging file is published with `os.replace`; a contract- and file-stat-bound hidden receipt is then written atomically. Normal scanning marks a file with an official downloadable filename available only while that receipt matches. An existing file without a receipt is fully verified in the existing background download worker before reuse, and an invalid existing file remains unavailable while retry removes stale managed staging and downloads a replacement. Explicit custom imports retain their existing local validation contract.
+
+The model Manifest is bundled as `Contents/Resources/model_manifest.json`. Release/Debug specs, packaging source preflight, and the packaged Runtime verifier all require and validate it. Validate the repository copy independently with `.venv/bin/python model_integrity.py --manifest packaging/model_manifest.json`.
+
 The first frozen build profile is the successful old-machine profile normalized for reproducibility: project-local CMake 4.2.3, Unix Makefiles, Release, explicit arm64, shared libraries, CPU, Metal, embedded Metal library, Accelerate/Apple BLAS, `GGML_OPENMP=OFF`, and `GGML_NATIVE=ON`. CMake is downloaded from Kitware's official universal macOS release artifact and verified with its frozen SHA-256. The complete option set is read from the Runtime manifest for a `cmake --fresh` configuration; the bootstrap only builds the `whisper-cli` target and dependencies.
 
 Run `scripts/bootstrap_whisper_runtime.sh` after the Python bootstrap to ensure source, CMake, and Runtime. `--verify-only` performs no download, checkout, configure, or compile; it validates the pinned detached source, effective cache profile, required artifacts, arm64 architecture, source-build dependency/RPath boundaries, and the Manifest smoke command `whisper-cli --help`. `GGML_NATIVE=ON` is intentionally retained but may affect portability across Apple Silicon generations; M4 Max and M5 acceptance must verify it.
@@ -105,7 +113,7 @@ The `.command` file only resolves the repository and transfers control. The orch
 
 ## Work still pending
 
-The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, and strict packaged Runtime gate are present. Their audit state is tracked separately. The project has not yet hardened model downloads or performed clean-machine acceptance and real transcription E2E.
+The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Their audit state is tracked separately. The project has not yet performed clean-machine acceptance and real transcription E2E.
 
 The remaining implementation sequence is:
 
@@ -114,7 +122,7 @@ Step 3  Rebuildable locked Python environment (implemented; audit status is trac
 Step 4  Pinned whisper.cpp Runtime bootstrap (implementation supplied; audit status is tracked separately)
 Step 5  Double-click build entry and orchestration (implemented; audit status is tracked separately)
 Step 6  Strict packaging gates and post-build Runtime smoke (implemented; audit status is tracked separately)
-Step 7  Model download integrity, recovery, and retry
+Step 7  Model download integrity, recovery, and retry (implemented; audit status is tracked separately)
 Step 8  Fresh Clone -> App -> real transcription acceptance
 ```
 

@@ -119,6 +119,11 @@ open dist/ClassroomTranscriber.app
 `external/whisper.cpp`。下载模型只会准备模型文件；它不代表源码模式所需的
 `whisper-cli` 后端已经安装或构建。
 
+正式可下载模型的 SHA-256、精确字节数和官方 upstream provenance 统一记录在
+`packaging/model_manifest.json`。下载先进入隐藏临时目录，size 和 SHA-256 全部通过后才
+原子发布最终文件；失败、partial 或损坏文件不会被标记为 available，并可直接再次点击下载重试。
+手动 Import 的自定义 `.bin` / `.gguf` 模型仍保持原有 use-in-place 行为。
+
 当前扫描目录包括：
 
 ```text
@@ -340,6 +345,13 @@ The version-pinned model download script is vendored with this repository at
 do not depend on `external/whisper.cpp` in a fresh clone. A successful model
 download only supplies a model file; it does not install or build the
 `whisper-cli` backend required by source mode.
+
+`packaging/model_manifest.json` is the single source for exact byte sizes,
+SHA-256 values, and official upstream provenance for downloadable models. A
+download stays in a hidden staging directory until both checks pass, then the
+verified file is atomically published. Failed, partial, or corrupt downloads
+are never available and can be retried directly. Explicit custom `.bin` and
+`.gguf` imports retain the existing use-in-place behavior.
 
 Scanned directories:
 

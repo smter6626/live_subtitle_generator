@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0.0",
+  "status": "frozen",
+  "integrity_algorithm": "sha256",
+  "upstream": {
+    "repository": "https://huggingface.co/ggerganov/whisper.cpp",
+    "repository_revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+    "metadata_api_url": "https://huggingface.co/api/models/ggerganov/whisper.cpp/revision/5359861c739e955e79d9a303bcbc70fb988958b1?blobs=true",
+    "metadata_kind": "official Hugging Face model repository blob and LFS metadata",
+    "vendored_downloader_url_template": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{filename}",
+    "immutable_artifact_url_template": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/{filename}",
+    "validation_policy": "the vendored downloader may resolve the upstream main branch, but downloaded bytes are accepted only when both size and SHA-256 match this revision-frozen contract"
+  },
+  "transaction": {
+    "staging_directory_prefix": ".classroom-model-download-",
+    "verification_receipt_suffix": ".integrity.json",
+    "publish_method": "os.replace from a staging directory on the target filesystem",
+    "scan_policy": "a non-imported file with an official downloadable filename is available only with a receipt matching this contract and the current file stat",
+    "retry_policy": "remove stale managed staging directories before a new download attempt; an invalid final remains unavailable and may be atomically replaced only by verified bytes",
+    "custom_import_policy": "explicitly imported .bin and .gguf models remain governed by the existing local import validation rather than this downloadable-model checksum contract"
+  },
+  "models": [
+    {
+      "name": "large-v3",
+      "filename": "ggml-large-v3.bin",
+      "expected_size_bytes": 3095033483,
+      "sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+      "upstream_blob_id": "30488f6b9eeae93e026c978ac7a3190274732ea2",
+      "immutable_artifact_url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3.bin"
+    },
+    {
+      "name": "large-v3-turbo",
+      "filename": "ggml-large-v3-turbo.bin",
+      "expected_size_bytes": 1624555275,
+      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+      "upstream_blob_id": "819841c70bdf4488c4ff778f8becdcb37df43969",
+      "immutable_artifact_url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo.bin"
+    },
+    {
+      "name": "medium.en",
+      "filename": "ggml-medium.en.bin",
+      "expected_size_bytes": 1533774781,
+      "sha256": "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356",
+      "upstream_blob_id": "f8d7f988b60916d7f7e7feee9897c037a09b2f85",
+      "immutable_artifact_url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-medium.en.bin"
+    },
+    {
+      "name": "small.en",
+      "filename": "ggml-small.en.bin",
+      "expected_size_bytes": 487614201,
+      "sha256": "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
+      "upstream_blob_id": "eaeeb6d63378cf6515ff2c1cb4e33486ae6bcc2f",
+      "immutable_artifact_url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.en.bin"
+    },
+    {
+      "name": "base.en",
+      "filename": "ggml-base.en.bin",
+      "expected_size_bytes": 147964211,
+      "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+      "upstream_blob_id": "87c664c563ef3ff52424dd4fa925cf95b306dba6",
+      "immutable_artifact_url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en.bin"
+    }
+  ]
+}

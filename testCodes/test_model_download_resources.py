@@ -15,6 +15,7 @@ from model_manager import DOWNLOADABLE_MODELS, build_download_command  # noqa: E
 
 EXPECTED_MODELS = ("large-v3", "large-v3-turbo", "medium.en", "small.en", "base.en")
 VENDORED_SCRIPT = PROJECT_ROOT / "vendor" / "whisper.cpp" / "download-ggml-model.sh"
+MODEL_MANIFEST = PROJECT_ROOT / "packaging" / "model_manifest.json"
 
 
 def print_status(status, name):
@@ -26,6 +27,13 @@ def test_source_default_uses_vendored_script():
     assert resource_paths.default_download_script_path() == VENDORED_SCRIPT
     assert "external/whisper.cpp" not in VENDORED_SCRIPT.as_posix()
     print_status("PASS", "source default uses vendored download script")
+
+
+def test_source_default_uses_model_integrity_manifest():
+    assert resource_paths.source_model_manifest_path() == MODEL_MANIFEST
+    assert resource_paths.default_model_manifest_path() == MODEL_MANIFEST
+    assert MODEL_MANIFEST.is_file()
+    print_status("PASS", "source default uses model integrity manifest")
 
 
 def test_vendored_script_exists_and_is_executable():
@@ -42,6 +50,8 @@ def test_frozen_mode_prefers_bundled_script():
         bundled_script = resource_root / "bin" / "download-ggml-model.sh"
         bundled_script.parent.mkdir(parents=True)
         bundled_script.write_text("#!/bin/sh\n", encoding="utf-8")
+        bundled_manifest = resource_root / "model_manifest.json"
+        bundled_manifest.write_text("{}\n", encoding="utf-8")
 
         had_frozen = hasattr(sys, "frozen")
         old_frozen = getattr(sys, "frozen", None)
@@ -51,6 +61,7 @@ def test_frozen_mode_prefers_bundled_script():
             sys.frozen = True
             sys._MEIPASS = str(resource_root)
             assert resource_paths.default_download_script_path() == bundled_script
+            assert resource_paths.default_model_manifest_path() == bundled_manifest
         finally:
             if had_frozen:
                 sys.frozen = old_frozen
@@ -98,6 +109,7 @@ def test_external_directory_is_not_required_for_default_path():
 
 def main():
     test_source_default_uses_vendored_script()
+    test_source_default_uses_model_integrity_manifest()
     test_vendored_script_exists_and_is_executable()
     test_frozen_mode_prefers_bundled_script()
     test_download_command_and_supported_models()

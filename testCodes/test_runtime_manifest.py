@@ -58,7 +58,9 @@ class RuntimeManifestContractTests(unittest.TestCase):
         for section in ("frozen", "observed", "pending"):
             self.assertIn(section, self.manifest)
             self.assertIsInstance(self.manifest[section], dict)
-        self.assertEqual(self.manifest.get("status"), "packaged-runtime-gated")
+        self.assertEqual(
+            self.manifest.get("status"), "model-download-integrity-gated"
+        )
 
     def test_platform_is_macos_arm64(self):
         platform = self.manifest["frozen"]["platform"]
@@ -89,6 +91,26 @@ class RuntimeManifestContractTests(unittest.TestCase):
         self.assertEqual(resource["repository_path"], expected_path)
         self.assertEqual(resource["upstream_commit"], PINNED_WHISPER_CPP_COMMIT)
         self.assertTrue((REPO_ROOT / expected_path).is_file())
+
+    def test_model_integrity_contract_is_separate_and_packaged(self):
+        model_integrity = self.manifest["frozen"]["model_integrity"]
+        self.assertEqual(
+            model_integrity["manifest_repository_path"],
+            "packaging/model_manifest.json",
+        )
+        self.assertEqual(
+            model_integrity["manifest_bundle_target"],
+            "Contents/Resources/model_manifest.json",
+        )
+        self.assertTrue(model_integrity["required_packaged_resource"])
+        self.assertFalse(model_integrity["model_binaries_are_runtime_components"])
+        self.assertTrue(
+            (REPO_ROOT / model_integrity["manifest_repository_path"]).is_file()
+        )
+        self.assertNotIn(
+            "model_checksum_and_model_manifest_strategy",
+            self.manifest["pending"],
+        )
 
     def test_all_manifest_paths_are_relative_and_portable(self):
         for key_path, value in walk_items(self.manifest):

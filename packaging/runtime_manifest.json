@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "status": "packaged-runtime-gated",
+  "status": "model-download-integrity-gated",
   "frozen": {
     "platform": {
       "os": "macOS",
@@ -238,6 +238,15 @@
         "required": true
       }
     ],
+    "model_integrity": {
+      "manifest_repository_path": "packaging/model_manifest.json",
+      "manifest_bundle_target": "Contents/Resources/model_manifest.json",
+      "runtime_helper_path": "model_integrity.py",
+      "download_transaction_entry": "model_manager.download_and_publish_model",
+      "required_packaged_resource": true,
+      "model_binaries_are_runtime_components": false,
+      "validation_policy": "download to isolated staging, verify exact size and SHA-256, atomically publish, then write a contract-bound verification receipt"
+    },
     "bundle_layout": {
       "runtime_directory": "Contents/Resources/bin",
       "whisper_cli_target": "Contents/Resources/bin/whisper-cli",
@@ -403,10 +412,6 @@
     "minimum_macos": {
       "value": null,
       "decision_step": "validation evidence required; do not infer"
-    },
-    "model_checksum_and_model_manifest_strategy": {
-      "value": null,
-      "decision_step": "Step 7"
     },
     "developer_id_signing": {
       "value": null,

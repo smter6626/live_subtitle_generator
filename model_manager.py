@@ -4,6 +4,14 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from model_integrity import (
+    ModelContract,
+    ModelDownloadResult,
+    downloaded_model_status,
+    execute_model_download,
+    load_model_contract,
+    metadata_for_model,
+)
 from settings import (
     APP_SETTINGS_PATH,
     APP_SUPPORT_MODEL_DIR,
@@ -18,14 +26,11 @@ from settings import (
 )
 
 
+MODEL_CONTRACT = load_model_contract()
 KNOWN_MODEL_FILES = {
-    "ggml-large-v3.bin": "large-v3",
-    "ggml-large-v3-turbo.bin": "large-v3-turbo",
-    "ggml-medium.en.bin": "medium.en",
-    "ggml-small.en.bin": "small.en",
-    "ggml-base.en.bin": "base.en",
+    model.filename: model.name for model in MODEL_CONTRACT.models
 }
-DOWNLOADABLE_MODELS = ("large-v3", "large-v3-turbo", "medium.en", "small.en", "base.en")
+DOWNLOADABLE_MODELS = tuple(model.name for model in MODEL_CONTRACT.models)
 MODEL_EXTENSIONS = (".bin", ".gguf")
 DOWNLOAD_SCRIPT_PATH = DEFAULT_DOWNLOAD_SCRIPT
 
@@ -170,17 +175,40 @@ def ensure_model_dirs(model_dirs=None, download_model_dir=None):
     return model_dirs
 
 
-def model_status(path: Path) -> str:
+def model_status(
+    path: Path,
+    *,
+    download_model_dir: Path | None = None,
+    imported_model_paths=(),
+    contract: ModelContract = MODEL_CONTRACT,
+) -> str:
     if not path.exists():
         return "missing"
     if not path.is_file():
         return "not a file"
+    imported_keys = {_path_key(imported) for imported in imported_model_paths}
+    is_explicit_import = _path_key(path) in imported_keys
+    is_managed_downloadable = bool(
+        path.name in contract.by_filename and not is_explicit_import
+    )
+    if is_managed_downloadable:
+        metadata = contract.by_filename[path.name]
+        return downloaded_model_status(path, metadata, contract)
     if path.stat().st_size <= MIN_MODEL_FILE_SIZE_BYTES:
         return "too small"
     return "available"
 
 
-def scan_model_dirs(model_dirs=None, extra_paths=None, download_model_dir=None) -> list[ModelInfo]:
+def scan_model_dirs(
+    model_dirs=None,
+    extra_paths=None,
+    download_model_dir=None,
+    *,
+    contract: ModelContract = MODEL_CONTRACT,
+) -> list[ModelInfo]:
+    download_model_dir = Path(
+        download_model_dir or DEFAULT_DOWNLOAD_MODEL_DIR
+    ).expanduser()
     model_dirs = ensure_model_dirs(model_dirs, download_model_dir=download_model_dir)
     extra_paths = extra_paths or []
     found = {}
@@ -202,7 +230,12 @@ def scan_model_dirs(model_dirs=None, extra_paths=None, download_model_dir=None) 
             name=parse_model_name(path.name),
             path=path,
             size_bytes=path.stat().st_size if path.exists() and path.is_file() else 0,
-            status=model_status(path),
+            status=model_status(
+                path,
+                download_model_dir=download_model_dir,
+                imported_model_paths=extra_paths,
+                contract=contract,
+            ),
         )
         for path in found.values()
     ]
@@ -259,7 +292,11 @@ def load_app_settings(settings_path: Path = APP_SETTINGS_PATH) -> AppSettings:
         imported_model_paths=imported_paths,
     )
 
-    models = scan_model_dirs(app_settings.model_dirs, app_settings.imported_model_paths)
+    models = scan_model_dirs(
+        app_settings.model_dirs,
+        app_settings.imported_model_paths,
+        download_model_dir=app_settings.download_model_dir,
+    )
     selected = choose_default_model(models, app_settings.selected_model_path)
     if selected:
         app_settings.selected_model_path = selected.path
@@ -293,9 +330,10 @@ def validate_import_model(path: Path) -> list[str]:
 
 
 def downloadable_model_filename(model_name: str) -> str:
-    if model_name not in DOWNLOADABLE_MODELS:
-        raise ValueError(f"Unsupported downloadable model: {model_name}")
-    return f"ggml-{model_name}.bin"
+    try:
+        return metadata_for_model(model_name, MODEL_CONTRACT).filename
+    except RuntimeError as exc:
+        raise ValueError(f"Unsupported downloadable model: {model_name}") from exc
 
 
 def download_target_path(model_name: str, target_dir: Path = DEFAULT_DOWNLOAD_MODEL_DIR) -> Path:
@@ -328,6 +366,37 @@ def run_download_command(command, cwd: Path | None = None, log_callback=None) ->
     return process.wait()
 
 
+def download_and_publish_model(
+    model_name: str,
+    target_dir: Path = DEFAULT_DOWNLOAD_MODEL_DIR,
+    *,
+    script_path: Path = DOWNLOAD_SCRIPT_PATH,
+    contract: ModelContract = MODEL_CONTRACT,
+    command_runner=run_download_command,
+    log_callback=None,
+) -> ModelDownloadResult:
+    if model_name not in contract.by_name:
+        raise ValueError(f"Unsupported downloadable model: {model_name}")
+
+    def downloader(metadata, staging_dir, callback):
+        command = build_download_command(
+            metadata.name,
+            script_path=script_path,
+            target_dir=staging_dir,
+        )
+        if callback:
+            callback("download command: " + " ".join(command))
+        return command_runner(command, cwd=staging_dir, log_callback=callback)
+
+    return execute_model_download(
+        model_name,
+        target_dir,
+        downloader,
+        contract=contract,
+        log_callback=log_callback,
+    )
+
+
 def _looks_like_model_file(path: Path) -> bool:
     if not path.is_file():
         return False
@@ -344,11 +413,7 @@ def _path_key(path) -> str:
 
 
 def _model_sort_key(model: ModelInfo):
-    priority = {
-        "large-v3": 0,
-        "large-v3-turbo": 1,
-        "medium.en": 2,
-        "small.en": 3,
-        "base.en": 4,
-    }.get(model.name, 20)
+    priority = {name: index for index, name in enumerate(DOWNLOADABLE_MODELS)}.get(
+        model.name, 20
+    )
     return (priority, model.name.lower(), str(model.path).lower())

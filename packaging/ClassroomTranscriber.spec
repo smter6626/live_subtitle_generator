@@ -35,6 +35,16 @@ datas.extend(
     for resource in manifest["frozen"]["vendored_resources"]
     if resource["required"] is True
 )
+model_integrity = manifest["frozen"]["model_integrity"]
+if model_integrity["required_packaged_resource"] is True:
+    datas.append(
+        required_resource(
+            model_integrity["manifest_repository_path"],
+            pyinstaller_destination(
+                str(PurePosixPath(model_integrity["manifest_bundle_target"]).parent)
+            ),
+        )
+    )
 
 
 a = Analysis(
