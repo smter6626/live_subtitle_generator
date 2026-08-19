@@ -94,7 +94,7 @@ cd /path/to/whisper
 open dist/ClassroomTranscriber.app
 ```
 
-如果从别人那里收到 zip，先解压 `ClassroomTranscriber.zip`，再右键 Open 或双击打开。开发版没有 notarization，macOS 可能要求右键 Open。
+如果从 Release 获得 `ClassroomTranscriber-<version>-macOS-AppleSilicon.zip`，先解压，再右键 Open 或双击 `ClassroomTranscriber.app`。当前 App 没有 notarization，macOS 可能要求右键 Open。普通用户不需要源码仓库、Python、whisper.cpp 或开发环境；模型仍由 Model Manager 下载或导入。
 
 ### 7. 模型管理
 
@@ -193,12 +193,19 @@ cd /path/to/whisper
 dist/ClassroomTranscriber.app
 ```
 
-生成方便发送的 zip：
+正式构建 PASS 后，使用显式版本生成并验证 Release ZIP：
 
 ```bash
-cd dist
-ditto -c -k --sequesterRsrc --keepParent ClassroomTranscriber.app ClassroomTranscriber.zip
+.venv/bin/python scripts/build_release_zip.py --version <version>
 ```
+
+输出：
+
+```text
+dist/ClassroomTranscriber-<version>-macOS-AppleSilicon.zip
+```
+
+该入口要求 Git worktree clean，使输出的 40-character source commit 能准确绑定源码；随后重新验证 `dist/ClassroomTranscriber.app`，只归档完整 App bundle，再解压到 source tree 外的新临时目录。它会核对 ZIP 内容边界、文件 bytes、permission、symlink，并对解压后的 App 复用正式 packaged Runtime verifier。成功输出 source commit、ZIP exact bytes 和 SHA-256。它不会推断版本、创建 tag / GitHub Release 或上传 asset，且 ZIP 不内置模型或开发环境。
 
 清理构建产物：
 
@@ -320,7 +327,7 @@ Packaged app:
 open dist/ClassroomTranscriber.app
 ```
 
-If you receive `ClassroomTranscriber.zip`, unzip it and open the app. Since this is a development build without notarization, macOS may require right-click -> Open.
+If you receive `ClassroomTranscriber-<version>-macOS-AppleSilicon.zip`, extract it and open `ClassroomTranscriber.app`. The current App is not notarized, so macOS may require right-click -> Open. Ordinary users do not need the source repository, Python, whisper.cpp, or a development environment; models remain a Model Manager download or import.
 
 ### 7. Model Management
 
@@ -422,12 +429,19 @@ Output:
 dist/ClassroomTranscriber.app
 ```
 
-Create a shareable zip:
+After the formal build passes, create and verify the Release ZIP with an explicit version:
 
 ```bash
-cd dist
-ditto -c -k --sequesterRsrc --keepParent ClassroomTranscriber.app ClassroomTranscriber.zip
+.venv/bin/python scripts/build_release_zip.py --version <version>
 ```
+
+Output:
+
+```text
+dist/ClassroomTranscriber-<version>-macOS-AppleSilicon.zip
+```
+
+This entry requires a clean Git worktree so its 40-character source commit identifies the packaged source. It then re-verifies `dist/ClassroomTranscriber.app`, archives only the complete App bundle, extracts it to a new temporary directory outside the source tree, checks ZIP boundaries, file bytes, permissions, and symlinks, and reuses the formal packaged Runtime verifier against the extracted App. Success reports the source commit, exact ZIP bytes, and SHA-256. It does not infer a version, create a tag or GitHub Release, or upload an asset, and the ZIP contains no model or development environment.
 
 Clean build artifacts:
 

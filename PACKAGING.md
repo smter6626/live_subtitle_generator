@@ -111,6 +111,21 @@ Build ClassroomTranscriber.command
 
 The `.command` file only resolves the repository and transfers control. The orchestrator propagates failures and performs a basic App/bundle structure check. The Release build itself owns the strict packaged Runtime gate, so the formal one-entry flow cannot report success before verification passes. Ad-hoc signing is only the current development-bundle integrity step; Developer ID and notarization remain pending release work.
 
+## Formal Release ZIP
+
+After the formal build passes, create the ordinary-user artifact with an explicit version:
+
+```bash
+./Build\ ClassroomTranscriber.command
+.venv/bin/python scripts/build_release_zip.py --version <version>
+```
+
+The source worktree must be clean so the recorded 40-character source commit identifies the packaged source. The artifact is `dist/ClassroomTranscriber-<version>-macOS-AppleSilicon.zip`. The Release entry reads the filename and payload contract from `packaging/runtime_manifest.json`; it never infers a version, changes the project version, creates a Git tag or GitHub Release, or uploads an asset.
+
+Before publishing the ZIP, the entry re-runs the existing packaged Runtime verifier on `dist/ClassroomTranscriber.app`. It archives only `ClassroomTranscriber.app` with macOS `/usr/bin/zip -r -y -X`: `-y` preserves symlinks and `-X` excludes volatile extra fields such as access times, so repeated packaging of the same App produces identical archive bytes. It extracts with macOS `ditto` into a new temporary directory outside the source tree, checks archive boundaries and CRC, compares the complete bundle structure, file bytes, permission modes, and symlink targets, and then runs the same packaged Runtime verifier against the extracted App. A verification failure does not publish the staged ZIP. A successful run prints the version, source commit, artifact filename/path, exact byte size, SHA-256, and extracted-App verification result.
+
+Models, `.venv`, `.tools`, `external`, source-tree files, build caches, and user settings are not Release payloads. Models remain an external Model Manager responsibility.
+
 ## Work still pending
 
 The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Their audit state is tracked separately. The project has not yet performed clean-machine acceptance and real transcription E2E.
