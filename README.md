@@ -68,13 +68,12 @@ Classroom Live Transcriber 是一个本地课堂实时转写工具，主要面�
 
 ```bash
 cd /path/to/whisper
-scripts/bootstrap_python_env.sh
-scripts/bootstrap_whisper_runtime.sh
+./Build\ ClassroomTranscriber.command
 ```
 
-该脚本准备项目局部的 uv 0.12.5、uv 管理的 Python 3.12.14 和 `.venv`，并按 `uv.lock` 执行 frozen sync。需要强制重建新环境时使用 `scripts/bootstrap_python_env.sh --recreate`。历史 `venv/` 不参与正式环境；PyInstaller 已作为冻结的开发依赖同步。
+该正式入口依次准备项目局部的 uv 0.12.5、uv 管理的 Python 3.12.14、`.venv`、CMake 4.2.3 和固定 whisper.cpp Runtime，再明确使用 `.venv/bin/python` 构建 `dist/ClassroomTranscriber.app`。它也可以在 Finder 中双击；远程自动化只验证 shell 等价调用，Finder 实际交互留待本机验收。
 
-第二个脚本使用 Manifest 合同准备项目局部 CMake 4.2.3、固定 whisper.cpp commit 和 arm64 Runtime。已有 Runtime 可用 `scripts/bootstrap_whisper_runtime.sh --verify-only` 快速验证；该模式不会下载或构建。
+需要单独维护或诊断环境时，底层入口仍是 `scripts/bootstrap_python_env.sh` 和 `scripts/bootstrap_whisper_runtime.sh`。前者可用 `--recreate` 仅重建正式 `.venv`，后者可用 `--verify-only` 验证已有 Runtime。历史 `venv/` 不参与正式构建。
 
 如果要使用旧的 `faster-whisper` fallback，需要另外安装 `faster-whisper`，但这不是当前 UI 主路径。
 
@@ -178,7 +177,7 @@ config.json   # 本次 session 的模型、语言、beam、路径和音频配置
 
 ```bash
 cd /path/to/whisper
-./scripts/build_macos.sh
+./Build\ ClassroomTranscriber.command
 ```
 
 输出：
@@ -284,17 +283,16 @@ does not require a manual whisper.cpp clone or build.
 
 ### 5. Install Dependencies
 
-The source-mode Python and dependencies are rebuilt from exact repository declarations:
+The formal source-build entry rebuilds dependencies from exact repository declarations:
 
 ```bash
 cd /path/to/whisper
-scripts/bootstrap_python_env.sh
-scripts/bootstrap_whisper_runtime.sh
+./Build\ ClassroomTranscriber.command
 ```
 
-The script prepares project-local uv 0.12.5, uv-managed Python 3.12.14, and `.venv`, then performs a frozen sync from `uv.lock`. Use `scripts/bootstrap_python_env.sh --recreate` to force a clean rebuild of the new environment. The historical `venv/` is not used; frozen PyInstaller is included as a development dependency.
+The formal entry prepares project-local uv 0.12.5, uv-managed Python 3.12.14, `.venv`, CMake 4.2.3, and the pinned whisper.cpp Runtime, then explicitly builds the App with `.venv/bin/python`. It can also be launched from Finder; remote automation validates only its equivalent shell execution, not the actual Finder interaction.
 
-The second script uses the Manifest contract to prepare project-local CMake 4.2.3, the pinned whisper.cpp commit, and the arm64 Runtime. Use `scripts/bootstrap_whisper_runtime.sh --verify-only` to check an existing Runtime without downloading or building.
+For environment maintenance or diagnostics, the underlying entries remain `scripts/bootstrap_python_env.sh` and `scripts/bootstrap_whisper_runtime.sh`. Use the former with `--recreate` to rebuild only the formal `.venv`, or the latter with `--verify-only` to check an existing Runtime without downloading or building. The historical `venv/` is never used by the formal build.
 
 The legacy `faster-whisper` fallback requires installing `faster-whisper` separately. It is not the current UI path.
 
@@ -399,7 +397,7 @@ Build the macOS development `.app`:
 
 ```bash
 cd /path/to/whisper
-./scripts/build_macos.sh
+./Build\ ClassroomTranscriber.command
 ```
 
 Output:

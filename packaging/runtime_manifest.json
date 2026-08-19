@@ -251,7 +251,15 @@
     "developer_build_entry": {
       "finder_wrapper_path": "Build ClassroomTranscriber.command",
       "implementation_path": "scripts/bootstrap_and_build.sh",
-      "wrapper_role": "thin Finder entry point"
+      "wrapper_role": "thin Finder entry point",
+      "implementation_status": "implemented",
+      "python_bootstrap_path": "scripts/bootstrap_python_env.sh",
+      "whisper_runtime_bootstrap_path": "scripts/bootstrap_whisper_runtime.sh",
+      "formal_python_path": ".venv/bin/python",
+      "release_build_script_path": "scripts/build_macos.sh",
+      "expected_app_path": "dist/ClassroomTranscriber.app",
+      "orchestration_policy": "run the formal Python bootstrap, run the pinned whisper Runtime bootstrap, then inject the formal project Python into the existing Release build",
+      "validation_boundary": "Step 5 requires a generated App and basic bundle structure; strict packaged Runtime closure and smoke remain Step 6"
     },
     "release": {
       "artifact_name_template": "ClassroomTranscriber-<version>-macOS-AppleSilicon.zip",

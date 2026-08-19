@@ -484,7 +484,7 @@ Pending decisions
 
 的稳定事实源。
 
-Manifest 当前状态为 `contract-only`，后续再逐步被 Bootstrap、PyInstaller Spec、Build Script 和测试消费。
+Manifest 的 Python、CMake、whisper.cpp Build Profile 与正式开发者构建入口已经被 Bootstrap、orchestrator 和测试消费；PyInstaller Spec 与严格 post-build gate 仍在后续逐步接入。
 
 Manifest 不得包含：
 
