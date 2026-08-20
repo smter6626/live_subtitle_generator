@@ -1,6 +1,6 @@
 # deployment_runtime.md
 
-最后更新：2026-08-19  
+最后更新：2026-08-20  
 文档角色：Deployment 工作线动态执行状态（runtime state）
 
 本文件只记录 Classroom Live Transcriber 在 `main` 分支上的 deployment / packaging / clean-machine reproducibility / bugfix 执行状态。
@@ -44,7 +44,8 @@ checkpoint 内容：chore: add reproducible release zip packaging
 Deployment Step 8：PASS
 Step 9 总体：ACTIVE
 Step 9A：PASS
-唯一 ACTIVE：Deployment Step 9B - 使用已审核入口实际创建并发布 GitHub Release
+Step 9B：PASS
+唯一 ACTIVE：Deployment Step 9C - 人工 Release 下载 / ordinary-user / same-artifact 验收
 ```
 
 当前一句话目标：
@@ -61,8 +62,8 @@ M5 packaged large-v3 Metal backend runtime evidence：PASS
 M5 Stop -> Start / audio input reacquire：PASS
 Deployment Developer MVP：PASS
 Step 9A Release ZIP tooling / round-trip verification：PASS
-Step 9B：ACTIVE
-Step 9C：PENDING
+Step 9B GitHub Release 0.2.0 publication / remote asset verification：PASS
+Step 9C：ACTIVE
 ```
 
 ---
@@ -451,14 +452,14 @@ config.json    1121 bytes
 
 ---
 
-## 3. 当前唯一 ACTIVE Step：Deployment Step 9B
+## 3. 当前唯一 ACTIVE Step：Deployment Step 9C
 
 Step 9 总体拆分为 A / B / C 三个明确阶段。任一时刻只有一个子阶段 ACTIVE：
 
 ```text
 Step 9A：补齐正式 Release ZIP 生成与本地验证入口         PASS
-Step 9B：使用已审核入口实际创建并发布 GitHub Release      ACTIVE
-Step 9C：人工从 GitHub Release 下载并做 ordinary-user 验收 PENDING
+Step 9B：使用已审核入口实际创建并发布 GitHub Release      PASS
+Step 9C：人工从 GitHub Release 下载并做 ordinary-user 验收 ACTIVE
 ```
 
 ### 3.1 Step 9 总目标
@@ -574,54 +575,69 @@ Step 9A 未创建 tag、未创建 GitHub Release、未上传 asset，符合边�
 
 ### 3.3 Step 9B：实际 GitHub Release 发布
 
-状态：**ACTIVE**。
+状态：**PASS / 已完成（2026-08-20）**。
 
-前置条件：Step 9A implementation 已 push main 且经人工 / ChatGPT 审核 ACCEPTED；当前满足。
-
-Step 9B 原则上不再改产品代码。使用 Step 9A 已审核的正式入口，从指定 source commit 构建**唯一一份** Release ZIP，并发布为 GitHub Release asset。
-
-发布前必须确认：
+正式发布：
 
 ```text
-main / clean worktree / HEAD == origin/main
-Step 9A accepted commit 已包含
-正式 one-entry build 在同一 source commit 上重新执行并 PASS
-紧接该 build 生成 Release ZIP，local extracted-App verification PASS
-GitHub CLI / GitHub authentication 可用，或存在等价受控发布方式
+version/tag: 0.2.0
+release title: Classroom Transcriber 0.2.0
+prerelease: No
+source commit / tag target: 314326ab30c033090d1287793e3a47ef8f2c8971
+artifact: ClassroomTranscriber-0.2.0-macOS-AppleSilicon.zip
+exact bytes: 46,549,839
+SHA-256: 09722cd4502103ab8f5751365438975cf05f2b1902dd7005f3c7e32b62dfabbd
 ```
 
-版本 / tag 是显式发布输入。若 repo 尚无明确 version/tag convention，Codex 不得自行发明正式版本号；在创建 tag / Release 前停止并请求用户给出：
+GitHub Release 页面与 `gh release view 0.2.0` 显示：Release 已发布、title 正确、asset 存在，Release notes 明确 0.2.0 修复 deployment/runtime dependency issues，提供 self-contained macOS Apple Silicon downloadable release；模型不内置，继续由 Model Manager 下载或导入。
+
+发布后在 M5 Developer / Reference Machine 执行远端核验：
 
 ```text
-release version/tag
-是否 prerelease
-release title（若需要）
+git fetch origin --tags
+gh release view 0.2.0
+git rev-list -n 1 0.2.0
 ```
 
-考虑当前仅 ad-hoc signing、尚未 notarize，是否作为 prerelease 发布必须由用户显式决定，不由 Codex 静默决定。
-
-Step 9B 发布产物必须绑定并记录：
+确认 tag `0.2.0` 精确指向：
 
 ```text
-release tag/version
-source commit
-ZIP filename
-exact bytes
-SHA-256
-GitHub Release URL / asset
+314326ab30c033090d1287793e3a47ef8f2c8971
 ```
 
-必须发布**本地已通过 Step 9A 全部验证的同一 ZIP bytes**；不得上传后重新压缩或重新生成另一个 ZIP。上传后应通过 GitHub 重新获取 / 下载 asset 或使用等价方式计算远端下载 bytes 的 SHA-256，确认与本地已验证 artifact 完全一致。
+随后通过 `gh release download 0.2.0` 重新从 GitHub 获取正式 asset 到 `/tmp`，得到：
 
-Step 9B 不要求修改 `deployment_runtime.md`；发布完成后汇报证据，由 ChatGPT / 人工审核并更新 `9B PASS -> 9C ACTIVE`。
+```text
+filename: ClassroomTranscriber-0.2.0-macOS-AppleSilicon.zip
+exact bytes: 46,549,839
+SHA-256: 09722cd4502103ab8f5751365438975cf05f2b1902dd7005f3c7e32b62dfabbd
+```
+
+该 SHA-256 与 Release notes、GitHub asset digest 完全一致。由此确认 GitHub 上实际可下载的 0.2.0 asset identity 已闭环；Step 9B PASS。
+
+注意：上述 `gh release download` 仅属于 Step 9B 的 remote artifact verification，不能替代 Step 9C 的浏览器/Finder ordinary-user path。
 
 ### 3.4 Step 9C：人工 ordinary-user Release 验收
 
-状态：**PENDING**。
+状态：**ACTIVE**。
 
-Step 9C 必须由人工按普通用户路径验证，Codex 不能用 source tree / Terminal 启动替代 GUI 用户体验。
+Step 9C 必须保留真实 ordinary-user GUI 交互。Codex 可以作为 test conductor：读取合同、检查下载文件 identity、观察 quarantine、检查 evidence、整理日志；但以下关键路径必须由人工真实执行，不能被 Terminal / source tree 自动化替代：
+
+```text
+浏览器点击 GitHub Release asset
+Finder 解压
+Finder 双击 / 右键 Open
+正常 Gatekeeper GUI 交互
+Model Manager UI
+Start / Stop
+人工确认真实转写
+```
+
+当前执行顺序调整为：用户当前在 M5 Developer / Reference Machine，先完成 **9C-2 M5 same-artifact portability + ordinary-user GUI acceptance**；其 PASS 后仍需回 M4 Max 补 **9C-1 primary ordinary-user acceptance**，之后才能关闭整个 Step 9。
 
 #### 9C-1 M4 Max primary ordinary-user acceptance
+
+状态：**PENDING**。
 
 在 M4 Max 上从 GitHub Release 页面实际下载 Step 9B 发布的 ZIP，不使用 Step 9B 本地 artifact，不从 repo 的 `dist/` 打开 App。
 
@@ -654,31 +670,65 @@ Release ZIP browser download
 -> raw.txt / clean.txt / session.log / config.json 全部存在且非空
 ```
 
-#### 9C-2 M5 same-artifact portability check
+#### 9C-2 M5 same-artifact portability + ordinary-user acceptance
 
-由于 `GGML_NATIVE=ON` 仍是当前 build profile，Step 8 证明的是 M4 Max 与 M5 **各自在本机构建**时均可运行；Step 9 还需要确认由 Step 9B 发布的**同一个 Release ZIP artifact**在 M5 上不会因 native code generation 失效。
+状态：**ACTIVE / 当前先执行**。
 
-该检查不需要 M5 Codex。人工在 M5 上从同一个 GitHub Release 下载同一 ZIP，不重新 build；至少完成：
+由于 `GGML_NATIVE=ON` 仍是当前 build profile，Step 8 证明的是 M4 Max 与 M5 **各自在本机构建**时均可运行；Step 9 还需要确认由 Step 9B 发布的**同一个 M4 Max-built Release ZIP artifact**在 M5 上不会因 native code generation 失效。
+
+本轮必须从浏览器实际进入 GitHub Release `0.2.0` 页面并点击正式 asset，不能复用此前 `gh release download` 的 `/tmp` 文件作为 9C 证据。浏览器下载后应先核对：
 
 ```text
-Finder unzip / launch
-packaged App 可启动
-使用可用模型完成一次真实非空转写
-Stop 正常
+filename: ClassroomTranscriber-0.2.0-macOS-AppleSilicon.zip
+exact bytes: 46,549,839
+SHA-256: 09722cd4502103ab8f5751365438975cf05f2b1902dd7005f3c7e32b62dfabbd
 ```
 
-若需要更强 Runtime 证据，可额外对该**同一 Release App 内** packaged `whisper-cli` + M5 现有 verified large-v3 + JFK sample 做一次 Metal probe，但这不是 ordinary-user GUI 路径的替代品。
+随后：
+
+```text
+Finder unzip 到 source tree 外
+-> 首次 Finder launch
+-> 记录 quarantine / Gatekeeper
+-> 不允许 xattr -d / spctl disable / 手工重签等 Terminal-only workaround
+-> Release App Model Manager 使用新的空模型目录
+-> 通过 Release App 自己下载 manifest-managed model（优先 base.en，降低测试成本）
+-> model available / selectable
+-> Start
+-> 真实非空转写
+-> Stop
+-> App 回 idle
+-> raw.txt / clean.txt / session.log / config.json 全部存在且非空
+```
+
+GUI E2E PASS 后，建议额外使用**同一 Release App 内** packaged `whisper-cli` + 该 Release App 下载的模型 + JFK sample 做一次 M5 Metal probe，确认：
+
+```text
+use gpu = 1
+gpu_device = 0
+GPU name = Apple M5
+MTL0 / Metal backend active
+实际 JFK inference PASS
+```
+
+该 CLI probe 是 same-artifact Runtime 的补充证据，不能替代浏览器/Finder/Model Manager/GUI transcription 路径。
+
+9C-2 可以由 M5 Codex 作为 test conductor，但 Codex 必须在每个 Human Gate 等待用户真实 GUI 操作结果，不得用 `gh release download`、Terminal `open`、repo `dist/` App 或 source-run UI 冒充 ordinary-user acceptance。
 
 Step 9 完整 PASS 条件：
 
 ```text
 9A release ZIP tooling / extracted-App verification            PASS
-9B exact verified artifact published to GitHub Release         PENDING
+9B exact verified artifact published to GitHub Release         PASS
 9C-1 M4 Max browser-download ordinary-user E2E                 PENDING
 9C-1 Gatekeeper/quarantine 无 Terminal-only workaround         PENDING
 9C-1 Model Manager fresh download                              PENDING
 9C-1 transcription / Stop / evidence layer                     PENDING
-9C-2 same Release artifact on M5 launch + transcription         PENDING
+9C-2 M5 browser-download same Release artifact                 ACTIVE
+9C-2 M5 Finder/Gatekeeper ordinary-user path                   PENDING
+9C-2 M5 Model Manager fresh download                           PENDING
+9C-2 M5 transcription / Stop / evidence layer                  PENDING
+9C-2 same Release artifact M5 Metal/runtime portability        PENDING
 ```
 
 若 9C-2 暴露 `GGML_NATIVE=ON` 的真实 cross-generation artifact incompatibility，则 Step 9 不得 PASS；回到 release/runtime engineering 处理 portable build profile，而不是为单机绕过。
@@ -699,8 +749,9 @@ Step 9 完整 PASS 条件：
 10. 明确 Import 的 custom `.bin/.gguf` 不受官方 downloadable checksum contract 约束，仍只使用独立 local import validation。
 11. whisper.cpp pinned commit 在 macOS 27 SDK 下会产生部分 Metal deprecated API compiler warning；M4/M5 build/runtime inference 均 PASS，当前不升级 upstream。
 12. Step 9A Release ZIP 对同一个 App 的重复打包已证明 byte-identical；这不等同于声明“不同时间重新 build 出的 App/ZIP 必然 byte-identical”。
-13. Step 9A package script 依赖 documented `formal build -> package` 顺序；Step 9B 必须重新 build 后立即 package，避免旧 dist App 与当前 source commit 绑定错误。
-14. 旧 pseudo-oral 测试输出仍是既有非阻塞项。
+13. Step 9A package script 依赖 documented `formal build -> package` 顺序；Step 9B 已在正式发布链路使用该顺序，发布的 0.2.0 asset 绑定 tag/source commit `314326ab30c033090d1287793e3a47ef8f2c8971`。
+14. 0.2.0 当前仅 ad-hoc signed、未 Developer ID notarized；Gatekeeper/quarantine 是否允许普通用户只通过标准 GUI 完成首次启动，由 Step 9C 实测决定。
+15. 旧 pseudo-oral 测试输出仍是既有非阻塞项。
 
 ---
 
@@ -720,14 +771,10 @@ Step 8 实机验收暴露以下项目，均不回滚 Deployment MVP：
 ## 6. 当前未敲定参数
 
 ```text
-# Step 9B publication gate
-正式 release version / tag
-是否 prerelease
-release title / release notes 最小内容
-
 # Step 9C
-GitHub Release 下载后的 Gatekeeper / quarantine 实际行为
-同一 M4 Max-built Release artifact 在 M5 的实际 portability
+GitHub Release 0.2.0 浏览器下载后的 Gatekeeper / quarantine 实际行为
+同一 M4 Max-built Release 0.2.0 artifact 在 M5 的实际 portability
+M4 Max primary ordinary-user acceptance 的最终 Gatekeeper / Model Manager / transcription 结果
 
 # 后续 UX / Product task 文档
 Model download progress / spinner / bytes feedback
@@ -746,13 +793,13 @@ GitHub Actions release automation
 
 ## 7. 开发机与验收机状态
 
-旧 MacBook：Developer / Reference Machine；MacBook Air / Apple M5 / 16 GB / 512 GB / macOS 27 Beta。Step 8 current-checkpoint build + packaged Runtime + large-v3 Metal + Chinese transcription + Stop/Start regression：PASS。Step 9A Release ZIP tooling / dry-run / extracted-App verification 也在该机完成并 PASS。
+旧 MacBook：Developer / Reference Machine；MacBook Air / Apple M5 / 16 GB / 512 GB / macOS 27 Beta。Step 8 current-checkpoint build + packaged Runtime + large-v3 Metal + Chinese transcription + Stop/Start regression：PASS。Step 9A Release ZIP tooling / dry-run / extracted-App verification 也在该机完成并 PASS。当前首先在该机执行 Step 9C-2 same-release-artifact ordinary-user / portability acceptance。
 
-新 Mac：Clean-machine Acceptance Machine；MacBook Pro / Apple M4 Max / 48 GB / 1 TB / macOS 27 Beta。Step 8 clean-machine build + UI large-v3 download/integrity + packaged Metal + actual transcription + evidence：PASS。Step 9B 计划在 M4 Max 的一次性 release-engineering workspace 中构建并发布唯一 Release artifact；Step 9C-1 随后必须从 GitHub Release 浏览器下载该 artifact 做 ordinary-user 验收。
+新 Mac：Clean-machine Acceptance Machine；MacBook Pro / Apple M4 Max / 48 GB / 1 TB / macOS 27 Beta。Step 8 clean-machine build + UI large-v3 download/integrity + packaged Metal + actual transcription + evidence：PASS。Step 9B 已在 M4 Max release-engineering 流程发布正式 0.2.0 Release；后续仍需在 M4 Max 从 GitHub Release 浏览器重新下载同一 asset 做 Step 9C-1 primary ordinary-user acceptance。
 
-当前可以记录：**项目已在 Apple M4 Max 与 Apple M5 设备上实际验证当前 Deployment checkpoint。** M1 / M2 / M3 仅理论兼容，不作保证；旧版 macOS 当前不作保证。
+当前可以记录：**项目已在 Apple M4 Max 与 Apple M5 设备上实际验证当前 Deployment checkpoint；0.2.0 Release artifact 已正式发布，但 ordinary-user Release acceptance 仍在 Step 9C 进行中。** M1 / M2 / M3 仅理论兼容，不作保证；旧版 macOS 当前不作保证。
 
-长期职责仍以 `deployment_static.md` 为准：默认旧 M5 为 Developer / Reference，M4 Max 为 Acceptance Machine。Step 9B 允许在 M4 Max 使用一次性 fresh release-engineering workspace 执行 release-only 工作；不得复用 Step 8 clean-machine clone，不得扩展为产品功能开发，不改变长期角色合同。Step 9 完成后可删除该 workspace。
+长期职责仍以 `deployment_static.md` 为准：默认旧 M5 为 Developer / Reference，M4 Max 为 Acceptance Machine。Step 9B 的 M4 Max release-engineering 例外不改变长期角色合同；Step 9C 不允许继续积累 release-only 手工 patch。
 
 ---
 
@@ -768,8 +815,8 @@ Step 6：严格打包门禁与 post-build smoke                              已
 Step 7：模型下载完整性、失败恢复与重试                                已完成
 Step 8：新机器 Clean-machine App / Model / Microphone / Transcription E2E 已完成 / PASS
 Step 9A：正式 Release ZIP 生成与本地验证入口                         已完成 / PASS
-Step 9B：实际 GitHub Release 发布                                    ACTIVE
-Step 9C：人工 Release 下载 / ordinary-user / same-artifact 验收       PENDING
+Step 9B：实际 GitHub Release 0.2.0 发布                              已完成 / PASS
+Step 9C：人工 Release 下载 / ordinary-user / same-artifact 验收       ACTIVE
 ```
 
 Deployment Developer MVP 暂停点已经达到：
@@ -786,22 +833,23 @@ Step 9 完成后，若用户选择继续产品 polish，应新建独立 Product 
 
 ## 9. 下一步执行提示
 
-继续 `main` Deployment 时只执行 Step 9B：
+继续 `main` Deployment 时只执行 Step 9C，当前先在 M5 完成 9C-2：
 
 ```text
-1. 用户先显式给出 release version/tag、是否 prerelease；Codex 不得自行决定
-2. 在 M4 Max 创建一次性 fresh release-engineering workspace，不复用 Step 8 clean-machine clone
-3. fresh clone 当前 main；确认 main + clean worktree + HEAD == origin/main
-4. 读取 deployment_static.md / deployment_runtime.md / PACKAGING.md / README.md
-5. 不修改产品代码；Step 9B 原则上是 build + package + publish
-6. 在目标 source commit 上重新执行正式 one-entry build，全部 Step 6 hard gate PASS
-7. 紧接该 build 执行 `build_release_zip.py --version <explicit-version>`；不得复用来源不明的旧 dist App
-8. 记录 local ZIP filename / exact bytes / SHA-256 / source commit / extracted-App verification
-9. 创建显式 tag / GitHub Release，并上传这一个已经验证的 ZIP bytes；不得重新压缩
-10. 从 GitHub 重新下载或等价获取远端 asset，计算 SHA-256，与本地已验证 ZIP 完全一致
-11. 若发布动作需要额外 signing/notarization 才能继续，停止并汇报，不擅自扩大 scope
-12. Codex 默认不修改 deployment_runtime.md；由 ChatGPT / 人工审核后推进 9C
+1. M5 repo pull 当前 main，仅用于读取最新 static/runtime/docs；本轮不 build、不改代码
+2. Codex 可作为 test conductor，但关键 GUI Human Gate 必须等待用户真实操作
+3. 用户用浏览器打开 GitHub Release 0.2.0 页面并点击正式 ZIP，不复用此前 gh CLI /tmp 下载
+4. 核对浏览器下载文件：filename / exact bytes 46,549,839 / SHA-256 09722cd4502103ab8f5751365438975cf05f2b1902dd7005f3c7e32b62dfabbd
+5. Finder 解压到 source tree 外；首次启动只允许 Finder 双击/右键 Open/系统 Open Anyway 等正常 GUI 路径
+6. 只读记录 quarantine；禁止 xattr -d / spctl disable / 手工重签 / 修改 bundle
+7. Release App Model Manager 使用新的空模型目录，通过 Release App 自己下载 manifest-managed model，优先 base.en
+8. model available/selectable 后 Start -> 真实非空转写 -> Stop -> idle；检查 raw.txt / clean.txt / session.log / config.json 全部非空
+9. GUI E2E PASS 后，用同一 Release App 内 packaged whisper-cli 做 M5 Metal probe，确认 MTL0 / Apple M5 backend active + JFK inference PASS
+10. repo 最终应保持无 source change；Codex 不修改 deployment_runtime.md
+11. M5 9C-2 PASS 后不要关闭 Step 9；回 M4 Max 再按浏览器/Finder ordinary-user 路径完成 9C-1
 ```
+
+M4 Max 9C-1 的最终验收仍要求：浏览器下载同一 0.2.0 asset -> Finder 解压/启动 -> 无 Terminal-only Gatekeeper workaround -> fresh Model Manager download -> transcription -> Stop -> evidence layer。
 
 ---
 
@@ -819,7 +867,8 @@ Step 9 完成后，若用户选择继续产品 polish，应新建独立 Product 
 7. docs/工程细节.md
 8. Step 8 M4 clean-machine / M4+M5 Metal runtime / M5 regression 实测证据
 9. Step 9A commit 02cc099ee674631ce8d5f5886966846a6623caa5 / dry-run artifact evidence
-10. Step 9B/C release artifact 证据（形成后）
+10. Step 9B Release 0.2.0：tag/source 314326ab30c033090d1287793e3a47ef8f2c8971 / asset 46,549,839 bytes / SHA-256 09722cd4502103ab8f5751365438975cf05f2b1902dd7005f3c7e32b62dfabbd
+11. Step 9C M5/M4 ordinary-user acceptance evidence（形成后）
 ```
 
 恢复 LLM：
