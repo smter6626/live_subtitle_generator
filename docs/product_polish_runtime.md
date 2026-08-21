@@ -24,6 +24,7 @@ Product / UX polish 的长期目标与硬边界见：`docs/product_polish_static
 11. 每个实现 Step 审核时都执行 Repo Map impact check；只有 architecture / ownership / interface / data-flow 等事实变化时才更新 `docs/repo_map.md`，不为每个 commit 强制制造 map diff。
 12. 2026-08-21 用户明确授权一次 **overnight sequential batch**：在 1C 为唯一 ACTIVE 的前提下，若 1C 自检、commit、push 均通过，可在同一 Codex session 中继续预授权的 1D；1D 同样通过后可继续 1E。三个 Step 仍必须各自独立 scope、tests、commit、push。任一 Step 失败或需要扩大稳定边界时立即停止整个 batch。该例外不授权 1F/1G，也不授权 Codex 修改 runtime/repo_map。
 13. 2026-08-21 用户随后明确提供并确认 `icon-live.png` 作为 1F asset，授权实施 1F，并要求本 Step 在 architecture/runtime 状态失真时同步 `docs/repo_map.md` / 本文件；正式构建仍不得保留外部开发机路径。
+14. 2026-08-21 用户已完成 1F packaged App Finder / Dock visual smoke，确认图标无明显白边、裁切或透明度异常；随后明确授权执行 **Step 1G final packaged regression / acceptance**，并授权在 1G 全部 hard gate PASS 后发布正式 GitHub Release `1.0.0`。任何 1G hard gate FAIL 都必须停止发布，不得为了完成 Release 而绕过测试、verifier 或 source/tag 绑定。
 
 通常流程：
 
@@ -51,8 +52,10 @@ Product implementation baseline: 7930cc3255e8ae1f0dbc3755e4a78e09f4e7b00f
 baseline 内容: docs: complete deployment step 9
 Pre-1F implementation checkpoint: c330744df3de9cdb624aadb4964f0471b125e91b
 checkpoint 内容: fix: clarify beam label in chinese ui
-Current Product implementation checkpoint: Step 1F App icon integration in this repository snapshot
+Current Product implementation checkpoint: 2a641e9c1bdc878d742b1c6474725d2dcd399c0b
+checkpoint 内容: feat: add app icon
 Release baseline: 0.2.0
+Release target: 1.0.0 / AUTHORIZED AFTER 1G PASS
 Deployment Step 9: PASS
 Product / UX Step 1: ACTIVE
 唯一 ACTIVE: Step 1G - Packaged regression / acceptance
@@ -74,6 +77,7 @@ aba8f49021e868b75b3bd36bc4d5aa2dfb8ca9c8  docs: sync repository map after step 1
 add22acf11ccfa5f92063e0698414e868d987cff  feat: add configurable output root
 2c1f7b12f580636d06c0e691fadea47c52b99702  fix: align bilingual ui semantics
 c330744df3de9cdb624aadb4964f0471b125e91b  fix: clarify beam label in chinese ui
+2a641e9c1bdc878d742b1c6474725d2dcd399c0b  feat: add app icon
 ```
 
 当前 Step 1 状态：
@@ -279,6 +283,8 @@ packaging/icons/ClassroomTranscriber.png
 
 用户确认的 1254×1254 RGB 源图已原样进入 repo，并由 Manifest 冻结 SHA-256。生成器移除仅与画布边缘连通的浅色 matte，生成 1024×1024 RGBA 完整 iconset / ICNS；派生物只进入 ignored `build/`。formal build 与 Release ZIP 解压后的 App 都通过共享 verifier 检查 ICNS 结构和 `CFBundleIconFile`。
 
+用户随后已对实际 `dist/ClassroomTranscriber.app` 做 Finder / Dock visual smoke，确认图标显示正确，未发现明显白边、裁切、透明度异常或小尺寸不可辨识问题；该人工结果作为 Step 1F 最终 visual acceptance evidence。
+
 ---
 
 ## 3. Step 1 共同执行约束
@@ -323,7 +329,7 @@ only verified model becomes available/selectable
 
 每个子 Step 至少执行相关 unit / contract tests；1G 必须正式 packaged build + packaged Runtime verifier + GUI smoke。
 
-Step 1 默认不创建新 GitHub Release/tag。是否发布后续版本由 Step 1 完成后用户另行决定。
+当前用户已明确授权：仅在 **1G 全部 hard gate PASS** 后创建正式 `1.0.0` tag / GitHub Release。1G 未 PASS、source/tag 绑定不清楚、Release ZIP/verifier 不一致或 GitHub 已存在冲突的 `1.0.0` 时，不得发布或覆盖。
 
 ---
 
@@ -708,7 +714,7 @@ fix: align bilingual ui semantics
 
 ## 9. Step 1F - Packaged App icon
 
-状态：**PASS**。
+状态：**PASS**（implementation `2a641e9c1bdc878d742b1c6474725d2dcd399c0b`）。
 
 ### 9.1 已知现状
 
@@ -737,25 +743,22 @@ BUNDLE(..., icon=str(icon_path), ...)
 [x] icon asset 进入 repo 中正式可重建 packaging 路径
 [x] formal build / codesign / packaged verifier 继续 PASS
 [x] Release ZIP round-trip 后图标仍保留
+[x] 用户 Finder / Dock visual smoke PASS，无明显白边、裁切、透明度异常
 ```
 
-具体 `.icns` 生成方式、源图格式、PyInstaller wiring 由 Codex 在该 Step 根据 packaging 现状选择最小正确实现。
+### 9.5 人工 visual acceptance
 
-建议 commit 语义：
-
-```text
-feat: add app icon
-```
+用户已打开实际 `dist/ClassroomTranscriber.app` 并完成 Finder / Dock 快速检查，确认图标显示正常。Step 1F 的 implementation review、programmatic bundle verification 与 human visual acceptance 均已闭环，因此 1F 正式 PASS，不再保留图标相关 open item。
 
 ---
 
 ## 10. Step 1G - Packaged regression / acceptance
 
-状态：**ACTIVE**；本次 1F 任务不实施 1G。
+状态：**ACTIVE**。
 
-1A-F 全部经 GitHub 实际实现审核通过后执行一次整轮收口，不再顺手增加功能。
+1A-F 已经 GitHub 实际实现审核通过，其中 1F 也已完成人工 Finder / Dock visual acceptance。1G 只执行整轮收口 regression / acceptance，不再顺手增加功能。
 
-必须覆盖：
+### 10.1 必须覆盖
 
 ```text
 formal one-entry build
@@ -782,13 +785,73 @@ Packaged regression 可在任一当前已验证的 Apple Silicon 开发机完成
 
 如果 1A-F 实际只触及 UI/settings/controller/packaging polish 层且所有 packaging / ASR regression PASS，不默认要求重复此前约 35 分钟课堂测试；若实现触碰 Runtime/ASR 冻结边界，则在 1G 前停止并升级验收。
 
-1G PASS 后再由用户决定：
+### 10.2 已有人工 pre-acceptance evidence
+
+用户在进入 1G 前已经完成当前 packaged App 的快速人工检查，并确认没有发现明显问题。当前可复用的人工 evidence 包括：
 
 ```text
-是否发布新 GitHub Release
-是否恢复 llm-sidecar-phase1
-是否开启新的 Product / UX Step
+[PASS] Finder / Dock icon 正常
+[PASS] 中文 / English UI 快速切换正常
+[PASS] 中文候选数（Beam）文案正常
+[PASS] output location persistence 正常
+[PASS] Model Manager 可正常打开/使用
+[PASS] Start / Stop 快速 smoke 正常
 ```
+
+这些 evidence 不替代 1G 的 formal build、packaged verifier、Release ZIP round-trip、完整 automated regression 与 fresh model download/integrity gate；它们用于避免重复制造无价值的 UI 检查。
+
+### 10.3 1G PASS 判定
+
+只有所有 hard gate PASS，且没有发现需要代码修复的 regression，才允许：
+
+```text
+Step 1G = PASS
+Product / UX Step 1 = COMPLETE
+```
+
+任何 hard gate FAIL：
+
+```text
+STOP
+保留失败证据
+不顺手修功能
+不创建 1.0.0 tag / Release
+```
+
+### 10.4 Release 1.0.0 授权
+
+用户已明确决定当前版本达到正式公开 Release 水平，并授权在 1G PASS 后发布：
+
+```text
+tag: 1.0.0
+release title: Classroom Transcriber 1.0.0
+asset: ClassroomTranscriber-1.0.0-macOS-AppleSilicon.zip
+```
+
+版本命名继续沿用既有 `0.2.0` 的三段式 SemVer，不使用 `v1.0` / `1.0`。
+
+Release 前必须确认：
+
+```text
+1G PASS
+source worktree clean
+Release ZIP 由正式入口生成并通过 round-trip verifier
+ZIP exact bytes + SHA-256 已记录
+tag 1.0.0 不存在冲突
+GitHub Release 1.0.0 不存在冲突
+tag 指向实际被验证/打包的 source commit
+```
+
+Release 成功后，再用单独 governance docs commit 更新本文件为：
+
+```text
+1G PASS
+Product / UX Step 1 COMPLETE
+唯一 ACTIVE: NONE
+Release 1.0.0 PUBLISHED
+```
+
+并记录 tag、source commit、asset filename、exact bytes、SHA-256。Release tag 应继续指向实际发布 source commit；后续 governance-only docs commit 可以让 `main` 前进，不移动已发布 tag。
 
 ---
 
@@ -814,7 +877,7 @@ ASR chunk/backend 重构
 
 ## 12. 当前 ACTIVE / Historical overnight execution
 
-当前唯一 ACTIVE 是 **Step 1G - Packaged regression / acceptance**。1C -> 1E overnight batch 与用户随后明确授权的 1F 均已完成；本节保留原 batch 事实供审计，不再作为执行 1C-1F 的授权。
+当前唯一 ACTIVE 是 **Step 1G - Packaged regression / acceptance**。1C -> 1E overnight batch 与后续 1F 均已完成；用户现已明确授权 1G，并授权在 1G PASS 后发布 `1.0.0`。
 
 开始前必读：
 
@@ -823,7 +886,9 @@ docs/product_polish_static.md
 docs/product_polish_runtime.md
 docs/repo_map.md
 docs/deployment_static.md
+docs/deployment_runtime.md
 README.md
+PACKAGING.md
 ```
 
 Codex 开始前在**当前已同步的项目 clone 根目录**执行：
@@ -835,6 +900,7 @@ git branch --show-current
 git status --short
 git rev-parse HEAD
 git rev-parse origin/main
+git tag -l
 ```
 
 要求：
@@ -853,7 +919,7 @@ git pull --ff-only origin main
 
 ### 12.1 Historical overnight batch（完成）
 
-用户已明确授权：
+用户此前授权：
 
 ```text
 1C
@@ -877,78 +943,53 @@ git pull --ff-only origin main
 -> gate PASS
 ```
 
-任何 gate FAIL、contract 不清楚、需要触碰 stable ASR/evidence/integrity 冻结边界、或 origin/main 出现无法解释的新推进：
+该 batch 已完成，不再作为当前任务授权。
 
-```text
-STOP ENTIRE BATCH
-```
+### 12.2 Historical automated pre-1G regression
 
-不得跳过失败 Step 继续后面的 Step。
-
-Codex 在 batch 中仍不得修改：
-
-```text
-docs/product_polish_static.md
-docs/product_polish_runtime.md
-docs/repo_map.md
-docs/deployment_static.md
-docs/deployment_runtime.md
-```
-
-每个 Step 最终都必须单独报告：
-
-```text
-changed files
-tests
-commit SHA
-push result
-Repo Map impact: NONE / UPDATE REQUIRED
-```
-
-### 12.2 Batch 完成后的 automated pre-1G regression
-
-1C、1D、1E 三个 gate 已全部 PASS 并分别 push；其后的 automated pre-1G regression 只作为历史验证证据：
+1C、1D、1E 三个 gate 全部 PASS 并分别 push；其后的 automated pre-1G regression 已通过：
 
 ```text
 full relevant unit / contract regression
-formal one-entry build（若当前正式 build prerequisites 可满足）
+formal one-entry build
 packaged Runtime verifier
 ```
 
-目的仅是提前暴露 packaging/runtime regression，节省后续人工等待。
+该历史结果用于降低 1G 风险，但不替代当前 1F 后的正式 final regression。
 
-这一步：
+### 12.3 当前 1G 执行边界
 
-```text
-不产生功能 commit
-不修改 packaging 来“顺手修”失败
-不标记 1G PASS
-不做 GitHub Release/tag
-```
-
-如果 formal build / verifier 失败，保留证据并汇报；不要为了让 overnight batch 看起来成功而扩大 scope。
-
-### 12.3 明确停止点
-
-Overnight batch 已在以下边界结束：
+当前任务允许：
 
 ```text
-1E implementation pushed
-+ optional automated pre-1G regression report
+完整 automated regression
+formal one-entry build
+packaged Runtime verifier
+final packaged acceptance evidence consolidation
+生成正式 1.0.0 Release ZIP
+在 1G PASS 后创建/push tag 1.0.0
+在 1G PASS 后创建 GitHub Release 1.0.0 并上传唯一正式 ZIP asset
+Release 成功后更新本 runtime 为 COMPLETE
 ```
 
-当前 1F 已根据后续用户明确授权独立完成。下一次只允许在新的明确任务中执行：
+当前任务不允许：
 
 ```text
-1G final acceptance
-release/tag
+新增产品功能
+为了让 1G 通过而顺手修改 ASR / UI / packaging 行为
+覆盖已存在的 1.0.0 tag / Release
+force move tag
+force push
+绕过 failing test / verifier / Release ZIP gate
 ```
+
+如果任何 1G gate 暴露真实 bug，需要代码修改，则先停止 1G / Release，保留证据，等待新的 fix task；修复后重新执行 1G。
 
 ---
 
 ## 13. 上下文恢复入口
 
-Product / UX Step 1：
+Product / UX Step 1 final acceptance / Release：
 
 ```text
 1. docs/product_polish_static.md
@@ -957,14 +998,14 @@ Product / UX Step 1：
 4. docs/deployment_static.md
 5. docs/deployment_runtime.md
 6. README.md
-7. ui_app.py
-8. model_manager.py
-9. settings.py
-10. resource_paths.py
-11. transcription_controller.py（1D 重点）
-12. transcript_store.py（合同参考，默认避免修改）
-13. packaging/ClassroomTranscriber.spec（1F 重点）
-14. 相关 testCodes/
+7. PACKAGING.md
+8. packaging/runtime_manifest.json
+9. packaging/ClassroomTranscriber.spec
+10. scripts/build_macos.sh
+11. scripts/verify_packaged_runtime.py
+12. scripts/build_release_zip.py
+13. testCodes/
+14. ui_app.py / model_manager.py / settings.py / transcription_controller.py（仅作为 1A-1E contract reference，1G 默认不修改）
 ```
 
 Release / Deployment 历史继续由 `docs/deployment_runtime.md` 保存；不要把 Product / UX Step 1 的 ACTIVE 状态写回 LLM runtime。
