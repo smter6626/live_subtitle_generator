@@ -18,8 +18,9 @@ Product / UX polish 的长期目标与硬边界见：`docs/product_polish_static
 5. Codex 不自行创建 branch，不 merge / rebase / reset / stash / force push。
 6. 如果当前 branch 不是 `main`、worktree 有未说明修改、或 `origin/main` 在执行期间意外前进，立即停止并汇报。
 7. Codex 默认读取本文件与 `docs/product_polish_static.md`，但不主动修改 runtime；每个子 Step 完成后由人工 / ChatGPT 审核实现，再推进 ACTIVE step。
-8. 已经能从当前 repo 明确确认的实现事实直接记录在本文件，不在“下一步”中压缩成模糊摘要，也不要求后续 Codex重新猜测这些事实。
+8. 已经能从当前 repo 明确确认的实现事实直接记录在本文件，不在“下一步”中压缩成模糊摘要，也不要求后续 Codex 重新猜测这些事实。
 9. Product / UX polish 只处理 static/runtime 明确列出的体验问题，不借机重构稳定 ASR 主链路。
+10. Codex prompt 的实现分工、机器等价原则以 `docs/product_polish_static.md` 5.1 为准：prompt 负责目标/边界/验收，不替 Codex 预先规定非合同性的代码实现细节，也不在普通 Product Step 中强调当前开发机器。
 
 通常流程：
 
@@ -52,6 +53,8 @@ Product / UX governance 已建立：
 ```text
 db96a25db5be14a28a0fb5e650e209165dfa0d38  docs: activate product polish step 10（历史初始化，编号已在本文件修正）
 c10cfa64ef952ed46374d5cb02d2c5a72cc5b2d2  docs: define product polish contract
+86fe495fe4d8a6311a32fa5ceb932523bc8d863a  docs: renumber product polish to step 1
+119247c62ec18010f83cd98fdffa2f14f9651ea9  docs: refine product polish contract
 ```
 
 当前 Step 1 状态：
@@ -74,6 +77,18 @@ Configurable output root while preserving outputs/<timestamp>/evidence structure
 ```
 
 1E 是整轮 packaged regression / acceptance，不是额外产品功能。
+
+Deployment 遗留的 M4 Max fresh Model Manager repeat 已在 2026-08-20 后续实测中关闭：
+
+```text
+Release App
+-> Model Manager 自选模型目录
+-> fresh download base.en
+-> 使用 base.en 实际转录
+-> PASS
+```
+
+该事项不再是 Product / UX open observation，也不影响 Step 1A-C 对 Model Manager UX 的独立改进目标。
 
 ---
 
@@ -557,9 +572,9 @@ raw.txt / clean.txt / session.log / config.json evidence
 repo worktree clean
 ```
 
-优先在 M5 Developer / Reference Machine 完成 packaged regression。
+Packaged regression 可在任一当前已验证的 Apple Silicon 开发机完成；普通 Product / UX 回归不按 M4 Max / M5 分配固定角色。
 
-如果 1A-D 实际只触及 UI/settings/controller 参数层且所有 packaging / ASR regression PASS，不默认要求重复 M4 Max 35 分钟课堂测试；若实现触碰 Runtime/ASR 冻结边界，则在 1E 前停止并升级验收。
+如果 1A-D 实际只触及 UI/settings/controller 参数层且所有 packaging / ASR regression PASS，不默认要求重复此前约 35 分钟课堂测试；若实现触碰 Runtime/ASR 冻结边界，则在 1E 前停止并升级验收。
 
 1E PASS 后再由用户决定：
 
@@ -574,7 +589,6 @@ repo worktree clean
 ## 9. 明确不进入 Step 1 的项目
 
 ```text
-M4 Max 再重复 fresh Model Manager download 的纯验收动作
 M4 长课堂偶发一次 inference latency spike 的优化
 Developer ID signing
 notarization
@@ -588,7 +602,7 @@ persistent whisper backend
 ASR chunk/backend 重构
 ```
 
-M4 fresh download repeat 和偶发 latency spike 继续作为 non-blocking observation；除非产生可重复失败证据，否则不升级成当前 Product / UX bugfix。
+此前 Deployment 遗留的 M4 fresh Model Manager repeat 已完成，不再列为 Product / UX non-blocking observation。剩余的偶发 latency spike 继续作为 non-blocking observation；除非产生可重复失败证据，否则不升级成当前 Product / UX bugfix。
 
 ---
 
@@ -607,10 +621,10 @@ README.md
 
 实现时直接使用第 2 节已经确认的代码事实，不需要把“display_label 是否包含 path”“tooltip 是否已存在”“Model Manager 是否已有独立 Path 列”重新作为未知问题。
 
-Codex 开始前：
+Codex 开始前在**当前已同步的项目 clone 根目录**执行：
 
 ```text
-cd /Users/smter-mac/Documents/personalAPPS/whisper
+pwd
 git fetch origin
 git branch --show-current
 git status --short
