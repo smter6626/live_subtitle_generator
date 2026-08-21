@@ -13,11 +13,11 @@ Deployment 历史与发布合同继续由 `docs/deployment_static.md` / `docs/de
 
 ## 1. Product / UX polish 总目标
 
-当前 Product / UX polish 只处理已经在 Step 8 / Step 9 实机使用中确认、但不阻塞 Release 0.2.0 的几个体验问题。
+当前 Product / UX polish 只处理已经在实际使用中确认、但不阻塞 Release 0.2.0 的体验问题，以及进入下一轮产品化前已经明确需要补齐的 UI / packaging polish。
 
-目标不是重构 ASR，而是在保持现有转写正确性、稳定性、evidence layer 与 Model integrity 合同不变的前提下，提高普通用户日常使用时的信息可读性、操作反馈和输出位置可控性。
+目标不是重构 ASR，而是在保持现有转写正确性、稳定性、evidence layer 与 Model integrity 合同不变的前提下，提高普通用户日常使用时的信息可读性、操作反馈、输出位置可控性、双语一致性与 App 完整度。
 
-当前冻结的四个产品目标如下。
+当前冻结的六个产品目标如下。
 
 ### 1.1 Current-model panel readability
 
@@ -91,6 +91,42 @@ visible busy / indeterminate progress indicator
 不得改成 `<chosen-root>/<timestamp>/...`。
 
 新的 root 必须持久化，只影响之后创建的新 session；不得移动、重命名、修改历史 session。失效或不可写 root 必须在 Start 前明确失败，不得静默 fallback 到未知目录，也不得先创建半个 session 再切换路径。
+
+### 1.5 中文 / English UI switch 与语义对齐
+
+当前项目已经存在中文 / English 文案基础，但普通用户需要一个明确的 UI language 切换入口；同时两套 UI 文案、状态、按钮、错误提示与功能名称需要做一次系统性的 semantic alignment。
+
+目标不是机械逐字翻译，而是保证同一功能在两种 UI 下表达同一产品语义、操作结果和状态含义。
+
+至少应满足：
+
+```text
+用户可以从 UI 明确选择中文或 English
+两种 UI 的主要按钮、状态、Model Manager、session 信息和错误提示语义对应
+不因翻译遗漏而出现明显的无意中英混杂
+允许保留必要且一致的技术术语，例如 Beam / Raw / Clean / Model 等
+切换语言不得改变 ASR language / Original Language 的业务含义
+```
+
+“UI language”和“被转录音频的 Original Language / whisper language”必须在产品语义上明确区分，不能因为加入 UI language switch 而混为同一个设置。
+
+具体采用即时切换还是其他最小可靠交互、是否需要额外 persistence 细节，由该 Step 开始时结合当前 UI 架构确认；static 不预先指定具体 widget / function 实现。
+
+### 1.6 Packaged App icon
+
+最终 packaged `ClassroomTranscriber.app` 应具有明确的自定义 App icon，避免继续使用默认 / 无图标状态，提高 Finder / Dock / Release artifact 的产品完整度。
+
+当前**不冻结图标视觉方案**。图标设计、源 asset、尺寸/格式与最终视觉选择在对应 Step 开始时再确认，不提前生成或锁死。
+
+长期验收原则：
+
+```text
+正式 build 使用确定后的项目图标
+Finder / Dock 中 packaged App 能显示该图标
+图标 asset 进入正式可重建 packaging 路径
+不依赖某台开发机的外部绝对路径
+Release ZIP round-trip 后图标仍存在
+```
 
 ---
 
@@ -171,6 +207,7 @@ model_manager.py
 settings.py
 resource_paths.py
 transcription_controller.py
+packaging 配置与图标资源（仅 App icon Step）
 与目标直接相关的 tests / docs
 ```
 
@@ -245,13 +282,16 @@ selection transient confirmation
 fresh small model download + visible busy feedback
 model integrity transaction
 custom output root persistence
+中文 / English UI switch 与关键语义对齐
+UI language 与 Original Language 语义区分
+最终确定的 packaged App icon
 Start -> real transcription -> Stop
 Stop -> second Start
 raw.txt / clean.txt / session.log / config.json
 repo worktree clean
 ```
 
-最终 packaged regression 可在任一当前已验证的 Apple Silicon 开发机完成。若实际实现始终只触及 UI / settings 层且 packaged regression 正常，不默认要求重新跑此前约 35 分钟课堂压力测试；若任何 Step 触碰 Runtime / ASR 边界，则必须升级验收并由人工决定是否继续。
+最终 packaged regression 可在任一当前已验证的 Apple Silicon 开发机完成。若实际实现始终只触及 UI / settings / packaging polish 层且 packaged regression 正常，不默认要求重新跑此前约 35 分钟课堂压力测试；若任何 Step 触碰 Runtime / ASR 边界，则必须升级验收并由人工决定是否继续。
 
 ---
 
