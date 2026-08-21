@@ -1,28 +1,30 @@
 # product_polish_runtime.md
 
 最后更新：2026-08-20  
-文档角色：`main` 分支 Product / UX polish 动态执行状态
+文档角色：`main` 分支 Product / UX polish 动态执行状态（runtime state）
 
-本文件承接 `docs/deployment_runtime.md` 在 Step 8 / Step 9 实机验收中记录的非阻塞使用体验问题。Deployment Step 9 与 Release 0.2.0 已经 PASS，不重新打开；本文件从 **Step 10** 开始管理后续小范围 Product / UX polish。
+本文件承接 `docs/deployment_runtime.md` 在 Step 8 / Step 9 实机验收中记录的非阻塞使用体验问题。Deployment Step 9 与 Release 0.2.0 已经 PASS，不重新打开。
 
-长期不可破坏边界继续以 `docs/deployment_static.md` 为准。本文件只管理当前 Product / UX polish 的 ACTIVE step、验收、回归和完成记录。
+Product / UX polish 的长期目标与硬边界见：`docs/product_polish_static.md`。Deployment 长期合同继续见 `docs/deployment_static.md`。本文件只记录当前 checkpoint、唯一 ACTIVE Step、已经确认的代码事实、各子 Step 的完整执行计划、验收与完成记录。
 
 ---
 
 ## 0. 使用规则
 
 1. 当前分支固定为 `main`。
-2. Step 10 继续使用当前 main，不为每个小 Step 新建 branch。
-3. 一个明确子 Step 一个 commit；自检通过后 push 当前 `main`。
-4. Codex 不自行创建 branch，不 merge / rebase / reset / stash / force push。
-5. 如果当前 branch 不是 `main`、worktree 有未说明修改、或 `origin/main` 在执行期间意外前进，立即停止并汇报。
-6. Codex 默认只读取本文件，不主动修改本文件；每个子 Step 完成后由人工 / ChatGPT 审核实现，再推进 ACTIVE step。
-7. Step 10 只处理本文件明确列出的 Product / UX polish，不借机重构稳定 ASR 主链路。
+2. Product / UX polish 从 **Step 1** 开始编号，不继承 Deployment 的 Step 10 编号。
+3. 当前工作线继续使用 `main`，不为每个小 Step 新建 branch。
+4. 一个明确子 Step 一个 commit；自检通过后 push 当前 `main`。
+5. Codex 不自行创建 branch，不 merge / rebase / reset / stash / force push。
+6. 如果当前 branch 不是 `main`、worktree 有未说明修改、或 `origin/main` 在执行期间意外前进，立即停止并汇报。
+7. Codex 默认读取本文件与 `docs/product_polish_static.md`，但不主动修改 runtime；每个子 Step 完成后由人工 / ChatGPT 审核实现，再推进 ACTIVE step。
+8. 已经能从当前 repo 明确确认的实现事实直接记录在本文件，不在“下一步”中压缩成模糊摘要，也不要求后续 Codex重新猜测这些事实。
+9. Product / UX polish 只处理 static/runtime 明确列出的体验问题，不借机重构稳定 ASR 主链路。
 
 通常流程：
 
 ```text
-Codex 执行当前 Step 10x
+Codex 执行当前 Step 1x
 -> tests / build / self-check
 -> 一个 commit
 -> push main
@@ -37,53 +39,161 @@ Codex 执行当前 Step 10x
 
 ```text
 branch: main
-Step 10 起点 main: 7930cc3255e8ae1f0dbc3755e4a78e09f4e7b00f
-起点内容: docs: complete deployment step 9
+Product implementation baseline: 7930cc3255e8ae1f0dbc3755e4a78e09f4e7b00f
+baseline 内容: docs: complete deployment step 9
 Release baseline: 0.2.0
 Deployment Step 9: PASS
-Product / UX Step 10: ACTIVE
-唯一 ACTIVE: Step 10A - Current-model panel readability
+Product / UX Step 1: ACTIVE
+唯一 ACTIVE: Step 1A - Current-model panel readability
 ```
 
-当前 Step 10 状态：
+Product / UX governance 已建立：
 
 ```text
-10A Current-model panel readability                 ACTIVE
-10B Model selection transient confirmation          PENDING
-10C Model download visible progress / busy feedback PENDING
-10D Configurable output root                        PENDING
-10E Step 10 packaged regression / acceptance        PENDING
+db96a25db5be14a28a0fb5e650e209165dfa0d38  docs: activate product polish step 10（历史初始化，编号已在本文件修正）
+c10cfa64ef952ed46374d5cb02d2c5a72cc5b2d2  docs: define product polish contract
 ```
 
-Step 10 总目标：
+当前 Step 1 状态：
 
-> **在不触碰稳定 ASR 算法与 evidence semantics 的前提下，把 Step 8 / 9 实机使用中已经确认的几个非阻塞 UX 问题修到可长期使用的状态。**
+```text
+1A Current-model panel readability                 ACTIVE
+1B Model selection transient confirmation          PENDING
+1C Model download visible progress / busy feedback PENDING
+1D Configurable output root                        PENDING
+1E Packaged regression / acceptance                PENDING
+```
+
+Step 1 的四个产品目标已经冻结到 `docs/product_polish_static.md`：
+
+```text
+Current-model readability
+Model-selection transient confirmation
+Model-download visible busy/progress feedback
+Configurable output root while preserving outputs/<timestamp>/evidence structure
+```
+
+1E 是整轮 packaged regression / acceptance，不是额外产品功能。
 
 ---
 
-## 2. Step 10 共同硬约束
+## 2. 当前 repo 已确认的实现事实
 
-### 2.1 稳定 ASR 主链路继续冻结
+这些内容已经从当前 `main` 代码确认，后续 Step 应直接基于这些事实设计最小修改；除非实际代码在执行前发生变化，不需要把它们重新降级成“待调查”。
 
-默认禁止修改：
+### 2.1 Current-model display
+
+`model_manager.py` 当前 `ModelInfo.display_label` 为：
+
+```text
+name | size | display_path | status
+```
+
+`ui_app.py` 的 MainWindow `_update_model_labels()` 在主窗口 current-model 区域直接使用：
+
+```text
+self.model_current_label.setText(self.selected_model.display_label)
+self.model_current_label.setToolTip(str(self.selected_model.path))
+```
+
+因此长 absolute path 会持续进入主摘要文本；完整路径其实已经同时存在于 tooltip。
+
+Model Manager dialog 当前模型摘要也使用 `display_label`。与此同时 Model Manager table 已独立分成：
+
+```text
+Name | Size | Path | Status
+```
+
+Path 列本身不会因为主摘要精简而丢失。
+
+### 2.2 Model selection
+
+Model Manager `_select_model()` 当前会：
+
+```text
+更新 selected_model
+写 app settings
+更新 current label
+emit model_selected
+写 INFO log
+```
+
+MainWindow `_set_selected_model()` 当前会：
+
+```text
+更新 selected_model
+持久化 selected_model_path / selected_model_name
+刷新 model combo / labels / status
+```
+
+当前没有约 2 秒 non-modal success confirmation；已有的是状态刷新和 log，不等价于短时用户反馈。
+
+### 2.3 Model download
+
+Model Manager 当前已经有：
+
+```text
+self.downloading
+self.downloading_model_name
+background threading.Thread(..., daemon=True)
+_set_download_controls(False/True)
+log_message
+_handle_download_finished()
+reject() 时阻止下载中直接关闭 dialog
+```
+
+`download_and_publish_model()` 继续走 Step 7 integrity transaction。网络下载和最终验证工作已经不在 Qt 主线程。
+
+当前 UI 没有持续可见的 QProgressBar / spinner / busy widget；下载期间主要依靠按钮 disabled 和 log 判断活动状态。因此本 Step 的缺口是“可见 busy/progress feedback”，不是重新设计 downloader。
+
+### 2.4 Output path
+
+`resource_paths.py` 当前 Frozen App 默认：
+
+```text
+user_documents_dir() = ~/Documents/ClassroomTranscriber
+writable_outputs_dir() = ~/Documents/ClassroomTranscriber/outputs
+```
+
+`settings.py` 当前：
+
+```text
+OUTPUTS_DIR = writable_outputs_dir()
+TranscriptionSettings.output_root 默认 = OUTPUTS_DIR
+```
+
+`AppSettings` 目前保存模型相关设置和 beam，不包含 configurable output base/root。
+
+`transcription_controller.py` 当前在 start 时：
+
+```text
+self.settings = default_settings(...)
+self.store = TranscriptStore(self.settings.output_root)
+```
+
+`TranscriptStore` 当前把传入的 `output_root` 当作实际 `.../outputs` 目录，并在其下创建 `<timestamp>` session directory。
+
+因此 1D 的最小正确方向已经明确：用户配置的是 base/root；settings/controller 计算最终 `<base>/outputs` 后继续传给现有 TranscriptStore，而不是改写 TranscriptStore 的 evidence filename/append semantics。
+
+---
+
+## 3. Step 1 共同执行约束
+
+长期合同以 `docs/product_polish_static.md` 为准，当前执行中尤其保护：
 
 ```text
 audio capture
 ring buffer
-10s chunk / 3s overlap 调度
+10s chunk / 3s overlap scheduling
 48k -> 16k resample
-WhisperCppBackend 推理语义
+WhisperCppBackend inference semantics
 simple_dedup()
 fuzzy_boundary_dedup()
-TranscriptStore raw / clean 写入语义
+TranscriptStore raw / clean append semantics
 Stop / microphone release 主逻辑
 ```
 
-如果某个 UX Step 被证明必须修改这些区域才能完成，Codex 先停止并汇报，不自行扩大 scope。
-
-### 2.2 Evidence layer 不变
-
-每个 session 仍必须产生：
+Evidence layer 继续固定：
 
 ```text
 raw.txt
@@ -92,11 +202,7 @@ session.log
 config.json
 ```
 
-Step 10 不得修改、覆盖、追加其他语义到这些文件来实现 UX；尤其不能改变 raw/clean 的内容合同。
-
-### 2.3 Model integrity contract 不变
-
-Step 10C 可以改善下载过程的可见性，但不得弱化或绕过：
+1C 不得弱化：
 
 ```text
 hidden staging
@@ -107,50 +213,31 @@ integrity receipt
 only verified model becomes available/selectable
 ```
 
-网络下载与 SHA-256 仍必须在后台 worker，不进入 Qt 主线程。
+每个子 Step 至少执行相关 unit / contract tests；1E 必须正式 packaged build + packaged Runtime verifier + GUI smoke。
 
-### 2.4 UI / settings 修改原则
-
-允许小范围修改：
-
-```text
-ui_app.py
-model_manager.py
-settings.py
-resource_paths.py
-transcription_controller.py
-与上述 UX 行为直接相关的 tests/docs
-```
-
-但必须优先最小改动。不要因为 Step 10 做 UI framework 重构、controller 重构或 Model Manager 重写。
-
-### 2.5 Packaging / Release 回归
-
-Step 10 每个子 Step 至少执行相关 unit / contract tests；10E 必须重新执行正式 packaged App build + packaged Runtime verifier，并人工做最小 GUI smoke。
-
-Step 10 默认不创建新 GitHub Release/tag。是否发布 0.2.1 / 0.3.0 等版本由 Step 10 完成后用户另行决定。
+Step 1 默认不创建新 GitHub Release/tag。是否发布后续版本由 Step 1 完成后用户另行决定。
 
 ---
 
-## 3. Step 10A - Current-model panel readability
+## 4. Step 1A - Current-model panel readability
 
 状态：**ACTIVE**。
 
-### 3.1 已知问题
+### 4.1 已知问题与代码锚点
 
-当前 `ModelInfo.display_label` 把：
+问题不是 path 不可访问，而是 path 已经被塞进摘要文本：
 
 ```text
-name | size | full/relative path | status
+ModelInfo.display_label
+-> MainWindow.model_current_label
+-> ModelManagerDialog.current_label
 ```
 
-组合成一个字符串。主窗口当前模型区域直接显示该 label；当模型位于较长的用户绝对路径时，路径会主导视觉区域，模型名/大小/状态的可读性下降。
+主窗口已经有 full-path tooltip；Model Manager table 也已经有独立 Path 列。因此不需要为了本 Step 新增复杂 path storage 或 custom model object。
 
-Model Manager 的模型表格本身已有单独 Path 列，不需要为了本 Step 删除路径信息。
+### 4.2 目标
 
-### 3.2 目标
-
-让主窗口和 Model Manager 的“当前模型”摘要优先显示：
+主窗口和 Model Manager 的“当前模型”摘要优先显示：
 
 ```text
 模型名
@@ -158,35 +245,43 @@ Model Manager 的模型表格本身已有单独 Path 列，不需要为了本 St
 available / integrity 状态
 ```
 
-完整路径仍然可访问，但不应持续占满主摘要区域。
+完整路径仍可通过 tooltip 或等价方式访问，但不持续占满主摘要。
 
-Codex 先阅读 `ui_app.py` / `model_manager.py` 当前实现，再选择最小、符合 Qt 行为的呈现方式。允许方案包括：
+优先采用最小实现，例如新增一个专门的 concise summary property/helper，而保留现有 `display_label` 给 combo/table/log 等仍需要完整信息的场景；最终方案由 Codex 根据调用点审计决定，不要求机械采用该名字。
+
+不要为了 ellipsis 引入复杂 custom widget，除非现有 QLabel/tooltip 方案不能满足验收。
+
+### 4.3 允许修改范围
+
+预计主要：
 
 ```text
-concise summary + full-path tooltip
-middle-elided path + tooltip
-可选择/复制的 path detail
+model_manager.py
+ui_app.py
+相关 UI/model tests
 ```
 
-不要为了实现 elide 引入复杂 custom widget，除非现有 Qt 控件无法满足最低验收。
+不应需要修改 controller、engine、TranscriptStore、model integrity 或 downloader。
 
-### 3.3 验收标准
+### 4.4 验收标准
 
 ```text
-[ ] 默认 1200x800 主窗口中 current model 首先可读到模型名
-[ ] size / status 仍可见或可明确获取
+[ ] 默认 1200x800 主窗口 current model 首先可读到模型名
+[ ] size / status 可见或明确可获取
 [ ] 长 absolute path 不再压倒主摘要
 [ ] 完整 path 仍可通过 tooltip 或等价非破坏方式查看
+[ ] Model Manager current summary 同样改善
 [ ] Model Manager table 的 Path 信息没有丢失
+[ ] combo / log 如仍需要完整 display_label，不被无意破坏
 [ ] model selection / availability / integrity semantics 完全不变
 [ ] Start / Stop 可用性逻辑不变
 ```
 
-### 3.4 最低测试
+### 4.5 最低测试
 
-先审计现有 tests；新增/调整最小 UI contract test，至少覆盖 long-path model 的显示语义。
+Codex 先审计现有相关 tests，再新增/调整最小 UI contract test，至少覆盖 long-path model 的摘要和 full-path 可访问性。
 
-建议实际执行：
+实际命令至少包括：
 
 ```text
 .venv/bin/python -m py_compile ui_app.py model_manager.py
@@ -196,9 +291,9 @@ git diff --check
 git status --short
 ```
 
-若现有测试文件名不同，以 repo 实际 test suite 为准，不要为了匹配命令复制测试。
+若实际 test 文件命名不同，以 repo 已有 suite 为准；不要为了匹配 glob 复制测试。
 
-完成后一个 commit，建议语义：
+完成后一个 commit，建议：
 
 ```text
 fix: improve current model readability
@@ -206,17 +301,26 @@ fix: improve current model readability
 
 ---
 
-## 4. Step 10B - Model selection transient confirmation
+## 5. Step 1B - Model selection transient confirmation
 
 状态：PENDING。
 
-### 4.1 已知问题
+### 5.1 已知问题与代码锚点
 
-当前模型选择成功会更新状态并写 log，但普通用户缺少一个短时、直观的成功反馈。
+当前 successful selection 已经有 persistence / label refresh / INFO log，但没有 transient user-facing confirmation。
 
-### 4.2 目标
+主要成功入口目前包括：
 
-成功选择模型后显示约 2 秒的 **non-modal transient confirmation**，例如：
+```text
+ModelManagerDialog._select_model()
+MainWindow._set_selected_model()
+```
+
+需要避免 refresh / initial scan 触发假 success；因此应该围绕真实 user selection event 设计，而不是任何 `_update_model_labels()` 都触发。
+
+### 5.2 目标
+
+实际成功选择模型后显示约 2 秒的 **non-modal transient confirmation**，例如：
 
 ```text
 已成功选择模型：large-v3
@@ -230,22 +334,26 @@ Model selected: large-v3
 不阻塞 UI 主线程
 自动消失
 只在实际 successful selection 后触发
-refresh / scan 不应伪装成“用户选择成功”
+refresh / scan / startup restore 不显示 success
+failed / unavailable selection 不显示 success
 中英文沿用现有 TEXT / translation 机制
 ```
 
-具体用 status bar、临时 QLabel、overlay 或现有 UI 中最小可靠方式，由 Codex 根据实际 Qt 结构选择。
+可以使用 status bar、临时 QLabel 或现有 UI 最小可靠机制；不为 toast 引入新的 UI framework。
 
-### 4.3 验收
+### 5.3 验收
 
 ```text
 [ ] 成功选择后出现明确确认
 [ ] 约 2 秒自动消失
 [ ] 不阻塞 Model Manager / MainWindow
 [ ] failed/unavailable selection 不显示 success
+[ ] startup/refresh 不产生伪 success
 [ ] selected model persistence 不变
-[ ] Start 使用的仍是被选中的同一模型
+[ ] Start 使用的仍是同一 selected model
 ```
+
+最低测试应覆盖 success / unavailable / refresh-no-toast / auto-clear timer 的 contract；具体 Qt test 方式以现有 test 架构为准。
 
 建议 commit：
 
@@ -255,57 +363,61 @@ fix: add model selection confirmation
 
 ---
 
-## 5. Step 10C - Model download visible progress / busy feedback
+## 6. Step 1C - Model download visible progress / busy feedback
 
 状态：PENDING。
 
-### 5.1 已知问题
+### 6.1 已知问题与代码锚点
 
-大模型例如 `large-v3` 下载时间较长。当前下载已经在后台线程运行，按钮会被 disable，日志也有输出，但主界面缺少持续可见的 progress / spinner / busy feedback，用户容易误判为卡死。
+当前下载已经是后台线程，且有 downloading flag、model name、disabled controls、log 和 finished signal；真正缺失的是 dialog 中持续可见的 activity indicator。
 
-### 5.2 目标
+因此本 Step 不需要重写 download transaction，也不需要把 downloader 输出改造成新的协议。
 
-下载期间必须有持续可见的活动反馈。
+### 6.2 目标
+
+下载期间必须持续显示可见活动反馈。
 
 最低可接受实现：
 
 ```text
 indeterminate progress bar / busy indicator
 + 当前正在下载的 model name
-+ 明确 downloading 状态
++ 明确 downloading / verifying / finished/failed 中至少足以避免“卡死”误判的状态
 ```
 
-如果现有 downloader 输出中存在**稳定、可测试、不会耦合 upstream 文本格式**的 byte progress，可以实现 determinate bytes/percent；否则不要为了百分比进度去解析脆弱的 shell/curl 输出。
+如果现有 downloader 输出存在稳定、可测试、且不依赖 upstream 文本格式的 bytes progress，可以做 determinate progress；否则保持 indeterminate。
 
-本 Step 的优先级是：
+优先级：
 
 ```text
 用户知道下载仍在进行
 > 精确百分比
 ```
 
-### 5.3 硬约束
-
-不得改坏 Step 7 integrity transaction。尤其：
+### 6.3 硬约束
 
 ```text
-不得把网络或 hash 移回 UI thread
-不得在验证完成前显示 model available
-不得绕过 staging / SHA / receipt
-失败/重试仍 fail closed
+网络和 SHA-256 不进入 Qt 主线程
+验证完成前不得显示 available
+不绕过 staging / size / SHA / atomic publish / receipt
+失败和重试继续 fail closed
+reject() 的下载中关闭保护继续成立
 ```
 
-### 5.4 验收
+### 6.4 验收
 
 ```text
 [ ] 下载开始后立即出现 visible busy/progress feedback
 [ ] feedback 显示当前 model
+[ ] 长下载期间 feedback 持续存在
 [ ] 下载成功后结束 busy 状态并正常 select verified model
 [ ] 下载失败后结束 busy 状态并显示错误
-[ ] dialog 关闭保护仍正确
+[ ] dialog 关闭保护正确
 [ ] UI 不冻结
 [ ] size/SHA/atomic publish/receipt tests 全部继续 PASS
 ```
+
+最低测试必须包含 success/failure 两条 UI state transition，并继续跑 model integrity tests。
 
 建议 commit：
 
@@ -315,25 +427,33 @@ fix: show model download progress state
 
 ---
 
-## 6. Step 10D - Configurable output root
+## 7. Step 1D - Configurable output root
 
 状态：PENDING。
 
-这是 Step 10 中风险最高的一项，必须在 10A-C 通过后单独做。
+这是 Step 1 中风险最高的一项，必须在 1A-C 通过后单独做。
 
-### 6.1 已知现状
+### 7.1 已知现状
 
-Frozen App 默认输出为：
+Frozen App 默认链路已经确认：
 
 ```text
-~/Documents/ClassroomTranscriber/outputs/<timestamp>/
+resource_paths.user_documents_dir()
+-> ~/Documents/ClassroomTranscriber
+resource_paths.writable_outputs_dir()
+-> ~/Documents/ClassroomTranscriber/outputs
+settings.OUTPUTS_DIR
+-> TranscriptionSettings.output_root
+controller.start()
+-> TranscriptStore(settings.output_root)
+-> <output_root>/<timestamp>/...
 ```
 
-`TranscriptStore` 当前接收的是 `.../outputs` 目录，并在其下创建 `<timestamp>` session directory。
+当前 AppSettings 没有用户可配置 output base/root 字段。
 
-### 6.2 目标语义
+### 7.2 目标语义
 
-用户配置的是 **ClassroomTranscriber output base/root**，默认仍为：
+用户配置的是 ClassroomTranscriber **output base/root**，默认仍为：
 
 ```text
 ~/Documents/ClassroomTranscriber
@@ -348,35 +468,47 @@ Frozen App 默认输出为：
 <chosen-root>/outputs/<timestamp>/config.json
 ```
 
-禁止改成：
+禁止变成：
 
 ```text
 <chosen-root>/<timestamp>/...
 ```
 
-因为 `outputs/<timestamp>/...` 子结构是当前产品合同的一部分。
+### 7.3 Persistence / validation
 
-### 6.3 Persistence
+新的 base/root 必须保存到 app settings，只影响之后新建 session；不得移动、重命名或修改历史 session。
 
-新的 root 必须持久化到 app settings，只影响**之后新建的 session**；不得移动、重命名或修改历史 session。
+旧 settings 没有该字段时继续默认 `~/Documents/ClassroomTranscriber`。
 
-如果用户配置目录失效 / 不可写：
+invalid/unwritable root：
 
 ```text
-Start 前 fail clearly
-不得半途 fallback 到未知路径
-不得创建半个 session 后再切目录
+Start 前明确 fail
+不得静默 fallback 到另一目录
+不得先创建半个 session 再切换
 ```
 
-可以保留默认值向后兼容：旧 settings 没有该字段时继续使用 `~/Documents/ClassroomTranscriber`。
+### 7.4 实现边界
 
-### 6.4 实现边界
+优先在：
 
-允许在 settings / controller 参数传递层新增 output root，但尽量保持 `TranscriptStore(output_root)` 的既有语义：最终传入 TranscriptStore 的仍应是 `<base>/outputs`。
+```text
+AppSettings/settings persistence
+UI folder chooser
+TranscriptionSettings/default_settings/controller parameter passing
+```
 
-不要修改 TranscriptStore 的 raw/clean/log/config filename 或 append semantics。
+完成 base -> `<base>/outputs` 的转换。
 
-### 6.5 验收
+尽量保持：
+
+```text
+TranscriptStore(output_root)
+```
+
+的现有语义不变，也不修改 raw/clean/session.log/config.json filename 与 append 行为。
+
+### 7.5 验收
 
 ```text
 [ ] 默认路径行为完全不变
@@ -384,11 +516,13 @@ Start 前 fail clearly
 [ ] 设置重启后持久化
 [ ] 新 session 写到 <chosen-root>/outputs/<timestamp>/
 [ ] 四个 evidence 文件存在且语义不变
-[ ] Stop -> Start 后继续在 chosen root 下生成新的 timestamp session
-[ ] 历史 session 不被移动/修改
-[ ] invalid/unwritable root 明确 fail
-[ ] config/settings 不泄露任何 secret
+[ ] Stop -> Start 后在 chosen root 下生成新的 timestamp session
+[ ] 历史 session 不移动/不修改
+[ ] invalid/unwritable root 在 Start 前明确失败
+[ ] 不出现 silent fallback
 ```
+
+测试必须覆盖 default/backward compatibility、custom root、persistence、unwritable failure、controller->store path contract。
 
 建议 commit：
 
@@ -398,43 +532,46 @@ feat: add configurable output root
 
 ---
 
-## 7. Step 10E - Packaged regression / acceptance
+## 8. Step 1E - Packaged regression / acceptance
 
 状态：PENDING。
 
-10A-D 全部经实现审核后执行一次 Step 10 收口，不再顺手增加功能。
+1A-D 全部经 GitHub 实际实现审核通过后执行一次整轮收口，不再顺手增加功能。
 
 必须覆盖：
 
 ```text
 formal one-entry build
 packaged Runtime verifier
-Model Manager basic scan/select
-fresh small model download（建议 base.en）
-selection transient confirmation
 long-path current-model readability
-custom output root
+Model Manager basic scan/select
+selection transient confirmation
+fresh small model download（建议 base.en）
+visible download busy/progress feedback
+model integrity available/selectable
+custom output root + persistence
 Start -> real transcription -> Stop
 Stop -> second Start
-raw/clean/session.log/config.json evidence
+new timestamp session under chosen root
+raw.txt / clean.txt / session.log / config.json evidence
 repo worktree clean
 ```
 
-优先在 M5 Developer / Reference Machine 完成开发回归；如果 Step 10 改动只涉及 UI/settings 且 packaged regression PASS，不默认要求重新跑 35 分钟 M4 classroom test。若实际实现触碰 Runtime/ASR 边界，则升级验收并停止由人工决定。
+优先在 M5 Developer / Reference Machine 完成 packaged regression。
 
-Step 10E PASS 后再由用户决定是否：
+如果 1A-D 实际只触及 UI/settings/controller 参数层且所有 packaging / ASR regression PASS，不默认要求重复 M4 Max 35 分钟课堂测试；若实现触碰 Runtime/ASR 冻结边界，则在 1E 前停止并升级验收。
+
+1E PASS 后再由用户决定：
 
 ```text
-发布新的 GitHub Release
-恢复 llm-sidecar-phase1
-继续其他 Product / UX backlog
+是否发布新 GitHub Release
+是否恢复 llm-sidecar-phase1
+是否开启新的 Product / UX Step
 ```
 
 ---
 
-## 8. 明确不进入 Step 10 的项目
-
-以下仍不是本轮目标：
+## 9. 明确不进入 Step 1 的项目
 
 ```text
 M4 Max 再重复 fresh Model Manager download 的纯验收动作
@@ -451,15 +588,26 @@ persistent whisper backend
 ASR chunk/backend 重构
 ```
 
-其中 M4 fresh model repeat 和偶发 latency spike 继续作为 non-blocking observation；除非后续产生可重复失败证据，否则不升级成 Step 10 bugfix。
+M4 fresh download repeat 和偶发 latency spike 继续作为 non-blocking observation；除非产生可重复失败证据，否则不升级成当前 Product / UX bugfix。
 
 ---
 
-## 9. 当前下一步
+## 10. 当前 ACTIVE / 下一步执行
 
-只执行 **Step 10A**。
+当前只执行 **Step 1A - Current-model panel readability**。
 
-Codex 开始前必须：
+开始前必读：
+
+```text
+docs/product_polish_static.md
+docs/product_polish_runtime.md
+docs/deployment_static.md
+README.md
+```
+
+实现时直接使用第 2 节已经确认的代码事实，不需要把“display_label 是否包含 path”“tooltip 是否已存在”“Model Manager 是否已有独立 Path 列”重新作为未知问题。
+
+Codex 开始前：
 
 ```text
 cd /Users/smter-mac/Documents/personalAPPS/whisper
@@ -470,7 +618,7 @@ git rev-parse HEAD
 git rev-parse origin/main
 ```
 
-预期在拉取本 runtime governance commit 后：
+要求：
 
 ```text
 branch = main
@@ -478,27 +626,46 @@ worktree = clean
 HEAD == origin/main
 ```
 
-若只是 clean main 落后：允许 `git pull --ff-only origin main`。
+如果只是 clean main 落后，允许：
 
-Step 10A 只做 current-model readability，不提前做 toast、download progress 或 output-root。
+```text
+git pull --ff-only origin main
+```
+
+Step 1A 的实施范围、验收和最低测试完整定义在第 4 节；不要为了“下一步提示”另行压缩成更弱的目标。
+
+Step 1A 完成后：
+
+```text
+相关 tests PASS
+必要 UI contract test 已补
+一个 commit
+push main
+最终 worktree clean
+Codex 不修改 product_polish_runtime.md
+```
+
+然后由人工 / ChatGPT 审核 GitHub 实际 diff。审核 PASS 后再把 1A 标记为 PASS，并激活本文件第 5 节已经完整定义的 1B；1B/1C/1D 的已知实现事实和验收标准保留在本文件，不因尚未 ACTIVE 而删减。
 
 ---
 
-## 10. 上下文恢复入口
+## 11. 上下文恢复入口
 
-Product / UX Step 10：
+Product / UX Step 1：
 
 ```text
-1. docs/deployment_static.md
-2. docs/deployment_runtime.md
-3. docs/product_polish_runtime.md
-4. ui_app.py
-5. model_manager.py
-6. settings.py
-7. resource_paths.py
-8. transcription_controller.py（仅 output-root Step 需要）
-9. transcript_store.py（合同参考，默认避免修改）
-10. 相关 testCodes/
+1. docs/product_polish_static.md
+2. docs/product_polish_runtime.md
+3. docs/deployment_static.md
+4. docs/deployment_runtime.md
+5. README.md
+6. ui_app.py
+7. model_manager.py
+8. settings.py
+9. resource_paths.py
+10. transcription_controller.py（1D 重点）
+11. transcript_store.py（合同参考，默认避免修改）
+12. 相关 testCodes/
 ```
 
-Release / Deployment 历史继续由 `docs/deployment_runtime.md` 保存；不要把 Step 10 的 ACTIVE 状态写回 LLM runtime。
+Release / Deployment 历史继续由 `docs/deployment_runtime.md` 保存；不要把 Product / UX Step 1 的 ACTIVE 状态写回 LLM runtime。
