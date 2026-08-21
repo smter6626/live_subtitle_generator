@@ -1,0 +1,271 @@
+# product_polish_static.md
+
+最后更新：2026-08-20  
+文档角色：`main` 分支 Product / UX polish 稳定合同（static contract）
+
+本文件记录 Classroom Live Transcriber 在完成 Deployment Step 9 / Release 0.2.0 后，针对已确认使用体验问题开展的小范围 Product / UX polish 的长期目标、不可破坏边界与验收原则。
+
+动态执行状态见：`docs/product_polish_runtime.md`。
+
+Deployment 历史与发布合同继续由 `docs/deployment_static.md` / `docs/deployment_runtime.md` 维护；LLM sidecar 继续由 `llm-sidecar-phase1` 的 `docs/whisper_static.md` / `docs/whisper_runtime.md` 维护。三条工作线不得混用 ACTIVE step。
+
+---
+
+## 1. Product / UX polish 总目标
+
+当前 Product / UX polish 只处理已经在 Step 8 / Step 9 实机使用中确认、但不阻塞 Release 0.2.0 的几个体验问题。
+
+目标不是重构 ASR，而是在保持现有转写正确性、稳定性、evidence layer 与 Model integrity 合同不变的前提下，提高普通用户日常使用时的信息可读性、操作反馈和输出位置可控性。
+
+当前冻结的四个产品目标如下。
+
+### 1.1 Current-model panel readability
+
+主窗口与 Model Manager 的“当前模型”摘要应优先让用户看到：
+
+```text
+模型名
+模型大小
+available / integrity 状态
+```
+
+长 absolute path 不应持续占满主摘要区域。
+
+完整模型路径仍必须可访问，例如通过 tooltip、可复制 detail 或等价方式；Model Manager 表格中的 Path 信息不得丢失。
+
+### 1.2 Model selection transient confirmation
+
+用户实际成功选择模型后，应得到一个短时、明确、non-modal 的成功反馈，目标持续约 2 秒。
+
+该反馈必须：
+
+```text
+不阻塞 UI 主线程
+自动消失
+只在真实 successful selection 后出现
+refresh / scan 不伪装成用户选择成功
+失败或 unavailable selection 不显示 success
+中英文继续使用现有 UI translation 机制
+```
+
+### 1.3 Model download visible progress / busy feedback
+
+模型下载期间必须持续显示“仍在工作”的可见反馈，避免 large-v3 等大模型下载时用户误判为卡死。
+
+最低产品合同：
+
+```text
+visible busy / indeterminate progress indicator
++ 当前 model name
++ 明确 downloading 状态
+```
+
+如果现有 downloader 能稳定提供、且无需耦合脆弱 upstream 文本格式的 byte progress，可以进一步显示 bytes / percent；否则不为精确百分比引入脆弱解析。
+
+优先级固定为：
+
+```text
+用户明确知道下载仍在进行
+> 精确百分比
+```
+
+### 1.4 Configurable output root
+
+普通用户可以配置 ClassroomTranscriber 的 output base/root。
+
+默认 base/root 保持：
+
+```text
+~/Documents/ClassroomTranscriber
+```
+
+用户选择其他 root 后，新 session 仍必须保持现有 evidence 子结构：
+
+```text
+<chosen-root>/outputs/<timestamp>/raw.txt
+<chosen-root>/outputs/<timestamp>/clean.txt
+<chosen-root>/outputs/<timestamp>/session.log
+<chosen-root>/outputs/<timestamp>/config.json
+```
+
+不得改成 `<chosen-root>/<timestamp>/...`。
+
+新的 root 必须持久化，只影响之后创建的新 session；不得移动、重命名、修改历史 session。失效或不可写 root 必须在 Start 前明确失败，不得静默 fallback 到未知目录，也不得先创建半个 session 再切换路径。
+
+---
+
+## 2. 稳定 ASR 主链路不可破坏
+
+Product / UX polish 默认禁止修改：
+
+```text
+audio capture
+ring buffer
+10s chunk / 3s overlap scheduling
+48kHz -> 16kHz resample
+WhisperCppBackend inference semantics
+simple_dedup()
+fuzzy_boundary_dedup()
+TranscriptStore raw / clean append semantics
+Stop / microphone release 主逻辑
+```
+
+如果某个 Product / UX 目标被证明必须修改这些区域才能实现，应停止当前 Step 并重新评估 scope；不得以“UI polish”为理由顺带重构稳定 ASR 主链路。
+
+---
+
+## 3. Evidence layer 合同保持不变
+
+每个 session 的基础 evidence layer 仍为：
+
+```text
+raw.txt
+clean.txt
+session.log
+config.json
+```
+
+Product / UX polish 不得：
+
+```text
+删除
+重命名
+覆盖历史文件
+改变 raw / clean 内容语义
+把 UX state 混写进 raw / clean
+```
+
+Configurable output root 只能改变这些文件所在的 session 根位置，不改变 session 子目录与文件合同。
+
+---
+
+## 4. Model integrity 合同保持不变
+
+下载可见性改进不得弱化 Step 7 已冻结的事务：
+
+```text
+background worker
+hidden staging directory
+exact size validation
+SHA-256 validation
+atomic publish
+integrity receipt
+only verified model becomes available / selectable
+```
+
+网络下载和 SHA-256 计算继续不得进入 Qt 主线程。
+
+UI 可以显示 downloading / verifying / complete / failed 等用户状态，但不得在 cryptographic validation 完成前将模型显示为 available，也不得因为 progress UI 绕过 fail-closed 行为。
+
+---
+
+## 5. Settings / UI 实现原则
+
+Product / UX polish 优先采用现有 PySide6 / settings / controller 架构内的最小改动。
+
+允许按实际需要修改：
+
+```text
+ui_app.py
+model_manager.py
+settings.py
+resource_paths.py
+transcription_controller.py
+与目标直接相关的 tests / docs
+```
+
+`transcript_store.py` 默认只作为 evidence contract 参考；除非有明确、可审核的必要性，不应为了 output-root UI 改写其 raw / clean / log / config 行为。
+
+禁止借机进行：
+
+```text
+UI framework replacement
+Model Manager rewrite
+controller architecture rewrite
+persistent whisper backend
+session browser
+LLM sidecar integration
+ASR backend replacement
+```
+
+---
+
+## 6. Output-root 语义边界
+
+当前 `TranscriptStore` 的语义是接收实际 outputs directory，并在其下创建 timestamp session directory。
+
+因此 Product / UX 层配置的是 base/root：
+
+```text
+<base>
+```
+
+传入稳定 session 创建链路的目标仍应等价于：
+
+```text
+<base>/outputs
+```
+
+旧 settings 若不存在新增 output-root 字段，必须向后兼容默认：
+
+```text
+~/Documents/ClassroomTranscriber
+```
+
+历史 session 不迁移。
+
+---
+
+## 7. Product polish 完成验收原则
+
+每个小 Step 需要针对自身行为增加或更新最小 contract tests，并保持相关既有 regression tests PASS。
+
+整轮 Product / UX polish 收口时必须重新验证 packaged App，而不是只验证 source-run UI。最终 packaged acceptance 至少覆盖：
+
+```text
+formal one-entry build
+packaged Runtime verifier
+current-model long-path readability
+model scan / selection
+selection transient confirmation
+fresh small model download + visible busy feedback
+model integrity transaction
+custom output root persistence
+Start -> real transcription -> Stop
+Stop -> second Start
+raw.txt / clean.txt / session.log / config.json
+repo worktree clean
+```
+
+如果实际实现始终只触及 UI / settings 层且 packaged regression 正常，不默认要求重新跑 M4 Max 35 分钟课堂压力测试；若任何 Step 触碰 Runtime / ASR 边界，则必须升级验收并由人工决定是否继续。
+
+---
+
+## 8. 当前明确不属于 Product / UX polish 目标
+
+以下内容不因为本工作线启动而自动进入范围：
+
+```text
+M4 Max 再重复一次 fresh Model Manager download 的纯验收动作
+M4 长课堂偶发单次 inference latency spike 的优化
+Developer ID signing
+notarization
+DMG
+GitHub Actions release automation
+minimum macOS 冻结
+M1 / M2 / M3 实机验证
+LLM sidecar
+session browser
+persistent whisper backend
+ASR chunk / backend 重构
+```
+
+前两项继续作为 non-blocking observation；只有出现可重复失败证据时才另行立项。
+
+---
+
+## 9. 分支 / Release 边界
+
+当前 Product / UX polish 在 `main` 上推进，不为每个小 Step 新建 branch；每个明确 Step 一个 commit。
+
+本工作线默认不创建新的 Git tag / GitHub Release。完成 packaged acceptance 后，再由用户决定是否发布后续版本，以及版本号与 release scope。
