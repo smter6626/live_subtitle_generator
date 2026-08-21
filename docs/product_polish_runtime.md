@@ -54,11 +54,13 @@ Pre-1F implementation checkpoint: c330744df3de9cdb624aadb4964f0471b125e91b
 checkpoint 内容: fix: clarify beam label in chinese ui
 Current Product implementation checkpoint: 2a641e9c1bdc878d742b1c6474725d2dcd399c0b
 checkpoint 内容: feat: add app icon
+Release source checkpoint: 621ee8dcf291ba8ab4882b7f3117dbb5a7d24ebe
+release source 内容: docs: prepare product polish step 1g release
 Release baseline: 0.2.0
-Release target: 1.0.0 / AUTHORIZED AFTER 1G PASS
+Release: 1.0.0 / PUBLISHED
 Deployment Step 9: PASS
-Product / UX Step 1: ACTIVE
-唯一 ACTIVE: Step 1G - Packaged regression / acceptance
+Product / UX Step 1: COMPLETE
+唯一 ACTIVE: NONE
 ```
 
 Product / UX governance / architecture map 已建立：
@@ -89,7 +91,7 @@ c330744df3de9cdb624aadb4964f0471b125e91b  fix: clarify beam label in chinese ui
 1D Configurable output root                        PASS
 1E 中文 / English UI switch + semantic alignment   PASS
 1F Packaged App icon                               PASS
-1G Packaged regression / acceptance                ACTIVE
+1G Packaged regression / acceptance                PASS
 ```
 
 Step 1 的六个产品目标已经冻结到 `docs/product_polish_static.md`：
@@ -754,7 +756,7 @@ BUNDLE(..., icon=str(icon_path), ...)
 
 ## 10. Step 1G - Packaged regression / acceptance
 
-状态：**ACTIVE**。
+状态：**PASS**。
 
 1A-F 已经 GitHub 实际实现审核通过，其中 1F 也已完成人工 Finder / Dock visual acceptance。1G 只执行整轮收口 regression / acceptance，不再顺手增加功能。
 
@@ -853,6 +855,58 @@ Release 1.0.0 PUBLISHED
 
 并记录 tag、source commit、asset filename、exact bytes、SHA-256。Release tag 应继续指向实际发布 source commit；后续 governance-only docs commit 可以让 `main` 前进，不移动已发布 tag。
 
+### 10.5 Final completion evidence（2026-08-21）
+
+用户对当前 packaged App 的 GUI 快速验收保持 PASS：Finder / Dock icon、中文 / English UI、候选数（Beam）文案、output location persistence、Model Manager 与 Start / Stop 均未发现问题。Stop 后 second Start 继续沿用 `docs/deployment_runtime.md` 已记录的 packaged PASS；本轮 Product Polish 未修改稳定 Start / Stop 核心生命周期，完整 regression 也未发现回归。
+
+当前 release source `621ee8dcf291ba8ab4882b7f3117dbb5a7d24ebe` 的自动门禁结果：
+
+```text
+.venv/bin/python -m unittest discover -s testCodes -p 'test_*.py' -v
+-> PASS / 100 tests
+
+.venv/bin/python testCodes/test_ui_support.py
+-> PASS / 22 direct checks
+
+.venv/bin/python testCodes/test_model_download_resources.py
+-> PASS / 6 direct checks
+
+git diff --check
+-> PASS
+
+./Build\ ClassroomTranscriber.command
+-> PASS / formal bootstrap, App icon generation, PyInstaller,
+   Runtime normalization, ad-hoc codesign and packaged verifier
+
+.venv/bin/python scripts/verify_packaged_runtime.py dist/ClassroomTranscriber.app
+-> PASS / arm64, dylib-RPath closure, downloader, model manifest,
+   CFBundleIconFile/ICNS, signature, bundled and isolated CLI smoke
+
+.venv/bin/python scripts/build_release_zip.py --version 1.0.0
+-> PASS / source App verifier, archive boundary/CRC,
+   bytes/modes/symlinks round-trip and extracted App verifier
+```
+
+1A current-model readability、1B transient selection confirmation、1C download busy/progress、1D configurable output root、1E bilingual UI 与 1F packaged icon 的 contract tests 全部包含在上述 full regression 中。Model availability/integrity、selection persistence、Start gating、evidence layer 与 clean Git source 同样没有 regression；本轮没有修改产品代码或稳定 ASR 行为。
+
+正式 Release 记录：
+
+```text
+Step 1G: PASS
+Product / UX Step 1: COMPLETE
+唯一 ACTIVE: NONE
+Release 1.0.0: PUBLISHED
+Release title: Classroom Transcriber 1.0.0
+tag: 1.0.0
+source commit: 621ee8dcf291ba8ab4882b7f3117dbb5a7d24ebe
+asset: ClassroomTranscriber-1.0.0-macOS-AppleSilicon.zip
+exact bytes: 48284828
+SHA-256: 5482a2df52eacf0775c7740bef5e41f063b86c1beeba8dea47a572f834a138ab
+published: 2026-08-21T23:52:25Z
+```
+
+GitHub Release 为非 draft、非 prerelease，只有上述一个 asset。GitHub asset size / digest 与本地 ZIP 一致，重新下载后 SHA-256 与 bytes 逐项相同。Release tag 保持指向实际 build / verify / ZIP source commit；本 governance-only docs commit 只推进 `main`，不移动 tag。Product Polish Step 1 至此正式 closed。
+
 ---
 
 ## 11. 明确不进入 Step 1 的项目
@@ -875,9 +929,9 @@ ASR chunk/backend 重构
 
 ---
 
-## 12. 当前 ACTIVE / Historical overnight execution
+## 12. Product Polish Step 1 closure / Historical overnight execution
 
-当前唯一 ACTIVE 是 **Step 1G - Packaged regression / acceptance**。1C -> 1E overnight batch 与后续 1F 均已完成；用户现已明确授权 1G，并授权在 1G PASS 后发布 `1.0.0`。
+当前唯一 ACTIVE 为 **NONE**。1C -> 1E overnight batch、1F、最终 1G 与正式 `1.0.0` Release 均已完成；Product Polish Step 1 已 closed。
 
 开始前必读：
 
@@ -957,9 +1011,9 @@ packaged Runtime verifier
 
 该历史结果用于降低 1G 风险，但不替代当前 1F 后的正式 final regression。
 
-### 12.3 当前 1G 执行边界
+### 12.3 Historical completed 1G execution boundary
 
-当前任务允许：
+本轮已按以下授权完成：
 
 ```text
 完整 automated regression
@@ -972,7 +1026,7 @@ final packaged acceptance evidence consolidation
 Release 成功后更新本 runtime 为 COMPLETE
 ```
 
-当前任务不允许：
+本轮未发生：
 
 ```text
 新增产品功能
