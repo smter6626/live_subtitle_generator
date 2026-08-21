@@ -1,10 +1,15 @@
 import ast
+import sys
 import unittest
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UI_PATH = REPO_ROOT / "ui_app.py"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from model_manager import ModelInfo  # noqa: E402
 
 
 def call_names(node):
@@ -34,6 +39,49 @@ class ModelManagerUiContractTests(unittest.TestCase):
             for node in cls.dialog.body
             if isinstance(node, ast.FunctionDef)
         }
+        cls.main_window = next(
+            node
+            for node in cls.tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
+        )
+        cls.main_methods = {
+            node.name: node
+            for node in cls.main_window.body
+            if isinstance(node, ast.FunctionDef)
+        }
+
+    def test_long_path_current_summaries_are_concise_with_full_path_tooltips(self):
+        long_path = Path("/Volumes/Classroom Models") / ("nested-folder-" * 8) / "ggml-large-v3.bin"
+        model = ModelInfo(
+            name="large-v3",
+            path=long_path,
+            size_bytes=3 * 1024 * 1024 * 1024,
+            status="integrity unverified",
+        )
+
+        self.assertEqual(
+            model.current_summary_label,
+            "large-v3 | 3.0 GB | integrity unverified",
+        )
+        self.assertNotIn(str(long_path), model.current_summary_label)
+        self.assertIn(str(long_path), model.display_label)
+
+        dialog_update = ast.unparse(self.methods["_update_current_label"])
+        main_update = ast.unparse(self.main_methods["_update_model_labels"])
+        for method_text in (dialog_update, main_update):
+            self.assertIn("current_summary_label", method_text)
+            self.assertIn("setToolTip(str(self.selected_model.path))", method_text)
+
+    def test_full_model_presentation_remains_for_table_combo_and_logs(self):
+        table_refresh = ast.unparse(self.methods["refresh_models"])
+        dialog_selection = ast.unparse(self.methods["_select_model"])
+        combo_population = ast.unparse(self.main_methods["_populate_model_combo"])
+        unavailable_log = ast.unparse(self.main_methods["_on_model_combo_changed"])
+
+        self.assertIn("QTableWidgetItem(model.display_path)", table_refresh)
+        self.assertIn("model.display_label", dialog_selection)
+        self.assertIn("model.display_label", combo_population)
+        self.assertIn("model.display_label", unavailable_log)
 
     def test_download_transaction_runs_in_existing_background_worker(self):
         method = self.methods["download_selected_model"]

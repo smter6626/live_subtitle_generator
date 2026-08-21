@@ -51,6 +51,10 @@ class ModelInfo:
         return format_model_path(self.path)
 
     @property
+    def current_summary_label(self) -> str:
+        return f"{self.name} | {self.size_label} | {self.status}"
+
+    @property
     def display_label(self) -> str:
         return f"{self.name} | {self.size_label} | {self.display_path} | {self.status}"
 

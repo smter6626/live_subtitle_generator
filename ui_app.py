@@ -572,9 +572,13 @@ class ModelManagerDialog(QDialog):
 
     def _update_current_label(self):
         if self.selected_model:
-            self.current_label.setText(f"{tr('current_model')}: {self.selected_model.display_label}")
+            self.current_label.setText(
+                f"{tr('current_model')}: {self.selected_model.current_summary_label}"
+            )
+            self.current_label.setToolTip(str(self.selected_model.path))
         else:
             self.current_label.setText(f"{tr('current_model')}: {tr('no_model_selected')}")
+            self.current_label.setToolTip("")
 
     def _update_download_location_label(self):
         if hasattr(self, "download_location_label"):
@@ -1097,7 +1101,7 @@ class MainWindow(QMainWindow):
             self.session_model_label.setText(name)
         if hasattr(self, "model_current_label"):
             if self.selected_model:
-                self.model_current_label.setText(self.selected_model.display_label)
+                self.model_current_label.setText(self.selected_model.current_summary_label)
                 self.model_current_label.setToolTip(str(self.selected_model.path))
             else:
                 self.model_current_label.setText(tr("no_model_selected"))
