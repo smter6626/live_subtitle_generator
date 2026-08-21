@@ -30,6 +30,7 @@ try:
         QMainWindow,
         QMessageBox,
         QPlainTextEdit,
+        QProgressBar,
         QPushButton,
         QTableWidget,
         QTableWidgetItem,
@@ -116,6 +117,7 @@ TEXT = {
         "model_import_error": "模型导入失败",
         "model_download_error": "模型下载失败",
         "model_download_started": "开始下载模型",
+        "model_download_in_progress": "正在下载模型",
         "model_download_complete": "模型下载完成",
         "model_download_failed": "模型下载失败",
         "model_selected": "已选择模型",
@@ -185,6 +187,7 @@ TEXT = {
         "model_import_error": "Model Import Error",
         "model_download_error": "Model Download Error",
         "model_download_started": "Starting model download",
+        "model_download_in_progress": "Downloading model",
         "model_download_complete": "Model download complete",
         "model_download_failed": "Model download failed",
         "model_selected": "Model selected",
@@ -371,6 +374,15 @@ class ModelManagerDialog(QDialog):
         download_row.addWidget(self.download_button)
         layout.addLayout(download_row)
 
+        self.download_status_label = QLabel()
+        self.download_status_label.setWordWrap(True)
+        self.download_status_label.hide()
+        layout.addWidget(self.download_status_label)
+        self.download_progress = QProgressBar()
+        self.download_progress.setRange(0, 0)
+        self.download_progress.hide()
+        layout.addWidget(self.download_progress)
+
         button_row = QHBoxLayout()
         self.select_button = QPushButton(tr("select_model"))
         self.select_button.clicked.connect(self.select_current_row)
@@ -492,15 +504,16 @@ class ModelManagerDialog(QDialog):
             self.log_message.emit(str(exc), "ERROR")
             return
 
-        self.downloading = True
-        self.downloading_model_name = model_name
         self.app_settings.download_model_dir = download_dir
         self.app_settings.model_dirs = default_scan_model_dirs(
             download_dir,
             self.app_settings.model_dirs,
         )
         save_app_settings(self.app_settings)
+        self.downloading = True
+        self.downloading_model_name = model_name
         self._set_download_controls(False)
+        self._set_download_busy_state(True, model_name)
         self.log_message.emit(f"{tr('model_download_started')}: {model_name}", "INFO")
 
         def worker():
@@ -518,12 +531,16 @@ class ModelManagerDialog(QDialog):
             except Exception as exc:
                 self.download_finished.emit(False, str(exc))
 
-        threading.Thread(target=worker, daemon=True).start()
+        try:
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception as exc:
+            self.download_finished.emit(False, str(exc))
 
     def _handle_download_finished(self, ok: bool, message: str):
         model_name = self.downloading_model_name
         self.downloading = False
         self.downloading_model_name = None
+        self._set_download_busy_state(False)
         self._set_download_controls(True)
         self.log_message.emit(message, "INFO" if ok else "ERROR")
         if not ok:
@@ -626,6 +643,18 @@ class ModelManagerDialog(QDialog):
         self.import_button.setEnabled(enabled)
         self.refresh_button.setEnabled(enabled)
         self.close_button.setEnabled(enabled)
+
+    def _set_download_busy_state(self, active: bool, model_name=None):
+        if active:
+            self.download_status_label.setText(
+                f"{tr('model_download_in_progress')}: {model_name}"
+            )
+            self.download_status_label.show()
+            self.download_progress.show()
+            return
+        self.download_status_label.clear()
+        self.download_status_label.hide()
+        self.download_progress.hide()
 
     def reject(self):
         if self.downloading:

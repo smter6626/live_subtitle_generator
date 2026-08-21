@@ -1,4 +1,5 @@
 import ast
+import copy
 import sys
 import unittest
 from pathlib import Path
@@ -213,6 +214,85 @@ class ModelManagerUiContractTests(unittest.TestCase):
         self.assertEqual(len(thread_calls), 0)
         self.assertIn("threading.Thread", ast.unparse(method))
         self.assertIn(".start()", ast.unparse(method))
+
+    def test_download_busy_surface_is_bilingual_indeterminate_and_non_blocking(self):
+        text_assignment = next(
+            node
+            for node in self.tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "TEXT" for target in node.targets)
+        )
+        translations = ast.literal_eval(text_assignment.value)
+        self.assertEqual(translations["zh"]["model_download_in_progress"], "正在下载模型")
+        self.assertEqual(translations["en"]["model_download_in_progress"], "Downloading model")
+
+        init_text = ast.unparse(self.methods["__init__"])
+        start_text = ast.unparse(self.methods["download_selected_model"])
+        finish_text = ast.unparse(self.methods["_handle_download_finished"])
+        busy_text = ast.unparse(self.methods["_set_download_busy_state"])
+
+        self.assertIn("QProgressBar()", init_text)
+        self.assertIn("download_progress.setRange(0, 0)", init_text)
+        self.assertIn("download_progress.hide()", init_text)
+        self.assertIn("self._set_download_busy_state(True, model_name)", start_text)
+        self.assertLess(
+            start_text.index("self._set_download_busy_state(True, model_name)"),
+            start_text.index("threading.Thread"),
+        )
+        self.assertIn("self._set_download_busy_state(False)", finish_text)
+        self.assertLess(
+            finish_text.index("self._set_download_busy_state(False)"),
+            finish_text.index("if not ok"),
+        )
+        self.assertIn("tr('model_download_in_progress')", busy_text)
+        self.assertIn("model_name", busy_text)
+        self.assertIn("download_status_label.show()", busy_text)
+        self.assertIn("download_progress.show()", busy_text)
+        self.assertIn("download_status_label.hide()", busy_text)
+        self.assertIn("download_progress.hide()", busy_text)
+        self.assertNotIn("QMessageBox", busy_text)
+        self.assertNotIn("sleep", busy_text)
+
+    def test_download_busy_state_transition_smoke(self):
+        class WidgetProbe:
+            def __init__(self):
+                self.text = ""
+                self.visible = False
+
+            def setText(self, value):
+                self.text = value
+
+            def clear(self):
+                self.text = ""
+
+            def show(self):
+                self.visible = True
+
+            def hide(self):
+                self.visible = False
+
+        method = copy.deepcopy(self.methods["_set_download_busy_state"])
+        module = ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[]))
+        namespace = {"tr": lambda key: {"model_download_in_progress": "Downloading model"}[key]}
+        exec(compile(module, str(UI_PATH), "exec"), namespace)
+        set_busy_state = namespace["_set_download_busy_state"]
+
+        fake_dialog = type("FakeDialog", (), {})()
+        fake_dialog.download_status_label = WidgetProbe()
+        fake_dialog.download_progress = WidgetProbe()
+
+        set_busy_state(fake_dialog, True, "large-v3")
+        self.assertEqual(
+            fake_dialog.download_status_label.text,
+            "Downloading model: large-v3",
+        )
+        self.assertTrue(fake_dialog.download_status_label.visible)
+        self.assertTrue(fake_dialog.download_progress.visible)
+
+        set_busy_state(fake_dialog, False)
+        self.assertEqual(fake_dialog.download_status_label.text, "")
+        self.assertFalse(fake_dialog.download_status_label.visible)
+        self.assertFalse(fake_dialog.download_progress.visible)
 
     def test_ui_no_longer_short_circuits_on_final_file_existence(self):
         method_text = ast.unparse(self.methods["download_selected_model"])
