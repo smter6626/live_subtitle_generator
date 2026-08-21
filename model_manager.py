@@ -20,10 +20,13 @@ from settings import (
     DEFAULT_DOWNLOAD_SCRIPT,
     DEFAULT_MODEL_DIRS,
     DEFAULT_OUTPUT_BASE_DIR,
+    DEFAULT_UI_LANGUAGE,
     DEFAULT_WHISPER_CPP_CLI,
     MIN_MODEL_FILE_SIZE_BYTES,
     PROJECT_ROOT,
     PROJECT_MODEL_DIR,
+    UI_LANGUAGE_OPTIONS,
+    normalize_ui_language,
 )
 
 
@@ -74,6 +77,7 @@ class AppSettings:
     model_dirs: list[Path]
     imported_model_paths: list[Path]
     output_base_dir: Path = DEFAULT_OUTPUT_BASE_DIR
+    ui_language: str = DEFAULT_UI_LANGUAGE
 
     def to_json(self):
         return {
@@ -85,6 +89,7 @@ class AppSettings:
             "model_dirs": [str(path) for path in self.model_dirs],
             "imported_model_paths": [str(path) for path in self.imported_model_paths],
             "output_base_dir": str(self.output_base_dir),
+            "ui_language": self.ui_language,
         }
 
 
@@ -291,6 +296,9 @@ def load_app_settings(settings_path: Path = APP_SETTINGS_PATH) -> AppSettings:
     output_base_dir = Path(
         data.get("output_base_dir") or DEFAULT_OUTPUT_BASE_DIR
     ).expanduser()
+    ui_language = normalize_ui_language(data.get("ui_language", DEFAULT_UI_LANGUAGE))
+    if ui_language not in UI_LANGUAGE_OPTIONS:
+        ui_language = DEFAULT_UI_LANGUAGE
 
     app_settings = AppSettings(
         whisper_cpp_cli=Path(data.get("whisper_cpp_cli", DEFAULT_WHISPER_CPP_CLI)).expanduser(),
@@ -301,6 +309,7 @@ def load_app_settings(settings_path: Path = APP_SETTINGS_PATH) -> AppSettings:
         model_dirs=model_dirs,
         imported_model_paths=imported_paths,
         output_base_dir=output_base_dir,
+        ui_language=ui_language,
     )
 
     models = scan_model_dirs(

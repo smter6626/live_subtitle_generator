@@ -51,7 +51,10 @@ from settings import (
     MAX_BEAM_SIZE,
     MIN_BEAM_SIZE,
     ORIGINAL_LANGUAGE_OPTIONS,
+    UI_LANGUAGE_LABELS,
+    UI_LANGUAGE_OPTIONS,
     UI_LANGUAGE_ZH,
+    normalize_ui_language,
 )
 from model_manager import (
     DOWNLOADABLE_MODELS,
@@ -77,8 +80,12 @@ TEXT = {
         "backend": "后端",
         "model": "模型",
         "beam": "Beam",
-        "language": "Language",
-        "original_language": "Original Language",
+        "language": "音频语言",
+        "ui_language": "界面语言",
+        "original_language": "音频原始语言",
+        "original_language_english": "英语",
+        "original_language_chinese": "中文",
+        "original_language_mixed": "中英混合",
         "runtime": "运行时长",
         "queue": "队列",
         "output_folder": "输出目录",
@@ -114,7 +121,7 @@ TEXT = {
         "choose_folder": "选择文件夹",
         "download_target": "下载目标",
         "close": "关闭",
-        "model_already_exists": "Model already exists.",
+        "model_already_exists": "模型已存在。",
         "cannot_create_model_download_directory": "无法创建模型下载目录",
         "model_import_error": "模型导入失败",
         "model_download_error": "模型下载失败",
@@ -123,6 +130,12 @@ TEXT = {
         "model_download_complete": "模型下载完成",
         "model_download_failed": "模型下载失败",
         "model_selected": "已选择模型",
+        "model_not_available": "模型不可用",
+        "model_download_still_running": "模型仍在下载，请等待完成。",
+        "verified_existing_model": "已验证现有模型",
+        "downloaded": "已下载",
+        "models_found": "已发现模型数量",
+        "no_startable_model": "无法开始转写：未选择可用模型。",
         "open_output_folder": "打开输出目录",
         "export_clean_txt": "定位 Clean TXT",
         "session": "本次 Session",
@@ -149,8 +162,12 @@ TEXT = {
         "backend": "Backend",
         "model": "Model",
         "beam": "Beam",
-        "language": "Language",
-        "original_language": "Original Language",
+        "language": "Audio language",
+        "ui_language": "Interface Language",
+        "original_language": "Audio / Original Language",
+        "original_language_english": "English",
+        "original_language_chinese": "Chinese",
+        "original_language_mixed": "Mixed Chinese/English",
         "runtime": "Runtime",
         "queue": "Queue",
         "output_folder": "Output folder",
@@ -195,8 +212,14 @@ TEXT = {
         "model_download_complete": "Model download complete",
         "model_download_failed": "Model download failed",
         "model_selected": "Model selected",
+        "model_not_available": "Model is not available",
+        "model_download_still_running": "A model download is still running. Please wait for it to finish.",
+        "verified_existing_model": "verified existing model",
+        "downloaded": "downloaded",
+        "models_found": "Models found",
+        "no_startable_model": "Cannot start transcription: no available model is selected.",
         "open_output_folder": "Open Output Folder",
-        "export_clean_txt": "Export Clean TXT",
+        "export_clean_txt": "Reveal Clean TXT",
         "session": "Session",
         "start_time": "Start time",
         "raw_lines": "Raw lines",
@@ -218,13 +241,37 @@ TEXT = {
 }
 
 
+_ACTIVE_UI_LANGUAGE = (
+    DEFAULT_UI_LANGUAGE if DEFAULT_UI_LANGUAGE in TEXT else UI_LANGUAGE_ZH
+)
+
+
+def set_current_language(language):
+    global _ACTIVE_UI_LANGUAGE
+    normalized = normalize_ui_language(language)
+    if normalized not in TEXT:
+        normalized = UI_LANGUAGE_ZH
+    _ACTIVE_UI_LANGUAGE = normalized
+
+
 def current_language():
-    return DEFAULT_UI_LANGUAGE if DEFAULT_UI_LANGUAGE in TEXT else UI_LANGUAGE_ZH
+    return _ACTIVE_UI_LANGUAGE
 
 
 def tr(key):
     language = current_language()
     return TEXT[language].get(key, TEXT["en"].get(key, key))
+
+
+ORIGINAL_LANGUAGE_TEXT_KEYS = {
+    "English": "original_language_english",
+    "Chinese": "original_language_chinese",
+    "Mixed Chinese/English": "original_language_mixed",
+}
+
+
+def display_original_language(language_label):
+    return tr(ORIGINAL_LANGUAGE_TEXT_KEYS.get(language_label, language_label))
 
 
 def display_status(status):
@@ -267,6 +314,10 @@ class TranscriptTable(QWidget):
         self.table.setColumnWidth(0, 90)
         self.table.verticalScrollBar().valueChanged.connect(self._on_scroll)
         layout.addWidget(self.table)
+
+    def retranslate_ui(self):
+        self.jump_button.setText(tr("jump_to_live"))
+        self.table.setHorizontalHeaderLabels([tr("time"), tr("text")])
 
     def append_lines(self, lines):
         should_scroll = self.live_mode or self._is_at_bottom()
@@ -314,6 +365,7 @@ class ModelManagerDialog(QDialog):
     def __init__(self, app_settings, selected_model, parent=None):
         super().__init__(parent)
         crash_log("ModelManagerDialog init")
+        set_current_language(app_settings.ui_language)
         self.setWindowTitle(tr("model_manager"))
         self.resize(900, 540)
         self.app_settings = app_settings
@@ -527,7 +579,11 @@ class ModelManagerDialog(QDialog):
                     target_dir=download_dir,
                     log_callback=lambda line: self.log_message.emit(line, "INFO"),
                 )
-                action = "verified existing model" if result.disposition == "reused" else "downloaded"
+                action = (
+                    tr("verified_existing_model")
+                    if result.disposition == "reused"
+                    else tr("downloaded")
+                )
                 self.download_finished.emit(
                     True,
                     f"{tr('model_download_complete')}: {model_name} ({action})",
@@ -570,7 +626,7 @@ class ModelManagerDialog(QDialog):
             QMessageBox.warning(
                 self,
                 tr("model_manager"),
-                f"Model is not available: {model.status}\n{model.path}",
+                f"{tr('model_not_available')}: {model.status}\n{model.path}",
             )
             return
         selection_changed = (
@@ -665,7 +721,7 @@ class ModelManagerDialog(QDialog):
             QMessageBox.information(
                 self,
                 tr("download_model"),
-                "A model download is still running.",
+                tr("model_download_still_running"),
             )
             return
         crash_log("ModelManagerDialog reject")
@@ -676,7 +732,6 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         crash_log("MainWindow init entered")
-        self.setWindowTitle(tr("window_title"))
         self.resize(1200, 800)
         self._shutdown_started = False
         self._shutdown_complete = False
@@ -693,6 +748,8 @@ class MainWindow(QMainWindow):
         self.bridge.event_received.connect(lambda event: self._safe_slot(self.handle_event, event))
         self.controller = TranscriptionController(event_callback=self.bridge.event_received.emit)
         self.app_settings = load_app_settings()
+        set_current_language(self.app_settings.ui_language)
+        self.setWindowTitle(tr("window_title"))
         self.models = scan_model_dirs(
             self.app_settings.model_dirs,
             self.app_settings.imported_model_paths,
@@ -713,6 +770,7 @@ class MainWindow(QMainWindow):
         self.queue_size = 0
         self.raw_count = 0
         self.clean_count = 0
+        self.session_original_language_label = DEFAULT_ORIGINAL_LANGUAGE_LABEL
 
         self._build_ui()
         self._apply_styles()
@@ -752,7 +810,9 @@ class MainWindow(QMainWindow):
         self.backend_label = QLabel(BACKEND_DISPLAY)
         self.model_label = QLabel(self._selected_model_name())
         self.beam_status_label = QLabel(str(DEFAULT_BEAM_SIZE))
-        self.language_status_label = QLabel(DEFAULT_ORIGINAL_LANGUAGE_LABEL)
+        self.language_status_label = QLabel(
+            display_original_language(DEFAULT_ORIGINAL_LANGUAGE_LABEL)
+        )
         self.runtime_label = QLabel("00:00:00")
         self.queue_label = QLabel("0")
         self.output_folder_label = QLabel("-")
@@ -768,9 +828,21 @@ class MainWindow(QMainWindow):
             (tr("queue"), self.queue_label),
             (tr("output_folder"), self.output_folder_label),
         ]
-        for col, (name, label) in enumerate(pairs):
+        status_keys = (
+            "status",
+            "backend",
+            "model",
+            "beam",
+            "language",
+            "runtime",
+            "queue",
+            "output_folder",
+        )
+        self.status_title_labels = {}
+        for col, ((name, label), key) in enumerate(zip(pairs, status_keys)):
             title = QLabel(name)
             title.setObjectName("statusTitle")
+            self.status_title_labels[key] = title
             layout.addWidget(title, 0, col)
             layout.addWidget(label, 1, col)
 
@@ -784,14 +856,24 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
 
-        controls = QGroupBox(tr("controls"))
-        controls_layout = QVBoxLayout(controls)
+        self.controls_group = QGroupBox(tr("controls"))
+        controls_layout = QVBoxLayout(self.controls_group)
 
         self.start_button = QPushButton(tr("start_recording"))
         self.start_button.clicked.connect(lambda: self._safe_slot(self.start_recording))
         self.stop_button = QPushButton(tr("stop_recording"))
         self.stop_button.clicked.connect(lambda: self._safe_slot(self.stop_recording))
         self.stop_button.setEnabled(False)
+
+        self.ui_language_combo = QComboBox()
+        for language in UI_LANGUAGE_OPTIONS:
+            self.ui_language_combo.addItem(UI_LANGUAGE_LABELS[language], language)
+        self.ui_language_combo.setCurrentIndex(
+            self.ui_language_combo.findData(self.app_settings.ui_language)
+        )
+        self.ui_language_combo.currentIndexChanged.connect(
+            lambda index: self._safe_slot(self._on_ui_language_changed, index)
+        )
 
         self.beam_combo = QComboBox()
         for beam in range(MIN_BEAM_SIZE, MAX_BEAM_SIZE + 1):
@@ -803,8 +885,10 @@ class MainWindow(QMainWindow):
 
         self.language_combo = QComboBox()
         for label in ORIGINAL_LANGUAGE_OPTIONS:
-            self.language_combo.addItem(label, label)
-        self.language_combo.setCurrentText(DEFAULT_ORIGINAL_LANGUAGE_LABEL)
+            self.language_combo.addItem(display_original_language(label), label)
+        self.language_combo.setCurrentIndex(
+            self.language_combo.findData(DEFAULT_ORIGINAL_LANGUAGE_LABEL)
+        )
 
         self.mark_button = QPushButton(tr("mark_now"))
         self.mark_button.setEnabled(False)
@@ -821,14 +905,19 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(self.start_button)
         controls_layout.addWidget(self.stop_button)
         controls_layout.addSpacing(8)
-        controls_layout.addWidget(QLabel(tr("beam_size")))
+        self.ui_language_title_label = QLabel(tr("ui_language"))
+        controls_layout.addWidget(self.ui_language_title_label)
+        controls_layout.addWidget(self.ui_language_combo)
+        self.beam_size_title_label = QLabel(tr("beam_size"))
+        controls_layout.addWidget(self.beam_size_title_label)
         controls_layout.addWidget(self.beam_combo)
-        controls_layout.addWidget(QLabel(tr("original_language")))
+        self.original_language_title_label = QLabel(tr("original_language"))
+        controls_layout.addWidget(self.original_language_title_label)
         controls_layout.addWidget(self.language_combo)
         controls_layout.addSpacing(8)
 
-        model_group = QGroupBox(tr("model_group"))
-        model_layout = QVBoxLayout(model_group)
+        self.model_group = QGroupBox(tr("model_group"))
+        model_layout = QVBoxLayout(self.model_group)
         self.model_current_label = QLabel(tr("no_model_selected"))
         self.model_current_label.setWordWrap(True)
         self.model_combo = QComboBox()
@@ -845,18 +934,20 @@ class MainWindow(QMainWindow):
         self.refresh_models_button.clicked.connect(lambda: self._safe_slot(self.refresh_models))
         self.manage_models_button = QPushButton(tr("manage_models"))
         self.manage_models_button.clicked.connect(lambda: self._safe_slot(self.open_model_manager))
-        model_layout.addWidget(QLabel(tr("current_model")))
+        self.current_model_title_label = QLabel(tr("current_model"))
+        model_layout.addWidget(self.current_model_title_label)
         model_layout.addWidget(self.model_current_label)
-        model_layout.addWidget(QLabel(tr("model_dropdown")))
+        self.model_dropdown_title_label = QLabel(tr("model_dropdown"))
+        model_layout.addWidget(self.model_dropdown_title_label)
         model_layout.addWidget(self.model_combo)
         model_layout.addWidget(self.model_selection_confirmation_label)
         model_layout.addWidget(self.refresh_models_button)
         model_layout.addWidget(self.manage_models_button)
-        controls_layout.addWidget(model_group)
+        controls_layout.addWidget(self.model_group)
         controls_layout.addSpacing(8)
 
-        output_group = QGroupBox(tr("output_base"))
-        output_layout = QVBoxLayout(output_group)
+        self.output_group = QGroupBox(tr("output_base"))
+        output_layout = QVBoxLayout(self.output_group)
         self.output_base_label = QLabel(str(self.app_settings.output_base_dir))
         self.output_base_label.setWordWrap(True)
         self.output_base_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -867,16 +958,16 @@ class MainWindow(QMainWindow):
         )
         output_layout.addWidget(self.output_base_label)
         output_layout.addWidget(self.choose_output_base_button)
-        controls_layout.addWidget(output_group)
+        controls_layout.addWidget(self.output_group)
         controls_layout.addSpacing(8)
 
         controls_layout.addWidget(self.mark_button)
         controls_layout.addWidget(self.open_folder_button)
         controls_layout.addWidget(self.export_clean_button)
-        layout.addWidget(controls)
+        layout.addWidget(self.controls_group)
 
-        session = QGroupBox(tr("session"))
-        session_layout = QGridLayout(session)
+        self.session_group = QGroupBox(tr("session"))
+        session_layout = QGridLayout(self.session_group)
         self.session_start_label = QLabel("-")
         self.session_runtime_label = QLabel("00:00:00")
         self.raw_lines_label = QLabel("0")
@@ -884,7 +975,9 @@ class MainWindow(QMainWindow):
         self.session_backend_label = QLabel(BACKEND_DISPLAY)
         self.session_model_label = QLabel(self._selected_model_name())
         self.session_beam_label = QLabel(str(DEFAULT_BEAM_SIZE))
-        self.session_language_label = QLabel(DEFAULT_ORIGINAL_LANGUAGE_LABEL)
+        self.session_language_label = QLabel(
+            display_original_language(DEFAULT_ORIGINAL_LANGUAGE_LABEL)
+        )
 
         rows = [
             (tr("start_time"), self.session_start_label),
@@ -896,10 +989,23 @@ class MainWindow(QMainWindow):
             (tr("beam"), self.session_beam_label),
             (tr("language"), self.session_language_label),
         ]
-        for row, (name, label) in enumerate(rows):
-            session_layout.addWidget(QLabel(name), row, 0)
+        session_keys = (
+            "start_time",
+            "runtime",
+            "raw_lines",
+            "clean_lines",
+            "backend",
+            "model",
+            "beam",
+            "language",
+        )
+        self.session_title_labels = {}
+        for row, ((name, label), key) in enumerate(zip(rows, session_keys)):
+            title = QLabel(name)
+            self.session_title_labels[key] = title
+            session_layout.addWidget(title, row, 0)
             session_layout.addWidget(label, row, 1)
-        layout.addWidget(session)
+        layout.addWidget(self.session_group)
         layout.addStretch()
         return panel
 
@@ -1084,6 +1190,69 @@ class MainWindow(QMainWindow):
                 pass
             return None
 
+    def _on_ui_language_changed(self, index):
+        language = normalize_ui_language(self.ui_language_combo.itemData(index))
+        if language not in UI_LANGUAGE_OPTIONS:
+            return
+        if language == self.app_settings.ui_language:
+            return
+        self.app_settings.ui_language = language
+        set_current_language(language)
+        save_app_settings(self.app_settings)
+        self._retranslate_ui()
+
+    def _retranslate_ui(self):
+        self.setWindowTitle(tr("window_title"))
+        for key, label in self.status_title_labels.items():
+            label.setText(tr(key))
+
+        self.controls_group.setTitle(tr("controls"))
+        self.start_button.setText(tr("start_recording"))
+        self.stop_button.setText(tr("stop_recording"))
+        self.ui_language_title_label.setText(tr("ui_language"))
+        self.beam_size_title_label.setText(tr("beam_size"))
+        self.original_language_title_label.setText(tr("original_language"))
+        for index in range(self.language_combo.count()):
+            language_label = self.language_combo.itemData(index)
+            self.language_combo.setItemText(
+                index,
+                display_original_language(language_label),
+            )
+
+        self.mark_button.setText(tr("mark_now"))
+        self.mark_button.setToolTip(tr("mark_tooltip"))
+        self.open_folder_button.setText(tr("open_output_folder"))
+        self.export_clean_button.setText(tr("export_clean_txt"))
+        self.model_group.setTitle(tr("model_group"))
+        self.current_model_title_label.setText(tr("current_model"))
+        self.model_dropdown_title_label.setText(tr("model_dropdown"))
+        self.refresh_models_button.setText(tr("refresh_models"))
+        self.manage_models_button.setText(tr("manage_models"))
+        self.output_group.setTitle(tr("output_base"))
+        self.choose_output_base_button.setText(tr("choose_output_base"))
+        self.session_group.setTitle(tr("session"))
+        for key, label in self.session_title_labels.items():
+            label.setText(tr(key))
+
+        self.clean_table.retranslate_ui()
+        self.raw_table.retranslate_ui()
+        self.tabs.setTabText(0, tr("clean_transcript"))
+        self.tabs.setTabText(1, tr("raw_transcript"))
+        self.tabs.setTabText(2, tr("logs"))
+        self.language_status_label.setText(
+            display_original_language(self.session_original_language_label)
+        )
+        self.session_language_label.setText(
+            display_original_language(self.session_original_language_label)
+        )
+        if self.model_selection_confirmation_label.isVisible() and self.selected_model:
+            self.model_selection_confirmation_label.setText(
+                f"{tr('model_selected')}: {self.selected_model.name}"
+            )
+        self._populate_model_combo()
+        self._update_model_labels()
+        self._set_status(self.controller.state.value)
+
     def refresh_models(self):
         preferred_path = self.selected_model.path if self.selected_model else self.app_settings.selected_model_path
         self.models = scan_model_dirs(
@@ -1099,7 +1268,7 @@ class MainWindow(QMainWindow):
         self._populate_model_combo()
         self._update_model_labels()
         self._set_status(self.controller.state.value)
-        self._append_log(f"{tr('refresh_models')}: {len(self.models)} model(s).")
+        self._append_log(f"{tr('models_found')}: {len(self.models)}")
 
     def open_model_manager(self):
         crash_log("open Model Manager")
@@ -1168,7 +1337,10 @@ class MainWindow(QMainWindow):
             return
         model = self.models[index]
         if not model.is_available:
-            self._append_log(f"Model is not available: {model.display_label}", level="WARNING")
+            self._append_log(
+                f"{tr('model_not_available')}: {model.display_label}",
+                level="WARNING",
+            )
             self._set_status(self.controller.state.value)
             return
         selection_changed = (
@@ -1224,7 +1396,7 @@ class MainWindow(QMainWindow):
     def start_recording(self):
         crash_log("start recording requested")
         if not self._has_startable_model():
-            self._show_error("Cannot start transcription: no model selected.")
+            self._show_error(tr("no_startable_model"))
             return
         beam_size = int(self.beam_combo.currentData())
         original_language_label = self.language_combo.currentData()
@@ -1252,8 +1424,13 @@ class MainWindow(QMainWindow):
         self.beam_status_label.setText(str(beam_size))
         self.session_beam_label.setText(str(beam_size))
         self._update_model_labels()
-        self.language_status_label.setText(original_language_label)
-        self.session_language_label.setText(original_language_label)
+        self.session_original_language_label = original_language_label
+        self.language_status_label.setText(
+            display_original_language(original_language_label)
+        )
+        self.session_language_label.setText(
+            display_original_language(original_language_label)
+        )
         self.open_folder_button.setEnabled(True)
         self.export_clean_button.setEnabled(True)
         crash_log(f"start recording completed: session_dir={session_dir}")
@@ -1300,8 +1477,13 @@ class MainWindow(QMainWindow):
             config = event.get("config", {})
             original_language_label = config.get("original_language_label")
             if original_language_label:
-                self.language_status_label.setText(original_language_label)
-                self.session_language_label.setText(original_language_label)
+                self.session_original_language_label = original_language_label
+                self.language_status_label.setText(
+                    display_original_language(original_language_label)
+                )
+                self.session_language_label.setText(
+                    display_original_language(original_language_label)
+                )
             model_name = config.get("model") or config.get("model_display")
             if model_name:
                 self.model_label.setText(model_name)
