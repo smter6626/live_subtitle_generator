@@ -315,11 +315,24 @@ class ModelManagerDialog(QDialog):
         self.downloading = False
         self.downloading_model_name = None
         self.download_finished.connect(self._handle_download_finished)
+        self.model_selection_confirmation_timer = QTimer(self)
+        self.model_selection_confirmation_timer.setSingleShot(True)
+        self.model_selection_confirmation_timer.setInterval(2000)
+        self.model_selection_confirmation_timer.timeout.connect(
+            self._clear_model_selection_confirmation
+        )
 
         layout = QVBoxLayout(self)
 
         self.current_label = QLabel()
         layout.addWidget(self.current_label)
+        self.model_selection_confirmation_label = QLabel()
+        self.model_selection_confirmation_label.setWordWrap(True)
+        self.model_selection_confirmation_label.setStyleSheet(
+            "color: #047857; font-weight: 600;"
+        )
+        self.model_selection_confirmation_label.hide()
+        layout.addWidget(self.model_selection_confirmation_label)
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(
@@ -528,6 +541,7 @@ class ModelManagerDialog(QDialog):
             self._select_model(selected)
 
     def select_current_row(self):
+        self._clear_model_selection_confirmation()
         model = self._selected_row_model()
         if not model:
             return
@@ -538,9 +552,16 @@ class ModelManagerDialog(QDialog):
                 f"Model is not available: {model.status}\n{model.path}",
             )
             return
+        selection_changed = (
+            self.selected_model is None
+            or self.selected_model.path.resolve() != model.path.resolve()
+        )
         self._select_model(model)
+        if selection_changed:
+            self._show_model_selection_confirmation(model)
 
     def _select_model(self, model):
+        self._clear_model_selection_confirmation()
         self.selected_model = model
         self.app_settings.selected_model_path = model.path
         self.app_settings.selected_model_name = model.name
@@ -580,6 +601,18 @@ class ModelManagerDialog(QDialog):
             self.current_label.setText(f"{tr('current_model')}: {tr('no_model_selected')}")
             self.current_label.setToolTip("")
 
+    def _show_model_selection_confirmation(self, model):
+        self.model_selection_confirmation_label.setText(
+            f"{tr('model_selected')}: {model.name}"
+        )
+        self.model_selection_confirmation_label.show()
+        self.model_selection_confirmation_timer.start()
+
+    def _clear_model_selection_confirmation(self):
+        self.model_selection_confirmation_timer.stop()
+        self.model_selection_confirmation_label.clear()
+        self.model_selection_confirmation_label.hide()
+
     def _update_download_location_label(self):
         if hasattr(self, "download_location_label"):
             path = self.app_settings.download_model_dir
@@ -616,6 +649,12 @@ class MainWindow(QMainWindow):
         self._shutdown_complete = False
         self._stop_thread = None
         self.model_manager_dialog = None
+        self.model_selection_confirmation_timer = QTimer(self)
+        self.model_selection_confirmation_timer.setSingleShot(True)
+        self.model_selection_confirmation_timer.setInterval(2000)
+        self.model_selection_confirmation_timer.timeout.connect(
+            self._clear_model_selection_confirmation
+        )
 
         self.bridge = EventBridge()
         self.bridge.event_received.connect(lambda event: self._safe_slot(self.handle_event, event))
@@ -763,6 +802,12 @@ class MainWindow(QMainWindow):
         self.model_combo.currentIndexChanged.connect(
             lambda index: self._safe_slot(self._on_model_combo_changed, index)
         )
+        self.model_selection_confirmation_label = QLabel()
+        self.model_selection_confirmation_label.setWordWrap(True)
+        self.model_selection_confirmation_label.setStyleSheet(
+            "color: #047857; font-weight: 600;"
+        )
+        self.model_selection_confirmation_label.hide()
         self.refresh_models_button = QPushButton(tr("refresh_models"))
         self.refresh_models_button.clicked.connect(lambda: self._safe_slot(self.refresh_models))
         self.manage_models_button = QPushButton(tr("manage_models"))
@@ -771,6 +816,7 @@ class MainWindow(QMainWindow):
         model_layout.addWidget(self.model_current_label)
         model_layout.addWidget(QLabel(tr("model_dropdown")))
         model_layout.addWidget(self.model_combo)
+        model_layout.addWidget(self.model_selection_confirmation_label)
         model_layout.addWidget(self.refresh_models_button)
         model_layout.addWidget(self.manage_models_button)
         controls_layout.addWidget(model_group)
@@ -1069,6 +1115,7 @@ class MainWindow(QMainWindow):
         self.model_combo.blockSignals(False)
 
     def _on_model_combo_changed(self, index):
+        self._clear_model_selection_confirmation()
         if index < 0 or index >= len(self.models):
             return
         model = self.models[index]
@@ -1076,9 +1123,16 @@ class MainWindow(QMainWindow):
             self._append_log(f"Model is not available: {model.display_label}", level="WARNING")
             self._set_status(self.controller.state.value)
             return
+        selection_changed = (
+            self.selected_model is None
+            or self.selected_model.path.resolve() != model.path.resolve()
+        )
         self._set_selected_model(model)
+        if selection_changed:
+            self._show_model_selection_confirmation(model)
 
     def _set_selected_model(self, model):
+        self._clear_model_selection_confirmation()
         self.selected_model = model
         self.app_settings.selected_model_path = model.path
         self.app_settings.selected_model_name = model.name
@@ -1092,6 +1146,18 @@ class MainWindow(QMainWindow):
 
     def _has_startable_model(self):
         return bool(self.selected_model and self.selected_model.is_available)
+
+    def _show_model_selection_confirmation(self, model):
+        self.model_selection_confirmation_label.setText(
+            f"{tr('model_selected')}: {model.name}"
+        )
+        self.model_selection_confirmation_label.show()
+        self.model_selection_confirmation_timer.start()
+
+    def _clear_model_selection_confirmation(self):
+        self.model_selection_confirmation_timer.stop()
+        self.model_selection_confirmation_label.clear()
+        self.model_selection_confirmation_label.hide()
 
     def _update_model_labels(self):
         name = self._selected_model_name()
