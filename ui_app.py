@@ -82,6 +82,8 @@ TEXT = {
         "runtime": "运行时长",
         "queue": "队列",
         "output_folder": "输出目录",
+        "output_base": "输出位置",
+        "choose_output_base": "选择输出位置",
         "idle": "空闲",
         "starting": "启动中",
         "recording": "录音中",
@@ -152,6 +154,8 @@ TEXT = {
         "runtime": "Runtime",
         "queue": "Queue",
         "output_folder": "Output folder",
+        "output_base": "Output location",
+        "choose_output_base": "Choose Output Location",
         "idle": "Idle",
         "starting": "Starting",
         "recording": "Recording",
@@ -851,6 +855,21 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(model_group)
         controls_layout.addSpacing(8)
 
+        output_group = QGroupBox(tr("output_base"))
+        output_layout = QVBoxLayout(output_group)
+        self.output_base_label = QLabel(str(self.app_settings.output_base_dir))
+        self.output_base_label.setWordWrap(True)
+        self.output_base_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.output_base_label.setToolTip(str(self.app_settings.output_base_dir))
+        self.choose_output_base_button = QPushButton(tr("choose_output_base"))
+        self.choose_output_base_button.clicked.connect(
+            lambda: self._safe_slot(self.choose_output_base)
+        )
+        output_layout.addWidget(self.output_base_label)
+        output_layout.addWidget(self.choose_output_base_button)
+        controls_layout.addWidget(output_group)
+        controls_layout.addSpacing(8)
+
         controls_layout.addWidget(self.mark_button)
         controls_layout.addWidget(self.open_folder_button)
         controls_layout.addWidget(self.export_clean_button)
@@ -1218,6 +1237,7 @@ class MainWindow(QMainWindow):
                 original_language_label=original_language_label,
                 selected_model_path=self.selected_model.path,
                 selected_model_name=self.selected_model.name,
+                output_base_dir=self.app_settings.output_base_dir,
             )
         except Exception as exc:
             self._show_error(str(exc))
@@ -1328,6 +1348,7 @@ class MainWindow(QMainWindow):
         self.model_combo.setEnabled((is_idle or is_error) and bool(self.models))
         self.refresh_models_button.setEnabled(is_idle or is_error)
         self.manage_models_button.setEnabled(is_idle or is_error)
+        self.choose_output_base_button.setEnabled(is_idle or is_error)
 
         if is_idle:
             self.session_started_at = None
@@ -1355,6 +1376,23 @@ class MainWindow(QMainWindow):
         crash_log(f"show error: {message}")
         self._set_status(EngineState.ERROR.value)
         QMessageBox.critical(self, tr("transcription_error"), message)
+
+    def choose_output_base(self):
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            tr("choose_output_base"),
+            str(self.app_settings.output_base_dir),
+        )
+        if not folder:
+            return
+        self.app_settings.output_base_dir = Path(folder).expanduser()
+        save_app_settings(self.app_settings)
+        self.output_base_label.setText(str(self.app_settings.output_base_dir))
+        self.output_base_label.setToolTip(str(self.app_settings.output_base_dir))
+        self._append_log(
+            f"{tr('output_base')}: {self.app_settings.output_base_dir}",
+            level="INFO",
+        )
 
     def open_output_folder(self):
         if self.current_output_dir and self.current_output_dir.exists():

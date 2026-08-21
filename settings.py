@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from resource_paths import (
     is_frozen_app,
     project_root,
     source_whisper_cpp_model_dir,
+    user_documents_dir,
     writable_config_dir,
     writable_models_dir,
     writable_outputs_dir,
@@ -29,6 +31,7 @@ PROJECT_ROOT = project_root()
 CONFIG_DIR = writable_config_dir()
 APP_SETTINGS_PATH = CONFIG_DIR / "settings.json"
 OUTPUTS_DIR = writable_outputs_dir()
+DEFAULT_OUTPUT_BASE_DIR = user_documents_dir()
 PROJECT_MODEL_DIR = writable_models_dir()
 APP_SUPPORT_MODEL_DIR = app_support_model_dir()
 DEFAULT_DOWNLOAD_MODEL_DIR = default_download_model_dir()
@@ -210,16 +213,47 @@ def default_settings(
     original_language_label: str = DEFAULT_ORIGINAL_LANGUAGE_LABEL,
     selected_model_path=None,
     selected_model_name: str | None = None,
+    output_base_dir=None,
 ) -> TranscriptionSettings:
     model_path = selected_model_path if selected_model_path is not None else DEFAULT_WHISPER_CPP_MODEL
     model_name = selected_model_name or MODEL_ID
+    output_root = (
+        output_root_for_base(output_base_dir)
+        if output_base_dir is not None
+        else OUTPUTS_DIR
+    )
     return TranscriptionSettings(
         model=model_name,
         model_display=model_name,
         beam_size=beam_size,
         whisper_cpp_model=model_path,
+        output_root=output_root,
         original_language_label=original_language_label,
     ).normalized()
+
+
+def output_root_for_base(output_base_dir) -> Path:
+    return Path(output_base_dir).expanduser() / "outputs"
+
+
+def validate_output_root(output_root: Path):
+    output_root = Path(output_root).expanduser()
+    try:
+        if output_root.exists() and not output_root.is_dir():
+            raise RuntimeError("path exists but is not a directory")
+        output_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            prefix=".classroom_transcriber_write_test_",
+            dir=output_root,
+        ):
+            pass
+    except (OSError, RuntimeError) as exc:
+        return [
+            "Cannot start transcription: output directory is not writable.\n"
+            f"Expected writable directory: {output_root}\n"
+            f"Reason: {exc}"
+        ]
+    return []
 
 
 def validate_runtime_paths(settings: TranscriptionSettings):
@@ -279,6 +313,8 @@ def validate_runtime_paths(settings: TranscriptionSettings):
             "Cannot start transcription: selected model file is too small.\n"
             f"Expected a model larger than {MIN_MODEL_FILE_SIZE_BYTES} bytes: {model_path}"
         )
+
+    errors.extend(validate_output_root(settings.output_root))
 
     return errors
 

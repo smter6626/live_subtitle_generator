@@ -19,6 +19,7 @@ from settings import (
     DEFAULT_DOWNLOAD_MODEL_DIR,
     DEFAULT_DOWNLOAD_SCRIPT,
     DEFAULT_MODEL_DIRS,
+    DEFAULT_OUTPUT_BASE_DIR,
     DEFAULT_WHISPER_CPP_CLI,
     MIN_MODEL_FILE_SIZE_BYTES,
     PROJECT_ROOT,
@@ -72,6 +73,7 @@ class AppSettings:
     download_model_dir: Path
     model_dirs: list[Path]
     imported_model_paths: list[Path]
+    output_base_dir: Path = DEFAULT_OUTPUT_BASE_DIR
 
     def to_json(self):
         return {
@@ -82,6 +84,7 @@ class AppSettings:
             "download_model_dir": str(self.download_model_dir),
             "model_dirs": [str(path) for path in self.model_dirs],
             "imported_model_paths": [str(path) for path in self.imported_model_paths],
+            "output_base_dir": str(self.output_base_dir),
         }
 
 
@@ -285,6 +288,9 @@ def load_app_settings(settings_path: Path = APP_SETTINGS_PATH) -> AppSettings:
     ]
     selected_model_path = data.get("selected_model_path", "")
     selected_model_path = Path(selected_model_path).expanduser() if selected_model_path else None
+    output_base_dir = Path(
+        data.get("output_base_dir") or DEFAULT_OUTPUT_BASE_DIR
+    ).expanduser()
 
     app_settings = AppSettings(
         whisper_cpp_cli=Path(data.get("whisper_cpp_cli", DEFAULT_WHISPER_CPP_CLI)).expanduser(),
@@ -294,6 +300,7 @@ def load_app_settings(settings_path: Path = APP_SETTINGS_PATH) -> AppSettings:
         download_model_dir=download_model_dir,
         model_dirs=model_dirs,
         imported_model_paths=imported_paths,
+        output_base_dir=output_base_dir,
     )
 
     models = scan_model_dirs(

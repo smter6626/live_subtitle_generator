@@ -32,6 +32,7 @@ class TranscriptionController:
         original_language_label: str,
         selected_model_path=None,
         selected_model_name: str | None = None,
+        output_base_dir=None,
     ):
         if self.state not in (EngineState.IDLE, EngineState.ERROR):
             raise RuntimeError(f"Cannot start while state is {self.state.value}.")
@@ -41,6 +42,7 @@ class TranscriptionController:
             original_language_label=original_language_label,
             selected_model_path=selected_model_path,
             selected_model_name=selected_model_name,
+            output_base_dir=output_base_dir,
         )
         errors = validate_runtime_paths(self.settings)
         if errors:
