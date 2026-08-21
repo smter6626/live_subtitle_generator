@@ -55,6 +55,7 @@ db96a25db5be14a28a0fb5e650e209165dfa0d38  docs: activate product polish step 10�
 c10cfa64ef952ed46374d5cb02d2c5a72cc5b2d2  docs: define product polish contract
 86fe495fe4d8a6311a32fa5ceb932523bc8d863a  docs: renumber product polish to step 1
 119247c62ec18010f83cd98fdffa2f14f9651ea9  docs: refine product polish contract
+878e91e8bc83ef06beb0268139e1ba1095b248a4  docs: extend product polish goals
 ```
 
 当前 Step 1 状态：
@@ -64,19 +65,23 @@ c10cfa64ef952ed46374d5cb02d2c5a72cc5b2d2  docs: define product polish contract
 1B Model selection transient confirmation          PENDING
 1C Model download visible progress / busy feedback PENDING
 1D Configurable output root                        PENDING
-1E Packaged regression / acceptance                PENDING
+1E 中文 / English UI switch + semantic alignment   PENDING
+1F Packaged App icon                               PENDING / ICON DESIGN TBD AT STEP START
+1G Packaged regression / acceptance                PENDING
 ```
 
-Step 1 的四个产品目标已经冻结到 `docs/product_polish_static.md`：
+Step 1 的六个产品目标已经冻结到 `docs/product_polish_static.md`：
 
 ```text
 Current-model readability
 Model-selection transient confirmation
 Model-download visible busy/progress feedback
 Configurable output root while preserving outputs/<timestamp>/evidence structure
+中文 / English UI switch + semantic alignment
+Packaged App icon
 ```
 
-1E 是整轮 packaged regression / acceptance，不是额外产品功能。
+1G 是整轮 packaged regression / acceptance，不是额外产品功能。
 
 Deployment 遗留的 M4 Max fresh Model Manager repeat 已在 2026-08-20 后续实测中关闭：
 
@@ -190,6 +195,42 @@ self.store = TranscriptStore(self.settings.output_root)
 
 因此 1D 的最小正确方向已经明确：用户配置的是 base/root；settings/controller 计算最终 `<base>/outputs` 后继续传给现有 TranscriptStore，而不是改写 TranscriptStore 的 evidence filename/append semantics。
 
+### 2.5 UI language
+
+当前代码已经有中文 / English 文案基础：
+
+```text
+settings.py:
+  UI_LANGUAGE_ZH = "zh"
+  UI_LANGUAGE_EN = "en"
+  DEFAULT_UI_LANGUAGE
+
+ui_app.py:
+  TEXT["zh"]
+  TEXT["en"]
+  current_language()
+  tr(...)
+```
+
+当前默认 UI language 由进程级配置决定；现有主界面没有一个面向普通用户的明确中文 / English 切换入口。
+
+同时当前界面中存在 UI language 与音频 `Original Language` / whisper language 两套不同概念。后续 1E 必须保持这两个概念分离：前者只改变界面语言，后者决定转录输入语言相关设置。
+
+用户已确认当前版本自己使用没有功能障碍，但对其他用户而言中英文显示与语义组合会显得不统一，因此 1E 是正式 Product polish，而不是 ASR bugfix。
+
+### 2.6 Packaged App icon
+
+当前正式 Release spec 已确认：
+
+```text
+packaging/ClassroomTranscriber.spec
+BUNDLE(..., icon=None, ...)
+```
+
+当前 `packaging/` 目录没有正式项目 icon asset。因此 1F 的缺口是明确的：packaged App 目前没有冻结的自定义图标。
+
+图标视觉方案目前尚未决定。1F 开始前先由用户确认图标方向 / asset，再进入实现；当前 runtime 不提前指定设计或生成图标。
+
 ---
 
 ## 3. Step 1 共同执行约束
@@ -228,7 +269,11 @@ integrity receipt
 only verified model becomes available/selectable
 ```
 
-每个子 Step 至少执行相关 unit / contract tests；1E 必须正式 packaged build + packaged Runtime verifier + GUI smoke。
+1E 不得把 UI language 与 Original Language / whisper language 合并成同一设置。
+
+1F 只在用户确认图标方向 / asset 后进入实施，不提前锁定视觉方案。
+
+每个子 Step 至少执行相关 unit / contract tests；1G 必须正式 packaged build + packaged Runtime verifier + GUI smoke。
 
 Step 1 默认不创建新 GitHub Release/tag。是否发布后续版本由 Step 1 完成后用户另行决定。
 
@@ -262,9 +307,7 @@ available / integrity 状态
 
 完整路径仍可通过 tooltip 或等价方式访问，但不持续占满主摘要。
 
-优先采用最小实现，例如新增一个专门的 concise summary property/helper，而保留现有 `display_label` 给 combo/table/log 等仍需要完整信息的场景；最终方案由 Codex 根据调用点审计决定，不要求机械采用该名字。
-
-不要为了 ellipsis 引入复杂 custom widget，除非现有 QLabel/tooltip 方案不能满足验收。
+最终方案由 Codex 根据调用点审计决定，不要求在 prompt 中机械指定 property/helper/widget 实现。
 
 ### 4.3 允许修改范围
 
@@ -324,14 +367,7 @@ fix: improve current model readability
 
 当前 successful selection 已经有 persistence / label refresh / INFO log，但没有 transient user-facing confirmation。
 
-主要成功入口目前包括：
-
-```text
-ModelManagerDialog._select_model()
-MainWindow._set_selected_model()
-```
-
-需要避免 refresh / initial scan 触发假 success；因此应该围绕真实 user selection event 设计，而不是任何 `_update_model_labels()` 都触发。
+需要避免 refresh / initial scan 触发假 success；因此应该围绕真实 user selection event 设计，而不是任何 label refresh 都触发。
 
 ### 5.2 目标
 
@@ -354,7 +390,7 @@ failed / unavailable selection 不显示 success
 中英文沿用现有 TEXT / translation 机制
 ```
 
-可以使用 status bar、临时 QLabel 或现有 UI 最小可靠机制；不为 toast 引入新的 UI framework。
+具体 UI 呈现由 Codex 根据当前 Qt 结构选择最小可靠实现。
 
 ### 5.3 验收
 
@@ -368,7 +404,7 @@ failed / unavailable selection 不显示 success
 [ ] Start 使用的仍是同一 selected model
 ```
 
-最低测试应覆盖 success / unavailable / refresh-no-toast / auto-clear timer 的 contract；具体 Qt test 方式以现有 test 架构为准。
+最低测试应覆盖 success / unavailable / refresh-no-toast / auto-clear contract；具体 Qt test 方式以现有 test 架构为准。
 
 建议 commit：
 
@@ -416,7 +452,7 @@ indeterminate progress bar / busy indicator
 验证完成前不得显示 available
 不绕过 staging / size / SHA / atomic publish / receipt
 失败和重试继续 fail closed
-reject() 的下载中关闭保护继续成立
+下载中关闭保护继续成立
 ```
 
 ### 6.4 验收
@@ -446,7 +482,7 @@ fix: show model download progress state
 
 状态：PENDING。
 
-这是 Step 1 中风险最高的一项，必须在 1A-C 通过后单独做。
+这是前四项中唯一直接改变 session destination 的 Step，必须在 1A-C 通过后单独做。
 
 ### 7.1 已知现状
 
@@ -505,15 +541,9 @@ Start 前明确 fail
 
 ### 7.4 实现边界
 
-优先在：
+方向固定为：用户配置 base/root，稳定 session 创建链路最终仍接收 `<base>/outputs` 等价路径。
 
-```text
-AppSettings/settings persistence
-UI folder chooser
-TranscriptionSettings/default_settings/controller parameter passing
-```
-
-完成 base -> `<base>/outputs` 的转换。
+具体 settings/UI/controller 代码实现由 Codex 根据当前代码上下文选择最小正确方案。
 
 尽量保持：
 
@@ -547,11 +577,111 @@ feat: add configurable output root
 
 ---
 
-## 8. Step 1E - Packaged regression / acceptance
+## 8. Step 1E - 中文 / English UI switch + semantic alignment
 
 状态：PENDING。
 
-1A-D 全部经 GitHub 实际实现审核通过后执行一次整轮收口，不再顺手增加功能。
+### 8.1 已知问题
+
+当前代码已经存在中英文 `TEXT` 文案和 UI language 常量，但当前普通用户缺少明确的界面语言切换入口；同时现有中文 / English UI 中存在一些名称、状态和操作语义不完全对齐的情况。
+
+用户本人当前使用没有功能障碍，但其他用户使用时会显得混乱，因此需要在对外产品化前系统清理。
+
+### 8.2 目标
+
+提供明确的中文 / English UI 选择，并对两套界面的主要用户可见语义进行一次完整对齐。
+
+重点是**同一产品语义**，而不是逐字逐句翻译。
+
+必须明确区分：
+
+```text
+UI Language
+!=
+Original Language / whisper input language
+```
+
+切换 UI language 不得改变当前 ASR 的 Original Language、whisper language code、模型、beam 或 session evidence semantics。
+
+### 8.3 当前冻结验收
+
+```text
+[ ] 普通用户可以在 UI 中明确选择 中文 / English
+[ ] 主窗口主要按钮、状态、Model Manager、session 信息、错误提示在两种 UI 下语义对应
+[ ] 不存在明显因漏翻译造成的无意中英混杂
+[ ] 必要技术术语可以保留，但两种 UI 使用方式一致
+[ ] UI language 与 Original Language 的标签/交互不会让普通用户误以为是同一设置
+[ ] 切换 UI language 不改变 ASR runtime 配置
+[ ] Start / Stop / model selection / download / output-root 行为不受破坏
+```
+
+是否即时重绘全部现有 widget、是否持久化 UI language、具体 switch 控件形式，在 1E 开始时结合现有 Qt 生命周期与 settings 结构确定；当前不提前指定实现。
+
+建议 commit 语义：
+
+```text
+fix: align bilingual ui semantics
+```
+
+---
+
+## 9. Step 1F - Packaged App icon
+
+状态：PENDING / **ICON DESIGN TBD AT STEP START**。
+
+### 9.1 已知现状
+
+当前正式 PyInstaller Release spec：
+
+```text
+BUNDLE(..., icon=None, ...)
+```
+
+当前 repo 没有冻结的正式 App icon asset。
+
+### 9.2 目标
+
+给正式 packaged `ClassroomTranscriber.app` 加入项目自定义图标，使 Finder / Dock / 后续 Release artifact 不再使用默认 / 无图标表现。
+
+### 9.3 当前明确不做的决定
+
+现在不决定：
+
+```text
+图标视觉方案
+图标具体图形
+颜色
+最终 asset
+```
+
+到 1F ACTIVE 时先由用户确认图标方向，再创建/导入正式 asset 并接入 packaging。
+
+### 9.4 验收原则
+
+```text
+[ ] 用户确认最终图标方向 / asset 后才实施
+[ ] 正式 build 不依赖开发机外部绝对路径
+[ ] packaged App 在 Finder / Dock 显示自定义图标
+[ ] icon asset 进入 repo 中正式可重建 packaging 路径
+[ ] formal build / codesign / packaged verifier 继续 PASS
+[ ] Release ZIP round-trip 后图标仍保留
+```
+
+具体 `.icns` 生成方式、源图格式、PyInstaller wiring 由 Codex 在该 Step 根据 packaging 现状选择最小正确实现。
+
+建议 commit 语义：
+
+```text
+feat: add app icon
+```
+
+---
+
+## 10. Step 1G - Packaged regression / acceptance
+
+状态：PENDING。
+
+1A-F 全部经 GitHub 实际实现审核通过后执行一次整轮收口，不再顺手增加功能。
 
 必须覆盖：
 
@@ -565,6 +695,10 @@ fresh small model download（建议 base.en）
 visible download busy/progress feedback
 model integrity available/selectable
 custom output root + persistence
+中文 / English UI switch
+两套 UI 关键语义对齐
+UI language 与 Original Language 分离
+packaged App custom icon
 Start -> real transcription -> Stop
 Stop -> second Start
 new timestamp session under chosen root
@@ -574,9 +708,9 @@ repo worktree clean
 
 Packaged regression 可在任一当前已验证的 Apple Silicon 开发机完成；普通 Product / UX 回归不按 M4 Max / M5 分配固定角色。
 
-如果 1A-D 实际只触及 UI/settings/controller 参数层且所有 packaging / ASR regression PASS，不默认要求重复此前约 35 分钟课堂测试；若实现触碰 Runtime/ASR 冻结边界，则在 1E 前停止并升级验收。
+如果 1A-F 实际只触及 UI/settings/controller/packaging polish 层且所有 packaging / ASR regression PASS，不默认要求重复此前约 35 分钟课堂测试；若实现触碰 Runtime/ASR 冻结边界，则在 1G 前停止并升级验收。
 
-1E PASS 后再由用户决定：
+1G PASS 后再由用户决定：
 
 ```text
 是否发布新 GitHub Release
@@ -586,7 +720,7 @@ Packaged regression 可在任一当前已验证的 Apple Silicon 开发机完成
 
 ---
 
-## 9. 明确不进入 Step 1 的项目
+## 11. 明确不进入 Step 1 的项目
 
 ```text
 M4 长课堂偶发一次 inference latency spike 的优化
@@ -606,7 +740,7 @@ ASR chunk/backend 重构
 
 ---
 
-## 10. 当前 ACTIVE / 下一步执行
+## 12. 当前 ACTIVE / 下一步执行
 
 当前只执行 **Step 1A - Current-model panel readability**。
 
@@ -619,7 +753,7 @@ docs/deployment_static.md
 README.md
 ```
 
-实现时直接使用第 2 节已经确认的代码事实，不需要把“display_label 是否包含 path”“tooltip 是否已存在”“Model Manager 是否已有独立 Path 列”重新作为未知问题。
+实现时直接使用第 2 节已经确认的代码事实，不需要把已经明确的实现事实重新作为未知问题。
 
 Codex 开始前在**当前已同步的项目 clone 根目录**执行：
 
@@ -659,11 +793,11 @@ push main
 Codex 不修改 product_polish_runtime.md
 ```
 
-然后由人工 / ChatGPT 审核 GitHub 实际 diff。审核 PASS 后再把 1A 标记为 PASS，并激活本文件第 5 节已经完整定义的 1B；1B/1C/1D 的已知实现事实和验收标准保留在本文件，不因尚未 ACTIVE 而删减。
+然后由人工 / ChatGPT 审核 GitHub 实际 diff。审核 PASS 后再把 1A 标记为 PASS，并激活本文件第 5 节已经完整定义的 1B；1B-1F 的已知事实、方向与验收标准保留在本文件，不因尚未 ACTIVE 而删减。
 
 ---
 
-## 11. 上下文恢复入口
+## 13. 上下文恢复入口
 
 Product / UX Step 1：
 
@@ -679,7 +813,8 @@ Product / UX Step 1：
 9. resource_paths.py
 10. transcription_controller.py（1D 重点）
 11. transcript_store.py（合同参考，默认避免修改）
-12. 相关 testCodes/
+12. packaging/ClassroomTranscriber.spec（1F 重点）
+13. 相关 testCodes/
 ```
 
 Release / Deployment 历史继续由 `docs/deployment_runtime.md` 保存；不要把 Product / UX Step 1 的 ACTIVE 状态写回 LLM runtime。
