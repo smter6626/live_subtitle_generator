@@ -23,6 +23,7 @@ Product / UX polish 的长期目标与硬边界见：`docs/product_polish_static
 10. Codex prompt 的实现分工、机器等价原则以 `docs/product_polish_static.md` 5.1 为准：prompt 负责目标/边界/验收，不替 Codex 预先规定非合同性的代码实现细节，也不在普通 Product Step 中强调当前开发机器。
 11. 每个实现 Step 审核时都执行 Repo Map impact check；只有 architecture / ownership / interface / data-flow 等事实变化时才更新 `docs/repo_map.md`，不为每个 commit 强制制造 map diff。
 12. 2026-08-21 用户明确授权一次 **overnight sequential batch**：在 1C 为唯一 ACTIVE 的前提下，若 1C 自检、commit、push 均通过，可在同一 Codex session 中继续预授权的 1D；1D 同样通过后可继续 1E。三个 Step 仍必须各自独立 scope、tests、commit、push。任一 Step 失败或需要扩大稳定边界时立即停止整个 batch。该例外不授权 1F/1G，也不授权 Codex 修改 runtime/repo_map。
+13. 2026-08-21 用户随后明确提供并确认 `icon-live.png` 作为 1F asset，授权实施 1F，并要求本 Step 在 architecture/runtime 状态失真时同步 `docs/repo_map.md` / 本文件；正式构建仍不得保留外部开发机路径。
 
 通常流程：
 
@@ -48,12 +49,13 @@ Codex 执行当前 Step 1x
 branch: main
 Product implementation baseline: 7930cc3255e8ae1f0dbc3755e4a78e09f4e7b00f
 baseline 内容: docs: complete deployment step 9
-Current Product implementation checkpoint: 4d2059d273d0ba94373b1969b8236ef462b6acae
-checkpoint 内容: fix: add model selection confirmation
+Pre-1F implementation checkpoint: c330744df3de9cdb624aadb4964f0471b125e91b
+checkpoint 内容: fix: clarify beam label in chinese ui
+Current Product implementation checkpoint: Step 1F App icon integration in this repository snapshot
 Release baseline: 0.2.0
 Deployment Step 9: PASS
 Product / UX Step 1: ACTIVE
-唯一 ACTIVE: Step 1C - Model download visible progress / busy feedback
+唯一 ACTIVE: Step 1G - Packaged regression / acceptance
 ```
 
 Product / UX governance / architecture map 已建立：
@@ -68,6 +70,10 @@ c10cfa64ef952ed46374d5cb02d2c5a72cc5b2d2  docs: define product polish contract
 15af5c254320b494df774805713d48d2262d1f0a  docs: add repository architecture map
 219405494f8c4de719336b9ff6c5e9f94d3445eb  docs: sync repository map after step 1a
 aba8f49021e868b75b3bd36bc4d5aa2dfb8ca9c8  docs: sync repository map after step 1b
+50a126cb981e66cd87a9e4315896b0500d9bd3a3  fix: show model download progress state
+add22acf11ccfa5f92063e0698414e868d987cff  feat: add configurable output root
+2c1f7b12f580636d06c0e691fadea47c52b99702  fix: align bilingual ui semantics
+c330744df3de9cdb624aadb4964f0471b125e91b  fix: clarify beam label in chinese ui
 ```
 
 当前 Step 1 状态：
@@ -75,11 +81,11 @@ aba8f49021e868b75b3bd36bc4d5aa2dfb8ca9c8  docs: sync repository map after step 1
 ```text
 1A Current-model panel readability                 PASS
 1B Model selection transient confirmation          PASS
-1C Model download visible progress / busy feedback ACTIVE
-1D Configurable output root                        PENDING / OVERNIGHT PRE-AUTHORIZED AFTER 1C GATE
-1E 中文 / English UI switch + semantic alignment   PENDING / OVERNIGHT PRE-AUTHORIZED AFTER 1D GATE
-1F Packaged App icon                               PENDING / ICON DESIGN TBD AT STEP START
-1G Packaged regression / acceptance                PENDING
+1C Model download visible progress / busy feedback PASS
+1D Configurable output root                        PASS
+1E 中文 / English UI switch + semantic alignment   PASS
+1F Packaged App icon                               PASS
+1G Packaged regression / acceptance                ACTIVE
 ```
 
 Step 1 的六个产品目标已经冻结到 `docs/product_polish_static.md`：
@@ -185,7 +191,7 @@ unavailable / rejected / failed selection
 
 共享 `_set_selected_model()` / `_select_model()` 负责应用/persist/propagate state，并会清除可能过期的 transient feedback，但不会自行显示 success。Step 1B 不改变 selected model persistence、availability/integrity、Start gating 或 Step 1A presentation contract。
 
-### 2.3 Model download（Step 1C 当前重点）
+### 2.3 Model download（Step 1C 已完成）
 
 Model Manager 当前已经有：
 
@@ -202,7 +208,7 @@ reject() 时阻止下载中直接关闭 dialog
 
 `download_and_publish_model()` 继续走 Step 7 integrity transaction。网络下载和最终验证工作已经不在 Qt 主线程。
 
-当前 UI 没有持续可见的 QProgressBar / spinner / busy widget；下载期间主要依靠按钮 disabled 和 log 判断活动状态。因此 1C 的缺口是“可见 busy/progress feedback”，不是重新设计 downloader。
+当前 UI 已有 indeterminate `QProgressBar` 和 status label；显式下载期间显示 model name 与 busy 状态，成功/失败完成后统一清除并恢复 controls。实现保留既有 background worker、dialog close protection 与 integrity transaction。
 
 Step 1B 已冻结 download-completion auto-selection 为 `NO CONFIRM`；1C 不应为了 download status UI 改变这一 selection-feedback 语义。
 
@@ -222,7 +228,7 @@ OUTPUTS_DIR = writable_outputs_dir()
 TranscriptionSettings.output_root 默认 = OUTPUTS_DIR
 ```
 
-`AppSettings` 目前保存模型相关设置和 beam，不包含 configurable output base/root。
+`AppSettings` 已向后兼容地保存 `output_base_dir`。MainWindow 提供选择与持久化入口，controller 在 Start 时把 base 映射为 `<base>/outputs`。
 
 `transcription_controller.py` 当前在 start 时：
 
@@ -233,7 +239,7 @@ self.store = TranscriptStore(self.settings.output_root)
 
 `TranscriptStore` 当前把传入的 `output_root` 当作实际 `.../outputs` 目录，并在其下创建 `<timestamp>` session directory。
 
-因此 1D 的最小正确方向已经明确：用户配置的是 base/root；settings/controller 计算最终 `<base>/outputs` 后继续传给现有 TranscriptStore，而不是改写 TranscriptStore 的 evidence filename/append semantics。
+`validate_runtime_paths()` 在创建 `TranscriptStore` 前验证实际 output root 可创建/可写；失败不 fallback，也不创建半个 session。`TranscriptStore` 的 evidence filename/append semantics 未改。
 
 ### 2.5 UI language
 
@@ -252,24 +258,26 @@ ui_app.py:
   tr(...)
 ```
 
-当前默认 UI language 由进程级配置决定；现有主界面没有一个面向普通用户的明确中文 / English 切换入口。
+当前默认 UI language 仍可由进程级配置决定，同时 `AppSettings.ui_language` 提供向后兼容的 persisted choice；MainWindow 有明确中文 / English 入口并实时重绘主窗口与 Model Manager 用户可见文本。
 
-同时当前界面中存在 UI language 与音频 `Original Language` / whisper language 两套不同概念。后续 1E 必须保持这两个概念分离：前者只改变界面语言，后者决定转录输入语言相关设置。
+UI language 与音频 `Original Language` / whisper language 继续保持为两套独立概念：前者只改变界面语言，后者决定转录输入语言相关设置。
 
 用户已确认当前版本自己使用没有功能障碍，但对其他用户而言中英文显示与语义组合会显得不统一，因此 1E 是正式 Product polish，而不是 ASR bugfix。
 
 ### 2.6 Packaged App icon
 
-当前正式 Release spec 已确认：
+当前正式 Release spec 已接入 Manifest-driven icon：
 
 ```text
-packaging/ClassroomTranscriber.spec
-BUNDLE(..., icon=None, ...)
+packaging/icons/ClassroomTranscriber.png
+-> scripts/build_app_icon.py
+-> build/app-icon/ClassroomTranscriber.icns
+-> packaging/ClassroomTranscriber.spec BUNDLE(..., icon=str(icon_path), ...)
+-> Contents/Resources/ClassroomTranscriber.icns
+-> Info.plist CFBundleIconFile=ClassroomTranscriber.icns
 ```
 
-当前 `packaging/` 目录没有正式项目 icon asset。因此 1F 的缺口是明确的：packaged App 目前没有冻结的自定义图标。
-
-图标视觉方案目前尚未决定。1F 开始前先由用户确认图标方向 / asset，再进入实现；当前 runtime 不提前指定设计或生成图标。
+用户确认的 1254×1254 RGB 源图已原样进入 repo，并由 Manifest 冻结 SHA-256。生成器移除仅与画布边缘连通的浅色 matte，生成 1024×1024 RGBA 完整 iconset / ICNS；派生物只进入 ignored `build/`。formal build 与 Release ZIP 解压后的 App 都通过共享 verifier 检查 ICNS 结构和 `CFBundleIconFile`。
 
 ---
 
@@ -485,11 +493,11 @@ docs: sync repository map after step 1b
 
 ## 6. Step 1C - Model download visible progress / busy feedback
 
-状态：**ACTIVE**。
+状态：**PASS**（implementation `50a126cb981e66cd87a9e4315896b0500d9bd3a3`）。
 
-### 6.1 已知问题与代码锚点
+### 6.1 实施前问题与代码锚点
 
-当前下载已经是后台线程，且有 downloading flag、model name、disabled controls、log 和 finished signal；真正缺失的是 dialog 中持续可见的 activity indicator。
+实施前下载已经是后台线程，且有 downloading flag、model name、disabled controls、log 和 finished signal；当时真正缺失的是 dialog 中持续可见的 activity indicator。
 
 因此本 Step 不需要重写 download transaction，也不需要把 downloader 输出改造成新的协议。
 
@@ -528,15 +536,15 @@ Step 1B download-completion auto-selection = NO CONFIRM 语义保持
 ### 6.4 验收
 
 ```text
-[ ] 下载开始后立即出现 visible busy/progress feedback
-[ ] feedback 显示当前 model
-[ ] 长下载期间 feedback 持续存在
-[ ] 下载成功后结束 busy 状态并正常 select verified model
-[ ] 下载失败后结束 busy 状态并显示错误
-[ ] dialog 关闭保护正确
-[ ] UI 不冻结
-[ ] size/SHA/atomic publish/receipt tests 全部继续 PASS
-[ ] Step 1B selection confirmation 语义不回退
+[x] 下载开始后立即出现 visible busy/progress feedback
+[x] feedback 显示当前 model
+[x] 长下载期间 feedback 持续存在
+[x] 下载成功后结束 busy 状态并正常 select verified model
+[x] 下载失败后结束 busy 状态并显示错误
+[x] dialog 关闭保护正确
+[x] UI 不冻结
+[x] size/SHA/atomic publish/receipt tests 全部继续 PASS
+[x] Step 1B selection confirmation 语义不回退
 ```
 
 最低测试必须包含 success/failure 两条 UI state transition，并继续跑 model integrity tests。
@@ -551,11 +559,11 @@ fix: show model download progress state
 
 ## 7. Step 1D - Configurable output root
 
-状态：**PENDING / OVERNIGHT PRE-AUTHORIZED AFTER 1C GATE**。
+状态：**PASS**（implementation `add22acf11ccfa5f92063e0698414e868d987cff`）。
 
-这是前四项中唯一直接改变 session destination 的 Step。正常流程要求 1C review 后再激活；本次仅依据用户明确 overnight 授权，在 1C 自检/commit/push 全部成功后允许同一 Codex session 继续执行，仍须独立 commit。
+这是前四项中唯一直接改变 session destination 的 Step；它已按 overnight 授权作为独立 commit 完成。
 
-### 7.1 已知现状
+### 7.1 实施前现状
 
 Frozen App 默认链路已经确认：
 
@@ -571,7 +579,7 @@ controller.start()
 -> <output_root>/<timestamp>/...
 ```
 
-当前 AppSettings 没有用户可配置 output base/root 字段。
+实施前 AppSettings 没有用户可配置 output base/root 字段；当前已加入向后兼容的 `output_base_dir`。
 
 ### 7.2 目标语义
 
@@ -627,15 +635,15 @@ TranscriptStore(output_root)
 ### 7.5 验收
 
 ```text
-[ ] 默认路径行为完全不变
-[ ] UI 可选择新的 output base/root
-[ ] 设置重启后持久化
-[ ] 新 session 写到 <chosen-root>/outputs/<timestamp>/
-[ ] 四个 evidence 文件存在且语义不变
-[ ] Stop -> Start 后在 chosen root 下生成新的 timestamp session
-[ ] 历史 session 不移动/不修改
-[ ] invalid/unwritable root 在 Start 前明确失败
-[ ] 不出现 silent fallback
+[x] 默认路径行为完全不变
+[x] UI 可选择新的 output base/root
+[x] 设置重启后持久化
+[x] 新 session 写到 <chosen-root>/outputs/<timestamp>/
+[x] 四个 evidence 文件存在且语义不变
+[x] Stop -> Start 后在 chosen root 下生成新的 timestamp session
+[x] 历史 session 不移动/不修改
+[x] invalid/unwritable root 在 Start 前明确失败
+[x] 不出现 silent fallback
 ```
 
 测试必须覆盖 default/backward compatibility、custom root、persistence、unwritable failure、controller->store path contract。
@@ -650,13 +658,13 @@ feat: add configurable output root
 
 ## 8. Step 1E - 中文 / English UI switch + semantic alignment
 
-状态：**PENDING / OVERNIGHT PRE-AUTHORIZED AFTER 1D GATE**。
+状态：**PASS**（implementation `2c1f7b12f580636d06c0e691fadea47c52b99702`，label follow-up `c330744df3de9cdb624aadb4964f0471b125e91b`）。
 
-正常流程要求 1D review 后再激活；本次仅依据用户明确 overnight 授权，在 1D 自检/commit/push 全部成功后允许同一 Codex session 继续执行，仍须独立 commit。
+本 Step 已按 overnight 授权作为独立 commit 完成；后续 label follow-up 只澄清中文 beam 语义。
 
-### 8.1 已知问题
+### 8.1 实施前问题
 
-当前代码已经存在中英文 `TEXT` 文案和 UI language 常量，但当前普通用户缺少明确的界面语言切换入口；同时现有中文 / English UI 中存在一些名称、状态和操作语义不完全对齐的情况。
+实施前代码已有中英文 `TEXT` 文案和 UI language 常量，但普通用户缺少明确切换入口，且两套 UI 存在语义未完全对齐的情况；当前已加入 persisted selector 与 live retranslation。
 
 用户本人当前使用没有功能障碍，但其他用户使用时会显得混乱，因此需要在对外产品化前系统清理。
 
@@ -679,16 +687,16 @@ Original Language / whisper input language
 ### 8.3 当前冻结验收
 
 ```text
-[ ] 普通用户可以在 UI 中明确选择 中文 / English
-[ ] 主窗口主要按钮、状态、Model Manager、session 信息、错误提示在两种 UI 下语义对应
-[ ] 不存在明显因漏翻译造成的无意中英混杂
-[ ] 必要技术术语可以保留，但两种 UI 使用方式一致
-[ ] UI language 与 Original Language 的标签/交互不会让普通用户误以为是同一设置
-[ ] 切换 UI language 不改变 ASR runtime 配置
-[ ] Start / Stop / model selection / download / output-root 行为不受破坏
+[x] 普通用户可以在 UI 中明确选择 中文 / English
+[x] 主窗口主要按钮、状态、Model Manager、session 信息、错误提示在两种 UI 下语义对应
+[x] 不存在明显因漏翻译造成的无意中英混杂
+[x] 必要技术术语可以保留，但两种 UI 使用方式一致
+[x] UI language 与 Original Language 的标签/交互不会让普通用户误以为是同一设置
+[x] 切换 UI language 不改变 ASR runtime 配置
+[x] Start / Stop / model selection / download / output-root 行为不受破坏
 ```
 
-是否即时重绘全部现有 widget、是否持久化 UI language、具体 switch 控件形式，在 1E 开始时结合现有 Qt 生命周期与 settings 结构确定；当前不提前指定实现。
+实际实现持久化 UI language，并由当前 MainWindow / Model Manager 生命周期即时重绘现有用户可见 widget；没有改变 Original Language 或 ASR runtime 设置。
 
 建议 commit 语义：
 
@@ -700,44 +708,35 @@ fix: align bilingual ui semantics
 
 ## 9. Step 1F - Packaged App icon
 
-状态：PENDING / **ICON DESIGN TBD AT STEP START**。
+状态：**PASS**。
 
 ### 9.1 已知现状
 
-当前正式 PyInstaller Release spec：
+正式 PyInstaller Release spec 当前使用 Manifest 生成的 ICNS：
 
 ```text
-BUNDLE(..., icon=None, ...)
+BUNDLE(..., icon=str(icon_path), ...)
 ```
 
-当前 repo 没有冻结的正式 App icon asset。
+正式源图为 `packaging/icons/ClassroomTranscriber.png`；Manifest 冻结 source SHA、generator、generated ICNS 和 bundle target。
 
 ### 9.2 目标
 
 给正式 packaged `ClassroomTranscriber.app` 加入项目自定义图标，使 Finder / Dock / 后续 Release artifact 不再使用默认 / 无图标表现。
 
-### 9.3 当前明确不做的决定
+### 9.3 实际设计
 
-现在不决定：
-
-```text
-图标视觉方案
-图标具体图形
-颜色
-最终 asset
-```
-
-到 1F ACTIVE 时先由用户确认图标方向，再创建/导入正式 asset 并接入 packaging。
+用户确认的源图是 1254×1254 RGB、无 alpha。仓库保留原始 approved source；生成器在正式 build 中确定性地移除 edge-connected light matte、生成 1024 px RGBA master 与完整 iconset，再调用 macOS `iconutil`。不提交派生 `.icns`，也不依赖 Downloads 路径。
 
 ### 9.4 验收原则
 
 ```text
-[ ] 用户确认最终图标方向 / asset 后才实施
-[ ] 正式 build 不依赖开发机外部绝对路径
-[ ] packaged App 在 Finder / Dock 显示自定义图标
-[ ] icon asset 进入 repo 中正式可重建 packaging 路径
-[ ] formal build / codesign / packaged verifier 继续 PASS
-[ ] Release ZIP round-trip 后图标仍保留
+[x] 用户确认最终图标方向 / asset 后才实施
+[x] 正式 build 不依赖开发机外部绝对路径
+[x] packaged App 的 `CFBundleIconFile` 指向有效 1024 px RGBA ICNS（Finder / Dock 标准解析合同）
+[x] icon asset 进入 repo 中正式可重建 packaging 路径
+[x] formal build / codesign / packaged verifier 继续 PASS
+[x] Release ZIP round-trip 后图标仍保留
 ```
 
 具体 `.icns` 生成方式、源图格式、PyInstaller wiring 由 Codex 在该 Step 根据 packaging 现状选择最小正确实现。
@@ -752,7 +751,7 @@ feat: add app icon
 
 ## 10. Step 1G - Packaged regression / acceptance
 
-状态：PENDING。
+状态：**ACTIVE**；本次 1F 任务不实施 1G。
 
 1A-F 全部经 GitHub 实际实现审核通过后执行一次整轮收口，不再顺手增加功能。
 
@@ -813,9 +812,9 @@ ASR chunk/backend 重构
 
 ---
 
-## 12. 当前 ACTIVE / Overnight sequential execution
+## 12. 当前 ACTIVE / Historical overnight execution
 
-当前唯一 ACTIVE 是 **Step 1C - Model download visible progress / busy feedback**。
+当前唯一 ACTIVE 是 **Step 1G - Packaged regression / acceptance**。1C -> 1E overnight batch 与用户随后明确授权的 1F 均已完成；本节保留原 batch 事实供审计，不再作为执行 1C-1F 的授权。
 
 开始前必读：
 
@@ -852,7 +851,7 @@ HEAD == origin/main
 git pull --ff-only origin main
 ```
 
-### 12.1 Overnight batch 授权顺序
+### 12.1 Historical overnight batch（完成）
 
 用户已明确授权：
 
@@ -908,7 +907,7 @@ Repo Map impact: NONE / UPDATE REQUIRED
 
 ### 12.2 Batch 完成后的 automated pre-1G regression
 
-仅当 1C、1D、1E 三个 gate 全部 PASS 并已分别 push 后，可继续进行一次**不修改代码的 automated pre-1G regression**：
+1C、1D、1E 三个 gate 已全部 PASS 并分别 push；其后的 automated pre-1G regression 只作为历史验证证据：
 
 ```text
 full relevant unit / contract regression
@@ -931,22 +930,19 @@ packaged Runtime verifier
 
 ### 12.3 明确停止点
 
-Overnight batch 最远到：
+Overnight batch 已在以下边界结束：
 
 ```text
 1E implementation pushed
 + optional automated pre-1G regression report
 ```
 
-不得实施：
+当前 1F 已根据后续用户明确授权独立完成。下一次只允许在新的明确任务中执行：
 
 ```text
-1F App icon
 1G final acceptance
 release/tag
 ```
-
-1F 必须等用户醒来后确认 icon 方向 / asset。
 
 ---
 

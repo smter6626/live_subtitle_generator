@@ -19,6 +19,10 @@ def pyinstaller_destination(bundle_path):
 
 
 manifest = json.loads((ROOT / "packaging/runtime_manifest.json").read_text())
+app_icon = manifest["frozen"]["app_icon"]
+icon_path = ROOT / app_icon["generated_icns_path"]
+if not icon_path.is_file() or icon_path.name != app_icon["bundle_filename"]:
+    raise FileNotFoundError(f"Required generated App icon not found: {icon_path}")
 datas = [
     required_resource(
         component["source_path"],
@@ -92,7 +96,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="ClassroomTranscriber.app",
-    icon=None,
+    icon=str(icon_path),
     bundle_identifier="com.local.classroomtranscriber",
     info_plist={
         "NSMicrophoneUsageDescription": (

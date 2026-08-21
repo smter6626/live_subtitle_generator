@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import tomllib
@@ -111,6 +112,23 @@ class RuntimeManifestContractTests(unittest.TestCase):
             "model_checksum_and_model_manifest_strategy",
             self.manifest["pending"],
         )
+
+    def test_app_icon_contract_is_tracked_reproducible_and_packaged(self):
+        app_icon = self.manifest["frozen"]["app_icon"]
+        self.assertTrue(app_icon["required"])
+        self.assertEqual(app_icon["minimum_source_pixels"], 1024)
+        self.assertEqual(app_icon["bundle_filename"], "ClassroomTranscriber.icns")
+        self.assertEqual(
+            app_icon["bundle_target"],
+            "Contents/Resources/ClassroomTranscriber.icns",
+        )
+        source_path = REPO_ROOT / app_icon["source_path"]
+        self.assertTrue(source_path.is_file())
+        self.assertEqual(
+            hashlib.sha256(source_path.read_bytes()).hexdigest(),
+            app_icon["source_sha256"],
+        )
+        self.assertTrue((REPO_ROOT / app_icon["generation_script_path"]).is_file())
 
     def test_all_manifest_paths_are_relative_and_portable(self):
         for key_path, value in walk_items(self.manifest):

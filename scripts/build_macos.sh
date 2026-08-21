@@ -9,6 +9,7 @@ SPEC_PATH="packaging/ClassroomTranscriber.spec"
 DOWNLOAD_SCRIPT="vendor/whisper.cpp/download-ggml-model.sh"
 PACKAGE_RUNTIME_HELPER="scripts/package_runtime.py"
 PACKAGED_RUNTIME_VERIFIER="scripts/verify_packaged_runtime.py"
+APP_ICON_BUILDER="scripts/build_app_icon.py"
 
 python_exists() {
   [[ -x "$1" ]] || command -v "$1" >/dev/null 2>&1
@@ -96,7 +97,11 @@ fi
   echo "Packaged Runtime verifier not found: $PACKAGED_RUNTIME_VERIFIER"
   exit 1
 }
-for required_tool in file otool install_name_tool codesign; do
+[[ -f "$APP_ICON_BUILDER" ]] || {
+  echo "App icon builder not found: $APP_ICON_BUILDER"
+  exit 1
+}
+for required_tool in file otool install_name_tool codesign iconutil; do
   command -v "$required_tool" >/dev/null 2>&1 || {
     echo "Required macOS packaging tool not found: $required_tool"
     exit 1
@@ -108,6 +113,9 @@ echo "Validating required Manifest Runtime sources..."
 
 echo "Cleaning old build artifacts..."
 rm -rf build dist
+
+echo "Generating repository-owned macOS App icon..."
+"$PYTHON_BIN" "$APP_ICON_BUILDER"
 
 echo "Building ClassroomTranscriber.app with PyInstaller..."
 "$PYTHON_BIN" -m PyInstaller "$SPEC_PATH" --noconfirm --clean --log-level WARN

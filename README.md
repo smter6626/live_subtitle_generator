@@ -73,7 +73,7 @@ cd /path/to/whisper
 
 该正式入口依次准备项目局部的 uv 0.12.5、uv 管理的 Python 3.12.14、`.venv`、CMake 4.2.3 和固定 whisper.cpp Runtime，再明确使用 `.venv/bin/python` 构建 `dist/ClassroomTranscriber.app`。它也可以在 Finder 中双击；远程自动化只验证 shell 等价调用，Finder 实际交互留待本机验收。
 
-正式构建会在成功前强制验证 App 内七个 Manifest Runtime 组件、arm64 架构、dylib dependency closure、下载脚本和无模型 `whisper-cli --help`；也可用 `.venv/bin/python scripts/verify_packaged_runtime.py dist/ClassroomTranscriber.app` 独立复核。
+正式构建会从仓库内 `packaging/icons/ClassroomTranscriber.png` 可复现地生成并封装 macOS 图标，并在成功前强制验证 `Info.plist` / ICNS、App 内七个 Manifest Runtime 组件、arm64 架构、dylib dependency closure、下载脚本和无模型 `whisper-cli --help`；也可用 `.venv/bin/python scripts/verify_packaged_runtime.py dist/ClassroomTranscriber.app` 独立复核。
 
 需要单独维护或诊断环境时，底层入口仍是 `scripts/bootstrap_python_env.sh` 和 `scripts/bootstrap_whisper_runtime.sh`。前者可用 `--recreate` 仅重建正式 `.venv`，后者可用 `--verify-only` 验证已有 Runtime。历史 `venv/` 不参与正式构建。
 
@@ -306,7 +306,7 @@ cd /path/to/whisper
 
 The formal entry prepares project-local uv 0.12.5, uv-managed Python 3.12.14, `.venv`, CMake 4.2.3, and the pinned whisper.cpp Runtime, then explicitly builds the App with `.venv/bin/python`. It can also be launched from Finder; remote automation validates only its equivalent shell execution, not the actual Finder interaction.
 
-Before reporting success, the formal build strictly verifies the App's seven Manifest Runtime components, arm64 architecture, dylib dependency closure, downloader, and no-model `whisper-cli --help` smoke. Re-run the gate independently with `.venv/bin/python scripts/verify_packaged_runtime.py dist/ClassroomTranscriber.app`.
+The formal build reproducibly generates and bundles the macOS icon from the repository-owned `packaging/icons/ClassroomTranscriber.png`. Before reporting success, it strictly verifies the `Info.plist` / ICNS link, the App's seven Manifest Runtime components, arm64 architecture, dylib dependency closure, downloader, and no-model `whisper-cli --help` smoke. Re-run the gate independently with `.venv/bin/python scripts/verify_packaged_runtime.py dist/ClassroomTranscriber.app`.
 
 For environment maintenance or diagnostics, the underlying entries remain `scripts/bootstrap_python_env.sh` and `scripts/bootstrap_whisper_runtime.sh`. Use the former with `--recreate` to rebuild only the formal `.venv`, or the latter with `--verify-only` to check an existing Runtime without downloading or building. The historical `venv/` is never used by the formal build.
 

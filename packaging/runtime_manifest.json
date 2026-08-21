@@ -247,6 +247,17 @@
       "model_binaries_are_runtime_components": false,
       "validation_policy": "download to isolated staging, verify exact size and SHA-256, atomically publish, then write a contract-bound verification receipt"
     },
+    "app_icon": {
+      "required": true,
+      "source_path": "packaging/icons/ClassroomTranscriber.png",
+      "source_sha256": "1b0c520ca7d21a0a34609ff6ddd224aecfb83e89dcc2f3937e9f697e91fee75c",
+      "minimum_source_pixels": 1024,
+      "generation_script_path": "scripts/build_app_icon.py",
+      "generated_icns_path": "build/app-icon/ClassroomTranscriber.icns",
+      "bundle_filename": "ClassroomTranscriber.icns",
+      "bundle_target": "Contents/Resources/ClassroomTranscriber.icns",
+      "source_normalization": "remove only the light matte connected to the canvas edge, preserve foreground and shadow, then render the complete macOS iconset from a 1024px RGBA master"
+    },
     "bundle_layout": {
       "runtime_directory": "Contents/Resources/bin",
       "whisper_cli_target": "Contents/Resources/bin/whisper-cli",
@@ -279,6 +290,7 @@
       "a Runtime binary has the wrong CPU architecture",
       "RPath or dependency closure is incomplete",
       "the vendored model downloader is missing",
+      "the tracked App icon source or generated ICNS is invalid",
       "the post-build Runtime smoke test fails"
     ],
     "developer_build_entry": {

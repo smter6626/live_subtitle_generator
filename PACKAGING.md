@@ -86,11 +86,22 @@ ClassroomTranscriber.app/Contents/Resources/bin/
   whisper-cli
   required whisper/ggml dynamic libraries
   download-ggml-model.sh
+
+ClassroomTranscriber.app/Contents/Resources/
+  ClassroomTranscriber.icns
 ```
+
+## App icon pipeline
+
+The approved source artwork is tracked at `packaging/icons/ClassroomTranscriber.png`; the formal build never reads the original developer Downloads path. Its exact SHA-256 and repository-relative source/generated/bundle paths are frozen in `packaging/runtime_manifest.json`.
+
+After cleaning generated output, `scripts/build_macos.sh` invokes `.venv/bin/python scripts/build_app_icon.py`. The generator validates the tracked source hash, square canvas, and minimum resolution, removes only the light matte connected to the canvas edge, creates a 1024 px RGBA master and the complete macOS iconset, then uses `/usr/bin/iconutil` to write `build/app-icon/ClassroomTranscriber.icns`. The generated iconset and ICNS stay under ignored temporary/build locations; they are rebuilt from the tracked PNG and script rather than committed as derived binaries.
+
+The Release spec passes that ICNS to PyInstaller. The packaged Runtime verifier requires both `Contents/Resources/ClassroomTranscriber.icns` and the matching `CFBundleIconFile` entry in `Contents/Info.plist`, including ICNS header/length validation. Because the Release ZIP entry runs the same verifier before and after extraction and compares every bundle byte, icon preservation is part of the existing ZIP round-trip gate.
 
 ## Fail-fast build contract
 
-A formal Release build must fail when the Python environment or a critical package is missing, a required Runtime component is absent, a binary has the wrong architecture, RPath/dependency closure is incomplete, the vendored downloader is absent, or the post-build Runtime smoke fails. It must not emit a nominally complete but non-transcribing App after a warning.
+A formal Release build must fail when the Python environment or a critical package is missing, the tracked App icon source/generation is invalid, a required Runtime component is absent, a binary has the wrong architecture, RPath/dependency closure is incomplete, the vendored downloader is absent, or the post-build Runtime smoke fails. It must not emit a nominally complete but non-transcribing App after a warning.
 
 `scripts/package_runtime.py` performs a strict Manifest-driven source preflight and normalizes only the Runtime copies inside the completed App: dylib install names and declared dependencies use `@rpath/<ABI filename>`, and every required component has the sole Runtime RPath `@loader_path`. The build then applies required ad-hoc signing and invokes `scripts/verify_packaged_runtime.py`. The verifier checks components, permissions, arm64-only Mach-O identity, semantic dependency closure, allowed system-library boundaries, downloader syntax, signature validity, bundled CLI smoke, and a second smoke from an isolated temporary Runtime directory. Any failure is nonzero and occurs before the build reports completion.
 
@@ -104,6 +115,7 @@ Build ClassroomTranscriber.command
 -> scripts/bootstrap_python_env.sh
 -> scripts/bootstrap_whisper_runtime.sh
 -> PYTHON=.venv/bin/python scripts/build_macos.sh
+-> Manifest-driven App icon generation
 -> Manifest source preflight / packaged-copy normalization / ad-hoc signing
 -> scripts/verify_packaged_runtime.py
 -> dist/ClassroomTranscriber.app

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import plistlib
 import re
 import shutil
 import subprocess
@@ -292,6 +293,45 @@ def verify_model_integrity_resource(
     print("[packaged-runtime] model integrity manifest PASS")
 
 
+def verify_app_icon(app_path: Path, manifest: dict[str, Any]) -> None:
+    contract = manifest["frozen"]["app_icon"]
+    if contract.get("required") is not True:
+        raise VerificationError("App icon is not required by the Manifest")
+    relative = PurePosixPath(contract["bundle_target"])
+    if relative.is_absolute() or ".." in relative.parts:
+        raise VerificationError(f"unsafe App icon bundle path: {relative}")
+    if relative.name != contract["bundle_filename"]:
+        raise VerificationError("Manifest App icon bundle filenames do not agree")
+    icon_path = resolve_bundle_file(app_path, app_path.joinpath(*relative.parts))
+    with icon_path.open("rb") as handle:
+        header = handle.read(8)
+    if len(header) != 8 or header[:4] != b"icns":
+        raise VerificationError(f"bundled App icon is not a valid ICNS file: {icon_path}")
+    declared_size = int.from_bytes(header[4:], "big")
+    if declared_size != icon_path.stat().st_size:
+        raise VerificationError(
+            "bundled App icon length does not match its ICNS header: "
+            f"{icon_path}"
+        )
+
+    plist_path = resolve_bundle_file(
+        app_path, app_path / "Contents" / "Info.plist"
+    )
+    try:
+        with plist_path.open("rb") as handle:
+            info_plist = plistlib.load(handle)
+    except (OSError, plistlib.InvalidFileException) as exc:
+        raise VerificationError(
+            f"cannot read App Info.plist: {plist_path}: {exc}"
+        ) from exc
+    if info_plist.get("CFBundleIconFile") != contract["bundle_filename"]:
+        raise VerificationError(
+            "CFBundleIconFile does not reference the Manifest App icon: "
+            f"{info_plist.get('CFBundleIconFile')!r}"
+        )
+    print("[packaged-runtime] App icon resource and Info.plist PASS")
+
+
 def smoke_environment() -> dict[str, str]:
     environment = dict(os.environ)
     for variable in (
@@ -360,6 +400,7 @@ def verify_packaged_runtime(
     verify_dependency_closure(app_path, manifest, resolved_paths, runner)
     verify_downloader(app_path, manifest, runner)
     verify_model_integrity_resource(app_path, manifest)
+    verify_app_icon(app_path, manifest)
     checked_run(
         runner,
         ["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app_path)],

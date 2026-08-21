@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import os
+import plistlib
 import subprocess
 import sys
 import tempfile
@@ -105,6 +106,13 @@ class PackagedRuntimeTests(unittest.TestCase):
         model_manifest.write_bytes(
             (REPO_ROOT / model_integrity["manifest_repository_path"]).read_bytes()
         )
+        app_icon = self.manifest["frozen"]["app_icon"]
+        icon_path = app.joinpath(*Path(app_icon["bundle_target"]).parts)
+        icon_path.parent.mkdir(parents=True, exist_ok=True)
+        icon_path.write_bytes(b"icns" + (12).to_bytes(4, "big") + b"TEST")
+        plist_path = app / "Contents" / "Info.plist"
+        with plist_path.open("wb") as handle:
+            plistlib.dump({"CFBundleIconFile": app_icon["bundle_filename"]}, handle)
         return app
 
     def verifier_exit(self, app: Path, fake: FakeMacOSTools) -> int:
@@ -129,10 +137,17 @@ class PackagedRuntimeTests(unittest.TestCase):
                 self.assertNotIn("existing_resource", text)
                 self.assertTrue(all(source_path not in text for source_path in source_paths))
 
+    def test_release_spec_uses_the_manifest_generated_app_icon(self):
+        text = RELEASE_SPEC_PATH.read_text(encoding="utf-8")
+        self.assertIn('manifest["frozen"]["app_icon"]', text)
+        self.assertIn("icon=str(icon_path)", text)
+        self.assertNotIn("icon=None", text)
+
     def test_formal_build_orders_preflight_normalize_sign_and_verify_before_success(self):
         text = BUILD_SCRIPT_PATH.read_text(encoding="utf-8")
         markers = (
             "validate-sources",
+            '"$PYTHON_BIN" "$APP_ICON_BUILDER"',
             "-m PyInstaller",
             "normalize-app",
             "codesign --force --deep --sign -",
@@ -202,6 +217,22 @@ class PackagedRuntimeTests(unittest.TestCase):
                 *Path(contract["manifest_bundle_target"]).parts
             )
             model_manifest.unlink()
+            self.assertNotEqual(self.verifier_exit(app, fake), 0)
+
+    def test_missing_app_icon_returns_nonzero(self):
+        fake = FakeMacOSTools()
+        with tempfile.TemporaryDirectory() as temp:
+            app = self.make_app_fixture(Path(temp))
+            contract = self.manifest["frozen"]["app_icon"]
+            app.joinpath(*Path(contract["bundle_target"]).parts).unlink()
+            self.assertNotEqual(self.verifier_exit(app, fake), 0)
+
+    def test_wrong_info_plist_app_icon_returns_nonzero(self):
+        fake = FakeMacOSTools()
+        with tempfile.TemporaryDirectory() as temp:
+            app = self.make_app_fixture(Path(temp))
+            with (app / "Contents" / "Info.plist").open("wb") as handle:
+                plistlib.dump({"CFBundleIconFile": "wrong.icns"}, handle)
             self.assertNotEqual(self.verifier_exit(app, fake), 0)
 
     def test_packaged_cli_smoke_failure_returns_nonzero(self):

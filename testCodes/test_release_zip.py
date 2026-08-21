@@ -2,6 +2,7 @@ import contextlib
 import hashlib
 import io
 import os
+import plistlib
 import sys
 import tempfile
 import unittest
@@ -38,6 +39,11 @@ class ReleaseZipTests(unittest.TestCase):
         framework.write_bytes(b"fixture Runtime\n")
         framework.chmod(0o644)
         resource_link.symlink_to(Path("../Frameworks/fixture-runtime"))
+        app_icon = self.manifest["frozen"]["app_icon"]
+        icon = app.joinpath(*Path(app_icon["bundle_target"]).parts)
+        icon.write_bytes(b"icns" + (12).to_bytes(4, "big") + b"TEST")
+        with (app / "Contents" / "Info.plist").open("wb") as handle:
+            plistlib.dump({"CFBundleIconFile": app_icon["bundle_filename"]}, handle)
         return app
 
     def test_version_is_explicit_and_filename_safe(self):
@@ -107,10 +113,15 @@ class ReleaseZipTests(unittest.TestCase):
             extracted_app = extracted / app.name
             link = extracted_app / "Contents" / "Resources" / "fixture-runtime"
             executable = extracted_app / "Contents" / "MacOS" / "ClassroomTranscriber"
+            app_icon = self.manifest["frozen"]["app_icon"]
+            icon = extracted_app.joinpath(*Path(app_icon["bundle_target"]).parts)
             self.assertTrue(link.is_symlink())
             self.assertEqual(os.readlink(link), "../Frameworks/fixture-runtime")
             self.assertTrue(os.access(executable, os.X_OK))
             self.assertEqual(executable.read_bytes(), b"fixture executable\n")
+            self.assertEqual(
+                icon.read_bytes(), b"icns" + (12).to_bytes(4, "big") + b"TEST"
+            )
 
     def test_same_app_produces_byte_identical_zip(self):
         with tempfile.TemporaryDirectory() as temp:
