@@ -66,6 +66,7 @@ Step 9A Release ZIP tooling / round-trip verification：PASS
 Step 9B GitHub Release 0.2.0 publication / remote asset verification：PASS
 Step 9C M5 same-artifact ordinary-user / portability acceptance：PASS
 Step 9C M4 Max primary ordinary-user classroom acceptance：PASS
+M4 Max Release App fresh base.en Model Manager follow-up：PASS
 Deployment Step 9：PASS
 ```
 
@@ -424,7 +425,7 @@ M5 最终 session evidence：
 raw.txt        1091 bytes
 clean.txt      1091 bytes
 session.log    2938 bytes
-config.json    1121 bytes
+config.json   1121 bytes
 ```
 
 四文件全部存在且非空。测试完成后仓库 `git status --short` 无输出。
@@ -768,13 +769,17 @@ Stop
 
 本轮已确认 `raw.txt`、`clean.txt`、`session.log`、`config.json` 四个 evidence 文件存在；课堂长时间实测与 Stop -> Resume 均无 blocker。
 
-M4 Max 本轮没有重复执行 fresh Model Manager download；这是**明确记录的 non-blocking follow-up，不作为 Step 9 blocker**。理由：
+在 Step 9C-1 当时，M4 Max 没有重复执行 fresh Model Manager download，因此它被记录为 non-blocking follow-up，不影响 Step 9 PASS。之后于 2026-08-20 已补做并完成：
 
-1. Step 8 已在 M4 Max clean-machine App 上完成真实 `large-v3` Model Manager download + integrity transaction；
-2. Step 9C-2 已在同一正式 0.2.0 Release App 上、M5 机器使用 fresh 空目录完成 `base.en` download + integrity receipt + available/selectable；
-3. Step 9C-1 当前 M4 Max 已证明同一正式 0.2.0 Release App 能加载已验证 `large-v3` 并进行约 35 分钟稳定课堂转写。
+```text
+0.2.0 Release App
+-> Model Manager 自选模型目录
+-> fresh download base.en
+-> 使用 base.en 实际转录
+-> PASS
+```
 
-后续有需要时可在 M4 Max 对 Release App 再重复一次 fresh model download，但它不影响当前 Deployment Step 9 PASS。
+因此原 `M4 Max Release App fresh Model Manager download repeat` follow-up 已正式关闭，不再是 pending / non-blocking open item。该补测与既有 Step 8 M4 fresh large-v3、Step 9C-2 M5 fresh base.en 共同形成 Model Manager 实机证据。
 
 #### Step 9 最终 PASS 判定
 
@@ -790,7 +795,7 @@ M4 Max 本轮没有重复执行 fresh Model Manager download；这是**明确记
 9C M4 Max Release App large-v3 / beam=7 classroom ~35 min        PASS
 9C M4 Max Stop -> Resume / new session timestamp                 PASS
 9C M4 Max evidence layer                                         PASS
-M4 Release App fresh Model Manager repeat                        NON-BLOCKING FOLLOW-UP
+M4 Release App fresh base.en Model Manager repeat                PASS / FOLLOW-UP CLOSED
 ```
 
 **Deployment Step 9 PASS。GitHub Release 0.2.0 的 ordinary-user ZIP 交付路径在 Apple M4 Max 与 Apple M5 上完成实机闭环。**
@@ -812,7 +817,7 @@ M4 Release App fresh Model Manager repeat                        NON-BLOCKING FO
 11. whisper.cpp pinned commit 在 macOS 27 SDK 下会产生部分 Metal deprecated API compiler warning；M4/M5 build/runtime inference 均 PASS，当前不升级 upstream。
 12. Step 9A Release ZIP 对同一个 App 的重复打包已证明 byte-identical；这不等同于声明“不同时间重新 build 出的 App/ZIP 必然 byte-identical”。
 13. Step 9A package script 依赖 documented `formal build -> package` 顺序；Step 9B 已在正式发布链路使用该顺序，发布的 0.2.0 asset 绑定 tag/source commit `314326ab30c033090d1287793e3a47ef8f2c8971`。
-14. M4 Max 0.2.0 Release App 的 fresh Model Manager download repeat 尚未单独执行，但已有 Step 8 M4 fresh large-v3 download 与 Step 9C M5 同一 Release fresh base.en download 双重证据；当前仅保留为 non-blocking follow-up。
+14. M4 Max 0.2.0 Release App 的 fresh Model Manager repeat 已于 2026-08-20 补测完成：自选模型目录 -> fresh download `base.en` -> 实际转录 PASS；该项已关闭，不再是 non-blocking follow-up。
 15. M4 Max 约 35 分钟课堂实测出现过一次短暂 inference latency spike，系统自行追平且未形成持续 backlog；当前记录为 non-blocking runtime observation。
 16. 旧 pseudo-oral 测试输出仍是既有非阻塞项。
 
@@ -827,18 +832,20 @@ Step 8 实机验收暴露以下项目，均不回滚 Deployment MVP / Release 0.
 3. **Configurable output root**：默认继续 `~/Documents/ClassroomTranscriber/`，允许用户改根目录；`outputs/<timestamp>/raw.txt|clean.txt|session.log|config.json` 子结构必须保持不变；配置持久化，只影响后续新 session。
 4. **Current-model panel readability**：长绝对路径在当前模型区域被截断且无法访问完整内容；后续优先模型名/大小，路径 middle-elide + tooltip/可复制，必要时提供滚动。
 
-Step 9 已完成。若继续处理这些项目，应新建独立 Product / UX task 文档，逐项定义优先级、允许修改范围、验收和回归；不要继续把长期产品 backlog 堆在 deployment runtime 中，也不要把这些修改混入稳定 ASR 主链路。
+Step 9 已完成。上述项目已经由独立 `docs/product_polish_static.md` / `docs/product_polish_runtime.md` 接管；不要继续把 Product / UX ACTIVE 状态写回 Deployment runtime，也不要把这些修改混入稳定 ASR 主链路。
 
 ---
 
 ## 6. 当前未敲定参数 / 非阻塞后续
 
 ```text
-# 已知 non-blocking follow-up
-M4 Max Release App 再执行一次 fresh Model Manager download（当前非 Step 9 blocker）
+# 已完成的 post-Step9 follow-up
+M4 Max Release App：自选模型目录 -> fresh download base.en -> 实际转录 PASS
+
+# 仍保留的 non-blocking observation
 M4 Max 长课堂偶发 inference latency spike 的长期观察（当前无持续 backlog）
 
-# 后续 UX / Product task 文档
+# Product / UX 工作线（已由独立 static/runtime 接管）
 Model download progress / spinner / bytes feedback
 Model selection success transient toast（约 2 秒）
 Configurable output root
@@ -855,13 +862,13 @@ GitHub Actions release automation
 
 ## 7. 开发机与验收机状态
 
-旧 MacBook：Developer / Reference Machine；MacBook Air / Apple M5 / 16 GB / 512 GB / macOS 27 Beta。Step 8 current-checkpoint build + packaged Runtime + large-v3 Metal + Chinese transcription + Stop/Start regression：PASS。Step 9A Release ZIP tooling / dry-run / extracted-App verification：PASS。Step 9C-2 同一 0.2.0 Release artifact 浏览器下载 / Gatekeeper GUI / fresh base.en / GUI transcription / evidence / Metal portability：PASS。
+M5：Step 8 current-checkpoint build + packaged Runtime + large-v3 Metal + Chinese transcription + Stop/Start regression：PASS。Step 9A Release ZIP tooling / dry-run / extracted-App verification：PASS。Step 9C-2 同一 0.2.0 Release artifact 浏览器下载 / Gatekeeper GUI / fresh base.en / GUI transcription / evidence / Metal portability：PASS。
 
-新 Mac：Clean-machine Acceptance Machine；MacBook Pro / Apple M4 Max / 48 GB / 1 TB / macOS 27 Beta。Step 8 clean-machine build + UI large-v3 download/integrity + packaged Metal + actual transcription + evidence：PASS。Step 9B release-engineering 发布正式 0.2.0 Release：PASS。Step 9C-1 浏览器下载 / Finder / Gatekeeper GUI / large-v3 beam=7 约 35 分钟真实课堂转写 / Stop -> Resume / 新 session timestamp：PASS。
+M4 Max：Step 8 clean-machine build + UI large-v3 download/integrity + packaged Metal + actual transcription + evidence：PASS。Step 9B release-engineering 发布正式 0.2.0 Release：PASS。Step 9C-1 浏览器下载 / Finder / Gatekeeper GUI / large-v3 beam=7 约 35 分钟真实课堂转写 / Stop -> Resume / 新 session timestamp：PASS。之后补做 Release App 自选模型目录 -> fresh base.en -> 实际转录：PASS。
 
-当前可以记录：**项目 0.2.0 Release artifact 已在 Apple M4 Max 与 Apple M5 设备上完成 ordinary-user 实机验证；同一个 M4 Max-built Release artifact 在 M5 上完成 Metal portability 验证。** M1 / M2 / M3 仅理论兼容，不作保证；旧版 macOS 当前不作保证。
+当前可以记录：**项目 0.2.0 Release artifact 已在 Apple M4 Max 与 Apple M5 设备上完成 ordinary-user 实机验证；同一个 M4 Max-built Release artifact 在 M5 上完成 Metal portability 验证；M4 Max 的 fresh Model Manager repeat 也已补测完成。** M1 / M2 / M3 仅理论兼容，不作保证；旧版 macOS 当前不作保证。
 
-长期职责仍以 `deployment_static.md` 为准：默认 M5 为 Developer / Reference，M4 Max 为 Acceptance Machine。
+Deployment 阶段历史上使用过 Developer / Reference 与 Clean-machine Acceptance 的机器分工来完成干净机验收。该验收已经完成；后续 Product / UX 开发的机器使用规则由 `docs/product_polish_static.md` / `docs/product_polish_runtime.md` 管理。
 
 ---
 
@@ -879,6 +886,7 @@ Step 8：新机器 Clean-machine App / Model / Microphone / Transcription E2E �
 Step 9A：正式 Release ZIP 生成与本地验证入口                         已完成 / PASS
 Step 9B：实际 GitHub Release 0.2.0 发布                              已完成 / PASS
 Step 9C：人工 Release 下载 / ordinary-user / same-artifact 验收       已完成 / PASS
+Post-Step9：M4 Max Release App fresh base.en Model Manager repeat     已完成 / PASS
 ```
 
 当前 Deployment 工作线没有 ACTIVE Step。
@@ -887,10 +895,11 @@ Step 9C：人工 Release 下载 / ordinary-user / same-artifact 验收       已
 Step 9 PASS
 -> 0.2.0 GitHub Release ordinary-user path 已闭环
 -> M4 Max / M5 实机验证已闭环
--> 可以恢复 llm-sidecar-phase1 开发
+-> M4 fresh Model Manager repeat 已闭环
+-> Product / UX polish 已由独立 static/runtime 接管
 ```
 
-若用户选择继续产品 polish，应新建独立 Product / UX task 文档；Developer ID / Notarization / DMG / GitHub Actions 继续作为 Release polish 管理，不自动激活。
+Developer ID / Notarization / DMG / GitHub Actions 继续作为 Release polish 管理，不自动激活。
 
 ---
 
@@ -899,13 +908,13 @@ Step 9 PASS
 当前没有自动继承的 Deployment ACTIVE Step。下一步由用户显式选择工作线：
 
 ```text
-A. 恢复 LLM sidecar：切换 llm-sidecar-phase1，按 docs/whisper_runtime.md 的唯一 ACTIVE step 推进
-B. Product / UX polish：先新建独立 Product / UX task 文档，再逐项实施
+A. Product / UX polish：按 docs/product_polish_static.md + docs/product_polish_runtime.md 的唯一 ACTIVE step 推进
+B. 恢复 LLM sidecar：切换 llm-sidecar-phase1，按 docs/whisper_runtime.md 的唯一 ACTIVE step 推进
 C. Release polish：Developer ID / notarization / DMG / GitHub Actions / minimum macOS，单独立项
 D. Deployment follow-up：仅在出现真实 blocker / regression 时重新激活
 ```
 
-不要把 M4 fresh Model Manager repeat 或已知 UX backlog 自动升级为 blocker；若后续实测暴露失败，再按证据重新开启对应工作。
+M4 fresh Model Manager repeat 已完成，不再作为待办。已知 UX backlog 也已经转交 Product / UX runtime；若后续 Deployment 实测出现新的真实 failure，再按证据重新开启对应工作。
 
 ---
 
@@ -926,6 +935,8 @@ D. Deployment follow-up：仅在出现真实 blocker / regression 时重新激�
 10. Step 9B Release 0.2.0：tag/source 314326ab30c033090d1287793e3a47ef8f2c8971 / asset 46,549,839 bytes / SHA-256 09722cd4502103ab8f5751365438975cf05f2b1902dd7005f3c7e32b62dfabbd
 11. Step 9C M5：browser/Finder/Gatekeeper/fresh base.en/GUI transcription/evidence/Metal portability PASS
 12. Step 9C M4 Max：browser/Finder/Gatekeeper/large-v3 beam=7 ~35 min classroom/Stop->Resume/evidence PASS
+13. Post-Step9 M4 Max：Release App 自选模型目录 -> fresh base.en -> 实际转录 PASS
+14. Product / UX 后续：docs/product_polish_static.md + docs/product_polish_runtime.md
 ```
 
 恢复 LLM：
