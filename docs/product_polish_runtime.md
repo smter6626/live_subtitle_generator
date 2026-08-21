@@ -1,6 +1,6 @@
 # product_polish_runtime.md
 
-最后更新：2026-08-20  
+最后更新：2026-08-21  
 文档角色：`main` 分支 Product / UX polish 动态执行状态（runtime state）
 
 本文件承接 `docs/deployment_runtime.md` 在 Step 8 / Step 9 实机验收中记录的非阻塞使用体验问题。Deployment Step 9 与 Release 0.2.0 已经 PASS，不重新打开。
@@ -22,6 +22,7 @@ Product / UX polish 的长期目标与硬边界见：`docs/product_polish_static
 9. Product / UX polish 只处理 static/runtime 明确列出的体验问题，不借机重构稳定 ASR 主链路。
 10. Codex prompt 的实现分工、机器等价原则以 `docs/product_polish_static.md` 5.1 为准：prompt 负责目标/边界/验收，不替 Codex 预先规定非合同性的代码实现细节，也不在普通 Product Step 中强调当前开发机器。
 11. 每个实现 Step 审核时都执行 Repo Map impact check；只有 architecture / ownership / interface / data-flow 等事实变化时才更新 `docs/repo_map.md`，不为每个 commit 强制制造 map diff。
+12. 2026-08-21 用户明确授权一次 **overnight sequential batch**：在 1C 为唯一 ACTIVE 的前提下，若 1C 自检、commit、push 均通过，可在同一 Codex session 中继续预授权的 1D；1D 同样通过后可继续 1E。三个 Step 仍必须各自独立 scope、tests、commit、push。任一 Step 失败或需要扩大稳定边界时立即停止整个 batch。该例外不授权 1F/1G，也不授权 Codex 修改 runtime/repo_map。
 
 通常流程：
 
@@ -37,6 +38,8 @@ Codex 执行当前 Step 1x
 -> 激活下一子 Step
 ```
 
+本次 overnight batch 是上述人工 review gate 的一次用户明确授权例外，只适用于 `1C -> 1D -> 1E`，且不改变“一 Step 一 commit”与最终人工审核要求。
+
 ---
 
 ## 1. 当前 checkpoint
@@ -45,12 +48,12 @@ Codex 执行当前 Step 1x
 branch: main
 Product implementation baseline: 7930cc3255e8ae1f0dbc3755e4a78e09f4e7b00f
 baseline 内容: docs: complete deployment step 9
-Current Product implementation checkpoint: 3a369e55456430a2a5e0b9a55279f1dc1dc2f939
-checkpoint 内容: fix: improve current model readability
+Current Product implementation checkpoint: 4d2059d273d0ba94373b1969b8236ef462b6acae
+checkpoint 内容: fix: add model selection confirmation
 Release baseline: 0.2.0
 Deployment Step 9: PASS
 Product / UX Step 1: ACTIVE
-唯一 ACTIVE: Step 1B - Model selection transient confirmation
+唯一 ACTIVE: Step 1C - Model download visible progress / busy feedback
 ```
 
 Product / UX governance / architecture map 已建立：
@@ -64,16 +67,17 @@ c10cfa64ef952ed46374d5cb02d2c5a72cc5b2d2  docs: define product polish contract
 09425dd3882d35f8c7eb8b8d1aac646e8d40a7d3  docs: schedule additional product polish
 15af5c254320b494df774805713d48d2262d1f0a  docs: add repository architecture map
 219405494f8c4de719336b9ff6c5e9f94d3445eb  docs: sync repository map after step 1a
+aba8f49021e868b75b3bd36bc4d5aa2dfb8ca9c8  docs: sync repository map after step 1b
 ```
 
 当前 Step 1 状态：
 
 ```text
 1A Current-model panel readability                 PASS
-1B Model selection transient confirmation          ACTIVE
-1C Model download visible progress / busy feedback PENDING
-1D Configurable output root                        PENDING
-1E 中文 / English UI switch + semantic alignment   PENDING
+1B Model selection transient confirmation          PASS
+1C Model download visible progress / busy feedback ACTIVE
+1D Configurable output root                        PENDING / OVERNIGHT PRE-AUTHORIZED AFTER 1C GATE
+1E 中文 / English UI switch + semantic alignment   PENDING / OVERNIGHT PRE-AUTHORIZED AFTER 1D GATE
 1F Packaged App icon                               PENDING / ICON DESIGN TBD AT STEP START
 1G Packaged regression / acceptance                PENDING
 ```
@@ -101,7 +105,7 @@ Release App
 -> PASS
 ```
 
-该事项不再是 Product / UX open observation，也不影响 Step 1B/1C 对 Model Manager UX 的独立改进目标。
+该事项不再是 Product / UX open observation，也不影响 1C 对 Model Manager download UX 的独立改进目标。
 
 ---
 
@@ -137,38 +141,51 @@ Model Manager selection / diagnostic logs
 
 Step 1A 没有改变 model selection、availability/integrity 或 Start gating 语义。
 
-### 2.2 Model selection（Step 1B 当前重点）
+### 2.2 Model selection（Step 1B 后）
 
-当前成功选择 / 恢复模型存在多条不同路径，后续 1B 必须区分它们：
+当前显式用户选择与自动状态恢复已经在 UI 反馈语义上分离：
 
 ```text
-MainWindow model combo 用户选择
--> _on_model_combo_changed()
--> _set_selected_model()
+MainWindow model combo：
+  用户切换到不同且 available model
+  -> _on_model_combo_changed()
+  -> _set_selected_model()
+  -> MainWindow transient confirmation
 
-Model Manager 可用模型显式选择
--> select_current_row()
--> _select_model()
--> 持久化 AppSettings
--> emit model_selected
--> MainWindow._set_selected_model()
-
-verified model download 完成
--> _handle_download_finished()
--> refresh
--> 找到 verified target
--> _select_model()
-
-startup / refresh / scan restore
--> choose_default_model() / reload paths
--> 更新 selected model / labels
+Model Manager explicit Select：
+  用户选中不同且 available row
+  -> select_current_row()
+  -> _select_model()
+  -> dialog transient confirmation
+  -> emit model_selected
+  -> MainWindow._set_selected_model()
+  -> 不产生第二次 MainWindow confirmation
 ```
 
-当前 successful selection 已经有 persistence / label refresh / INFO log，但没有约 2 秒 non-modal user-facing confirmation。
+两个 surface 各自拥有 parent-owned reusable `QTimer`：
 
-关键边界：refresh / initial scan / startup restore 不能伪装成用户选择成功；failed / unavailable selection 不能显示 success。下载完成后的自动 selection 与显式 Select/主 combo 是不同触发来源，实施时必须基于当前 static 的“真实 successful selection”语义审计，不可简单把任何 label refresh 当 success。
+```text
+single-shot
+2000 ms
+timeout -> clear + hide transient QLabel
+```
 
-### 2.3 Model download
+rapid explicit selection 重启同一个 timer，因此旧 timer 不会提前清除新提示。
+
+以下路径明确 **NO CONFIRM**：
+
+```text
+verified download completion auto-selection
+import 后自动选择
+startup persisted-model restore
+refresh / scan / reload
+unavailable / rejected / failed selection
+重复选择当前同一路径模型
+```
+
+共享 `_set_selected_model()` / `_select_model()` 负责应用/persist/propagate state，并会清除可能过期的 transient feedback，但不会自行显示 success。Step 1B 不改变 selected model persistence、availability/integrity、Start gating 或 Step 1A presentation contract。
+
+### 2.3 Model download（Step 1C 当前重点）
 
 Model Manager 当前已经有：
 
@@ -186,6 +203,8 @@ reject() 时阻止下载中直接关闭 dialog
 `download_and_publish_model()` 继续走 Step 7 integrity transaction。网络下载和最终验证工作已经不在 Qt 主线程。
 
 当前 UI 没有持续可见的 QProgressBar / spinner / busy widget；下载期间主要依靠按钮 disabled 和 log 判断活动状态。因此 1C 的缺口是“可见 busy/progress feedback”，不是重新设计 downloader。
+
+Step 1B 已冻结 download-completion auto-selection 为 `NO CONFIRM`；1C 不应为了 download status UI 改变这一 selection-feedback 语义。
 
 ### 2.4 Output path
 
@@ -334,25 +353,80 @@ testCodes/test_model_manager_ui_contract.py
 
 没有修改 controller、engine、TranscriptStore、model integrity、downloader、settings schema 或 packaging。
 
-### 4.2 GitHub review 结果
+### 4.2 GitHub review / 测试 / UI 验收
+
+GitHub diff review、相关 contract/regression tests 与 source UI smoke 均 PASS。核心确认：concise summary/full display 分离、long path 不再压倒 summary、full-path tooltip/Path column 保留、combo/log 不回退、selection/integrity/Start gating 未改变。
+
+Repo Map 因 consumer relationship 改变已在以下 commit 同步：
+
+```text
+219405494f8c4de719336b9ff6c5e9f94d3445eb
+docs: sync repository map after step 1a
+```
+
+---
+
+## 5. Step 1B - Model selection transient confirmation
+
+状态：**PASS**。
+
+实现 commit：
+
+```text
+4d2059d273d0ba94373b1969b8236ef462b6acae
+fix: add model selection confirmation
+```
+
+### 5.1 实际实现
+
+MainWindow model panel 与 Model Manager 各自增加轻量 transient `QLabel` + parent-owned reusable `QTimer`：
+
+```text
+single-shot
+2000 ms
+show -> timer start
+timeout -> clear + hide
+```
+
+现有双语 `tr("model_selected")` 提供提示文案，提示包含 model name。
+
+confirmation 只从两个显式用户入口触发：
+
+```text
+MainWindow combo：不同且 available model -> CONFIRM
+Model Manager explicit Select：不同且 available model -> CONFIRM（仅 dialog 一次）
+```
+
+自动/恢复路径：
+
+```text
+download completion auto-selection -> NO CONFIRM
+import auto-selection              -> NO CONFIRM
+startup restore                    -> NO CONFIRM
+refresh / scan / reload            -> NO CONFIRM
+unavailable / failed               -> NO CONFIRM
+same-path repeated selection       -> NO CONFIRM
+```
+
+共享 setter 不负责显示 success，因此 Model Manager signal propagation 不会产生第二次 MainWindow confirmation。
+
+### 5.2 GitHub review 结果
 
 人工 / ChatGPT 已基于 GitHub commit 实际 diff 审核：
 
 ```text
-[PASS] concise summary 与 full display representation 已分离
-[PASS] long absolute path 不再进入两个 current summary
-[PASS] name / size / status 继续直接可见
-[PASS] MainWindow summary full-path tooltip 保留
-[PASS] Model Manager summary 新增 full-path tooltip
-[PASS] Model Manager Path table 保留
-[PASS] combo / selection diagnostic log 继续使用 display_label
-[PASS] availability / integrity 逻辑未改
-[PASS] selection persistence 未改
-[PASS] Start gating 未改
-[PASS] stable ASR / evidence / downloader / packaging 未触碰
+[PASS] confirmation 只绑定显式用户 selection source
+[PASS] MainWindow / Model Manager 不 duplicate
+[PASS] QTimer parent-owned / single-shot / 2000ms
+[PASS] non-modal，无 sleep / worker-thread waiting
+[PASS] rapid selection 重启同一 timer
+[PASS] download/import/startup/refresh 不显示 selection success
+[PASS] unavailable/failed/repeated same-path 不显示 success
+[PASS] Step 1A presentation contract 未回退
+[PASS] persistence / Start gating / integrity / downloader 未改变
 ```
 
-### 4.3 测试证据
+### 5.3 测试证据
 
 Codex 报告并通过：
 
@@ -361,105 +435,57 @@ Codex 报告并通过：
 -> PASS
 
 .venv/bin/python -m unittest discover -s testCodes -p 'test_model_manager_ui_contract.py' -v
--> PASS, 5 tests
-
-.venv/bin/python -m unittest discover -s testCodes -p 'test_ui_support.py' -v
--> 0 tests discovered / exit 5；该文件不是 unittest.TestCase 结构
+-> PASS, 8 tests
 
 .venv/bin/python testCodes/test_ui_support.py
 -> PASS, 22 checks
 
-.venv/bin/python -m unittest discover -s testCodes -p 'test_*model*.py' -v
--> PASS, 18 tests
-
 .venv/bin/python testCodes/test_model_download_resources.py
 -> PASS, 6 checks
 
+.venv/bin/python -m unittest discover -s testCodes -p 'test_*model*.py' -v
+-> PASS, 21 tests
+
 .venv/bin/python -m unittest discover -s testCodes -p 'test_*.py' -v
--> PASS, 77 tests
+-> PASS, 80 tests
+
+Offscreen Qt event-loop auto-clear smoke
+-> PASS; timer active after show, about 2.2s later text cleared and label hidden
 
 git diff --check
 -> PASS
 ```
 
-`test_model_manager_ui_contract.py` 新增 long-path contract，直接验证 concise summary 不含 path、full `display_label` 仍含 path，并以当前 UI 调用结构保护两个 summary tooltip 以及 combo/log/table 的完整 presentation。
+### 5.4 人工 source UI 验收
 
-本 Step 未要求 packaged App / real microphone E2E；这些在 1G 统一收口。
+用户已在开发源码版完成 targeted UI smoke，并明确确认 PASS：
 
-### 4.4 Repo Map impact review
+```text
+[PASS] startup 无伪 confirmation
+[PASS] main combo 切换提示正常
+[PASS] 反复 / rapid switch 提示正常
+[PASS] refresh 不产生假提示
+[PASS] Model Manager explicit Select 提示正常
+[PASS] selection propagation 无 duplicate
+[PASS] 当前视觉位置可接受
+```
 
-Codex 最终报告写为 `Repo Map impact: NONE`，但人工 review 发现 **UPDATE REQUIRED**：原 `docs/repo_map.md` 明确记录“`ModelInfo.display_label` feeds current-model summaries”，而 1A 实现已经将 summary consumer 改为 `current_summary_label`，因此 map 的 interface / consumer relationship 已发生可观察变化。
+### 5.5 Repo Map impact review
+
+`UPDATE REQUIRED`：Step 1B 新增 event-source -> transient label/timer UI state relationship，并明确 download/import/startup/refresh 等自动路径不产生 confirmation。
 
 Repo Map 已受控同步：
 
 ```text
-219405494f8c4de719336b9ff6c5e9f94d3445eb
-docs: sync repository map after step 1a
-```
-
-更新内容只反映新的 presentation ownership / test coverage / 1A impact boundary；没有把该具体实现升级成新的 static 产品合同。
-
----
-
-## 5. Step 1B - Model selection transient confirmation
-
-状态：**ACTIVE**。
-
-### 5.1 已知问题与代码锚点
-
-当前 successful selection 已经有 persistence / label refresh / INFO log，但没有 transient user-facing confirmation。
-
-当前 selection / restore 来源已经在第 2.2 节展开。实施必须避免 refresh / initial scan / startup restore 触发假 success；因此应该围绕真实 successful selection 语义设计，而不是任何 label refresh 都触发。
-
-### 5.2 目标
-
-实际成功选择模型后显示约 2 秒的 **non-modal transient confirmation**，例如：
-
-```text
-已成功选择模型：large-v3
-Model selected: large-v3
-```
-
-要求：
-
-```text
-不弹 modal QMessageBox
-不阻塞 UI 主线程
-自动消失
-只在实际 successful selection 后触发
-refresh / scan / startup restore 不显示 success
-failed / unavailable selection 不显示 success
-中英文沿用现有 TEXT / translation 机制
-```
-
-具体 UI 呈现由 Codex 根据当前 Qt 结构选择最小可靠实现。
-
-### 5.3 验收
-
-```text
-[ ] 成功选择后出现明确确认
-[ ] 约 2 秒自动消失
-[ ] 不阻塞 Model Manager / MainWindow
-[ ] failed/unavailable selection 不显示 success
-[ ] startup/refresh 不产生伪 success
-[ ] selected model persistence 不变
-[ ] Start 使用的仍是同一 selected model
-[ ] Step 1A 的 concise current-summary / full-path accessibility 不回归
-```
-
-最低测试应覆盖 success / unavailable / refresh-no-toast / auto-clear contract；具体 Qt test 方式以现有 test 架构为准。
-
-建议 commit：
-
-```text
-fix: add model selection confirmation
+aba8f49021e868b75b3bd36bc4d5aa2dfb8ca9c8
+docs: sync repository map after step 1b
 ```
 
 ---
 
 ## 6. Step 1C - Model download visible progress / busy feedback
 
-状态：PENDING。
+状态：**ACTIVE**。
 
 ### 6.1 已知问题与代码锚点
 
@@ -496,6 +522,7 @@ indeterminate progress bar / busy indicator
 不绕过 staging / size / SHA / atomic publish / receipt
 失败和重试继续 fail closed
 下载中关闭保护继续成立
+Step 1B download-completion auto-selection = NO CONFIRM 语义保持
 ```
 
 ### 6.4 验收
@@ -509,6 +536,7 @@ indeterminate progress bar / busy indicator
 [ ] dialog 关闭保护正确
 [ ] UI 不冻结
 [ ] size/SHA/atomic publish/receipt tests 全部继续 PASS
+[ ] Step 1B selection confirmation 语义不回退
 ```
 
 最低测试必须包含 success/failure 两条 UI state transition，并继续跑 model integrity tests。
@@ -523,9 +551,9 @@ fix: show model download progress state
 
 ## 7. Step 1D - Configurable output root
 
-状态：PENDING。
+状态：**PENDING / OVERNIGHT PRE-AUTHORIZED AFTER 1C GATE**。
 
-这是前四项中唯一直接改变 session destination 的 Step，必须在 1A-C 通过后单独做。
+这是前四项中唯一直接改变 session destination 的 Step。正常流程要求 1C review 后再激活；本次仅依据用户明确 overnight 授权，在 1C 自检/commit/push 全部成功后允许同一 Codex session 继续执行，仍须独立 commit。
 
 ### 7.1 已知现状
 
@@ -622,7 +650,9 @@ feat: add configurable output root
 
 ## 8. Step 1E - 中文 / English UI switch + semantic alignment
 
-状态：PENDING。
+状态：**PENDING / OVERNIGHT PRE-AUTHORIZED AFTER 1D GATE**。
+
+正常流程要求 1D review 后再激活；本次仅依据用户明确 overnight 授权，在 1D 自检/commit/push 全部成功后允许同一 Codex session 继续执行，仍须独立 commit。
 
 ### 8.1 已知问题
 
@@ -783,9 +813,9 @@ ASR chunk/backend 重构
 
 ---
 
-## 12. 当前 ACTIVE / 下一步执行
+## 12. 当前 ACTIVE / Overnight sequential execution
 
-当前只执行 **Step 1B - Model selection transient confirmation**。
+当前唯一 ACTIVE 是 **Step 1C - Model download visible progress / busy feedback**。
 
 开始前必读：
 
@@ -796,8 +826,6 @@ docs/repo_map.md
 docs/deployment_static.md
 README.md
 ```
-
-实现时直接使用第 2.2 节已经确认的 selection / restore 路径与 Repo Map 的 Model Manager/UI ownership，不需要把这些事实重新作为未知问题。
 
 Codex 开始前在**当前已同步的项目 clone 根目录**执行：
 
@@ -824,21 +852,101 @@ HEAD == origin/main
 git pull --ff-only origin main
 ```
 
-Step 1B 的实施范围、验收和最低测试完整定义在第 5 节；prompt 应补充 Repo Map impact / test ownership，但不要替 Codex 规定非合同性的 widget/function 实现。
+### 12.1 Overnight batch 授权顺序
 
-Step 1B 完成后：
+用户已明确授权：
 
 ```text
-相关 tests PASS
-必要 selection-confirmation contract test 已补
-一个 commit
-push main
-最终 worktree clean
-Codex 不修改 product_polish_runtime.md
-Codex 报告 Repo Map impact assessment
+1C
+-> 相关 tests + full reasonable regression
+-> 独立 commit
+-> push main
+-> gate PASS
+
+1D
+-> 重新基于当前 HEAD 审计
+-> 相关 tests + full reasonable regression
+-> 独立 commit
+-> push main
+-> gate PASS
+
+1E
+-> 重新基于当前 HEAD 审计
+-> 相关 tests + full reasonable regression
+-> 独立 commit
+-> push main
+-> gate PASS
 ```
 
-然后由人工 / ChatGPT 审核 GitHub 实际 diff，执行 Repo Map impact check。审核 PASS 后再把 1B 标记为 PASS，并激活本文件第 6 节已经完整定义的 1C；1C-1F 的已知事实、方向与验收标准保留在本文件，不因尚未 ACTIVE 而删减。
+任何 gate FAIL、contract 不清楚、需要触碰 stable ASR/evidence/integrity 冻结边界、或 origin/main 出现无法解释的新推进：
+
+```text
+STOP ENTIRE BATCH
+```
+
+不得跳过失败 Step 继续后面的 Step。
+
+Codex 在 batch 中仍不得修改：
+
+```text
+docs/product_polish_static.md
+docs/product_polish_runtime.md
+docs/repo_map.md
+docs/deployment_static.md
+docs/deployment_runtime.md
+```
+
+每个 Step 最终都必须单独报告：
+
+```text
+changed files
+tests
+commit SHA
+push result
+Repo Map impact: NONE / UPDATE REQUIRED
+```
+
+### 12.2 Batch 完成后的 automated pre-1G regression
+
+仅当 1C、1D、1E 三个 gate 全部 PASS 并已分别 push 后，可继续进行一次**不修改代码的 automated pre-1G regression**：
+
+```text
+full relevant unit / contract regression
+formal one-entry build（若当前正式 build prerequisites 可满足）
+packaged Runtime verifier
+```
+
+目的仅是提前暴露 packaging/runtime regression，节省后续人工等待。
+
+这一步：
+
+```text
+不产生功能 commit
+不修改 packaging 来“顺手修”失败
+不标记 1G PASS
+不做 GitHub Release/tag
+```
+
+如果 formal build / verifier 失败，保留证据并汇报；不要为了让 overnight batch 看起来成功而扩大 scope。
+
+### 12.3 明确停止点
+
+Overnight batch 最远到：
+
+```text
+1E implementation pushed
++ optional automated pre-1G regression report
+```
+
+不得实施：
+
+```text
+1F App icon
+1G final acceptance
+release/tag
+```
+
+1F 必须等用户醒来后确认 icon 方向 / asset。
 
 ---
 
