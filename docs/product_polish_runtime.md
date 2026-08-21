@@ -5,7 +5,7 @@
 
 本文件承接 `docs/deployment_runtime.md` 在 Step 8 / Step 9 实机验收中记录的非阻塞使用体验问题。Deployment Step 9 与 Release 0.2.0 已经 PASS，不重新打开。
 
-Product / UX polish 的长期目标与硬边界见：`docs/product_polish_static.md`。Deployment 长期合同继续见 `docs/deployment_static.md`。本文件只记录当前 checkpoint、唯一 ACTIVE Step、已经确认的代码事实、各子 Step 的完整执行计划、验收与完成记录。
+Product / UX polish 的长期目标与硬边界见：`docs/product_polish_static.md`。Deployment 长期合同继续见 `docs/deployment_static.md`。当前代码结构与影响面辅助见 `docs/repo_map.md`。本文件只记录当前 checkpoint、唯一 ACTIVE Step、已经确认的代码事实、各子 Step 的完整执行计划、验收与完成记录。
 
 ---
 
@@ -17,10 +17,11 @@ Product / UX polish 的长期目标与硬边界见：`docs/product_polish_static
 4. 一个明确子 Step 一个 commit；自检通过后 push 当前 `main`。
 5. Codex 不自行创建 branch，不 merge / rebase / reset / stash / force push。
 6. 如果当前 branch 不是 `main`、worktree 有未说明修改、或 `origin/main` 在执行期间意外前进，立即停止并汇报。
-7. Codex 默认读取本文件与 `docs/product_polish_static.md`，但不主动修改 runtime；每个子 Step 完成后由人工 / ChatGPT 审核实现，再推进 ACTIVE step。
+7. Codex 默认读取本文件、`docs/product_polish_static.md` 与 `docs/repo_map.md`，但不主动修改 runtime；每个子 Step 完成后由人工 / ChatGPT 审核实现，再推进 ACTIVE step。
 8. 已经能从当前 repo 明确确认的实现事实直接记录在本文件，不在“下一步”中压缩成模糊摘要，也不要求后续 Codex 重新猜测这些事实。
 9. Product / UX polish 只处理 static/runtime 明确列出的体验问题，不借机重构稳定 ASR 主链路。
 10. Codex prompt 的实现分工、机器等价原则以 `docs/product_polish_static.md` 5.1 为准：prompt 负责目标/边界/验收，不替 Codex 预先规定非合同性的代码实现细节，也不在普通 Product Step 中强调当前开发机器。
+11. 每个实现 Step 审核时都执行 Repo Map impact check；只有 architecture / ownership / interface / data-flow 等事实变化时才更新 `docs/repo_map.md`，不为每个 commit 强制制造 map diff。
 
 通常流程：
 
@@ -30,6 +31,8 @@ Codex 执行当前 Step 1x
 -> 一个 commit
 -> push main
 -> 人工 / ChatGPT 审核 GitHub 实际实现
+-> Repo Map impact check
+-> 必要时同步 docs/repo_map.md
 -> 更新 product_polish_runtime.md
 -> 激活下一子 Step
 ```
@@ -42,13 +45,15 @@ Codex 执行当前 Step 1x
 branch: main
 Product implementation baseline: 7930cc3255e8ae1f0dbc3755e4a78e09f4e7b00f
 baseline 内容: docs: complete deployment step 9
+Current Product implementation checkpoint: 3a369e55456430a2a5e0b9a55279f1dc1dc2f939
+checkpoint 内容: fix: improve current model readability
 Release baseline: 0.2.0
 Deployment Step 9: PASS
 Product / UX Step 1: ACTIVE
-唯一 ACTIVE: Step 1A - Current-model panel readability
+唯一 ACTIVE: Step 1B - Model selection transient confirmation
 ```
 
-Product / UX governance 已建立：
+Product / UX governance / architecture map 已建立：
 
 ```text
 db96a25db5be14a28a0fb5e650e209165dfa0d38  docs: activate product polish step 10（历史初始化，编号已在本文件修正）
@@ -56,13 +61,16 @@ c10cfa64ef952ed46374d5cb02d2c5a72cc5b2d2  docs: define product polish contract
 86fe495fe4d8a6311a32fa5ceb932523bc8d863a  docs: renumber product polish to step 1
 119247c62ec18010f83cd98fdffa2f14f9651ea9  docs: refine product polish contract
 878e91e8bc83ef06beb0268139e1ba1095b248a4  docs: extend product polish goals
+09425dd3882d35f8c7eb8b8d1aac646e8d40a7d3  docs: schedule additional product polish
+15af5c254320b494df774805713d48d2262d1f0a  docs: add repository architecture map
+219405494f8c4de719336b9ff6c5e9f94d3445eb  docs: sync repository map after step 1a
 ```
 
 当前 Step 1 状态：
 
 ```text
-1A Current-model panel readability                 ACTIVE
-1B Model selection transient confirmation          PENDING
+1A Current-model panel readability                 PASS
+1B Model selection transient confirmation          ACTIVE
 1C Model download visible progress / busy feedback PENDING
 1D Configurable output root                        PENDING
 1E 中文 / English UI switch + semantic alignment   PENDING
@@ -93,60 +101,72 @@ Release App
 -> PASS
 ```
 
-该事项不再是 Product / UX open observation，也不影响 Step 1A-C 对 Model Manager UX 的独立改进目标。
+该事项不再是 Product / UX open observation，也不影响 Step 1B/1C 对 Model Manager UX 的独立改进目标。
 
 ---
 
 ## 2. 当前 repo 已确认的实现事实
 
-这些内容已经从当前 `main` 代码确认，后续 Step 应直接基于这些事实设计最小修改；除非实际代码在执行前发生变化，不需要把它们重新降级成“待调查”。
+这些内容已经从当前 `main` 代码和已审核实现确认，后续 Step 应直接基于这些事实设计最小修改；除非实际代码在执行前发生变化，不需要把它们重新降级成“待调查”。
 
-### 2.1 Current-model display
+### 2.1 Current-model display（Step 1A 后）
 
-`model_manager.py` 当前 `ModelInfo.display_label` 为：
-
-```text
-name | size | display_path | status
-```
-
-`ui_app.py` 的 MainWindow `_update_model_labels()` 在主窗口 current-model 区域直接使用：
+`model_manager.py` 当前有两种明确分离的 presentation value：
 
 ```text
-self.model_current_label.setText(self.selected_model.display_label)
-self.model_current_label.setToolTip(str(self.selected_model.path))
+ModelInfo.current_summary_label
+-> name | size | status
+
+ModelInfo.display_label
+-> name | size | display_path | status
 ```
 
-因此长 absolute path 会持续进入主摘要文本；完整路径其实已经同时存在于 tooltip。
-
-Model Manager dialog 当前模型摘要也使用 `display_label`。与此同时 Model Manager table 已独立分成：
+当前消费者已经分离：
 
 ```text
-Name | Size | Path | Status
+MainWindow current-model summary
+ModelManagerDialog current-model summary
+-> current_summary_label
+
+MainWindow model combo
+Model Manager selection / diagnostic logs
+-> display_label
 ```
 
-Path 列本身不会因为主摘要精简而丢失。
+两个 current-model summary 都保留 full-path tooltip；Model Manager table 继续独立显示 `Name | Size | Path | Status`，因此 path detail 没有因为摘要精简而丢失。
 
-### 2.2 Model selection
+Step 1A 没有改变 model selection、availability/integrity 或 Start gating 语义。
 
-Model Manager `_select_model()` 当前会：
+### 2.2 Model selection（Step 1B 当前重点）
+
+当前成功选择 / 恢复模型存在多条不同路径，后续 1B 必须区分它们：
 
 ```text
-更新 selected_model
-写 app settings
-更新 current label
-emit model_selected
-写 INFO log
+MainWindow model combo 用户选择
+-> _on_model_combo_changed()
+-> _set_selected_model()
+
+Model Manager 可用模型显式选择
+-> select_current_row()
+-> _select_model()
+-> 持久化 AppSettings
+-> emit model_selected
+-> MainWindow._set_selected_model()
+
+verified model download 完成
+-> _handle_download_finished()
+-> refresh
+-> 找到 verified target
+-> _select_model()
+
+startup / refresh / scan restore
+-> choose_default_model() / reload paths
+-> 更新 selected model / labels
 ```
 
-MainWindow `_set_selected_model()` 当前会：
+当前 successful selection 已经有 persistence / label refresh / INFO log，但没有约 2 秒 non-modal user-facing confirmation。
 
-```text
-更新 selected_model
-持久化 selected_model_path / selected_model_name
-刷新 model combo / labels / status
-```
-
-当前没有约 2 秒 non-modal success confirmation；已有的是状态刷新和 log，不等价于短时用户反馈。
+关键边界：refresh / initial scan / startup restore 不能伪装成用户选择成功；failed / unavailable selection 不能显示 success。下载完成后的自动 selection 与显式 Select/主 combo 是不同触发来源，实施时必须基于当前 static 的“真实 successful selection”语义审计，不可简单把任何 label refresh 当 success。
 
 ### 2.3 Model download
 
@@ -158,13 +178,14 @@ self.downloading_model_name
 background threading.Thread(..., daemon=True)
 _set_download_controls(False/True)
 log_message
+download_finished signal
 _handle_download_finished()
 reject() 时阻止下载中直接关闭 dialog
 ```
 
 `download_and_publish_model()` 继续走 Step 7 integrity transaction。网络下载和最终验证工作已经不在 Qt 主线程。
 
-当前 UI 没有持续可见的 QProgressBar / spinner / busy widget；下载期间主要依靠按钮 disabled 和 log 判断活动状态。因此本 Step 的缺口是“可见 busy/progress feedback”，不是重新设计 downloader。
+当前 UI 没有持续可见的 QProgressBar / spinner / busy widget；下载期间主要依靠按钮 disabled 和 log 判断活动状态。因此 1C 的缺口是“可见 busy/progress feedback”，不是重新设计 downloader。
 
 ### 2.4 Output path
 
@@ -281,93 +302,114 @@ Step 1 默认不创建新 GitHub Release/tag。是否发布后续版本由 Step 
 
 ## 4. Step 1A - Current-model panel readability
 
-状态：**ACTIVE**。
+状态：**PASS**。
 
-### 4.1 已知问题与代码锚点
-
-问题不是 path 不可访问，而是 path 已经被塞进摘要文本：
+实现 commit：
 
 ```text
-ModelInfo.display_label
--> MainWindow.model_current_label
--> ModelManagerDialog.current_label
+3a369e55456430a2a5e0b9a55279f1dc1dc2f939
+fix: improve current model readability
 ```
 
-主窗口已经有 full-path tooltip；Model Manager table 也已经有独立 Path 列。因此不需要为了本 Step 新增复杂 path storage 或 custom model object。
+### 4.1 实际实现
 
-### 4.2 目标
-
-主窗口和 Model Manager 的“当前模型”摘要优先显示：
+新增：
 
 ```text
-模型名
-大小
-available / integrity 状态
+ModelInfo.current_summary_label
+= name | size | status
 ```
 
-完整路径仍可通过 tooltip 或等价方式访问，但不持续占满主摘要。
+主窗口与 Model Manager current summary 使用 `current_summary_label`；原 `display_label` 不删改，继续保留 path 并服务 combo / logs。
 
-最终方案由 Codex 根据调用点审计决定，不要求在 prompt 中机械指定 property/helper/widget 实现。
+两个 current summary 都提供完整模型 path tooltip；Model Manager 独立 Path 列保持不变。
 
-### 4.3 允许修改范围
-
-预计主要：
+实际 tracked diff：
 
 ```text
 model_manager.py
 ui_app.py
-相关 UI/model tests
+testCodes/test_model_manager_ui_contract.py
 ```
 
-不应需要修改 controller、engine、TranscriptStore、model integrity 或 downloader。
+没有修改 controller、engine、TranscriptStore、model integrity、downloader、settings schema 或 packaging。
 
-### 4.4 验收标准
+### 4.2 GitHub review 结果
+
+人工 / ChatGPT 已基于 GitHub commit 实际 diff 审核：
 
 ```text
-[ ] 默认 1200x800 主窗口 current model 首先可读到模型名
-[ ] size / status 可见或明确可获取
-[ ] 长 absolute path 不再压倒主摘要
-[ ] 完整 path 仍可通过 tooltip 或等价非破坏方式查看
-[ ] Model Manager current summary 同样改善
-[ ] Model Manager table 的 Path 信息没有丢失
-[ ] combo / log 如仍需要完整 display_label，不被无意破坏
-[ ] model selection / availability / integrity semantics 完全不变
-[ ] Start / Stop 可用性逻辑不变
+[PASS] concise summary 与 full display representation 已分离
+[PASS] long absolute path 不再进入两个 current summary
+[PASS] name / size / status 继续直接可见
+[PASS] MainWindow summary full-path tooltip 保留
+[PASS] Model Manager summary 新增 full-path tooltip
+[PASS] Model Manager Path table 保留
+[PASS] combo / selection diagnostic log 继续使用 display_label
+[PASS] availability / integrity 逻辑未改
+[PASS] selection persistence 未改
+[PASS] Start gating 未改
+[PASS] stable ASR / evidence / downloader / packaging 未触碰
 ```
 
-### 4.5 最低测试
+### 4.3 测试证据
 
-Codex 先审计现有相关 tests，再新增/调整最小 UI contract test，至少覆盖 long-path model 的摘要和 full-path 可访问性。
-
-实际命令至少包括：
+Codex 报告并通过：
 
 ```text
 .venv/bin/python -m py_compile ui_app.py model_manager.py
-.venv/bin/python -m unittest discover -s testCodes -p 'test_*model*ui*.py' -v
+-> PASS
+
+.venv/bin/python -m unittest discover -s testCodes -p 'test_model_manager_ui_contract.py' -v
+-> PASS, 5 tests
+
+.venv/bin/python -m unittest discover -s testCodes -p 'test_ui_support.py' -v
+-> 0 tests discovered / exit 5；该文件不是 unittest.TestCase 结构
+
+.venv/bin/python testCodes/test_ui_support.py
+-> PASS, 22 checks
+
 .venv/bin/python -m unittest discover -s testCodes -p 'test_*model*.py' -v
+-> PASS, 18 tests
+
+.venv/bin/python testCodes/test_model_download_resources.py
+-> PASS, 6 checks
+
+.venv/bin/python -m unittest discover -s testCodes -p 'test_*.py' -v
+-> PASS, 77 tests
+
 git diff --check
-git status --short
+-> PASS
 ```
 
-若实际 test 文件命名不同，以 repo 已有 suite 为准；不要为了匹配 glob 复制测试。
+`test_model_manager_ui_contract.py` 新增 long-path contract，直接验证 concise summary 不含 path、full `display_label` 仍含 path，并以当前 UI 调用结构保护两个 summary tooltip 以及 combo/log/table 的完整 presentation。
 
-完成后一个 commit，建议：
+本 Step 未要求 packaged App / real microphone E2E；这些在 1G 统一收口。
+
+### 4.4 Repo Map impact review
+
+Codex 最终报告写为 `Repo Map impact: NONE`，但人工 review 发现 **UPDATE REQUIRED**：原 `docs/repo_map.md` 明确记录“`ModelInfo.display_label` feeds current-model summaries”，而 1A 实现已经将 summary consumer 改为 `current_summary_label`，因此 map 的 interface / consumer relationship 已发生可观察变化。
+
+Repo Map 已受控同步：
 
 ```text
-fix: improve current model readability
+219405494f8c4de719336b9ff6c5e9f94d3445eb
+docs: sync repository map after step 1a
 ```
+
+更新内容只反映新的 presentation ownership / test coverage / 1A impact boundary；没有把该具体实现升级成新的 static 产品合同。
 
 ---
 
 ## 5. Step 1B - Model selection transient confirmation
 
-状态：PENDING。
+状态：**ACTIVE**。
 
 ### 5.1 已知问题与代码锚点
 
 当前 successful selection 已经有 persistence / label refresh / INFO log，但没有 transient user-facing confirmation。
 
-需要避免 refresh / initial scan 触发假 success；因此应该围绕真实 user selection event 设计，而不是任何 label refresh 都触发。
+当前 selection / restore 来源已经在第 2.2 节展开。实施必须避免 refresh / initial scan / startup restore 触发假 success；因此应该围绕真实 successful selection 语义设计，而不是任何 label refresh 都触发。
 
 ### 5.2 目标
 
@@ -402,6 +444,7 @@ failed / unavailable selection 不显示 success
 [ ] startup/refresh 不产生伪 success
 [ ] selected model persistence 不变
 [ ] Start 使用的仍是同一 selected model
+[ ] Step 1A 的 concise current-summary / full-path accessibility 不回归
 ```
 
 最低测试应覆盖 success / unavailable / refresh-no-toast / auto-clear contract；具体 Qt test 方式以现有 test 架构为准。
@@ -742,18 +785,19 @@ ASR chunk/backend 重构
 
 ## 12. 当前 ACTIVE / 下一步执行
 
-当前只执行 **Step 1A - Current-model panel readability**。
+当前只执行 **Step 1B - Model selection transient confirmation**。
 
 开始前必读：
 
 ```text
 docs/product_polish_static.md
 docs/product_polish_runtime.md
+docs/repo_map.md
 docs/deployment_static.md
 README.md
 ```
 
-实现时直接使用第 2 节已经确认的代码事实，不需要把已经明确的实现事实重新作为未知问题。
+实现时直接使用第 2.2 节已经确认的 selection / restore 路径与 Repo Map 的 Model Manager/UI ownership，不需要把这些事实重新作为未知问题。
 
 Codex 开始前在**当前已同步的项目 clone 根目录**执行：
 
@@ -780,20 +824,21 @@ HEAD == origin/main
 git pull --ff-only origin main
 ```
 
-Step 1A 的实施范围、验收和最低测试完整定义在第 4 节；不要为了“下一步提示”另行压缩成更弱的目标。
+Step 1B 的实施范围、验收和最低测试完整定义在第 5 节；prompt 应补充 Repo Map impact / test ownership，但不要替 Codex 规定非合同性的 widget/function 实现。
 
-Step 1A 完成后：
+Step 1B 完成后：
 
 ```text
 相关 tests PASS
-必要 UI contract test 已补
+必要 selection-confirmation contract test 已补
 一个 commit
 push main
 最终 worktree clean
 Codex 不修改 product_polish_runtime.md
+Codex 报告 Repo Map impact assessment
 ```
 
-然后由人工 / ChatGPT 审核 GitHub 实际 diff。审核 PASS 后再把 1A 标记为 PASS，并激活本文件第 5 节已经完整定义的 1B；1B-1F 的已知事实、方向与验收标准保留在本文件，不因尚未 ACTIVE 而删减。
+然后由人工 / ChatGPT 审核 GitHub 实际 diff，执行 Repo Map impact check。审核 PASS 后再把 1B 标记为 PASS，并激活本文件第 6 节已经完整定义的 1C；1C-1F 的已知事实、方向与验收标准保留在本文件，不因尚未 ACTIVE 而删减。
 
 ---
 
@@ -804,17 +849,18 @@ Product / UX Step 1：
 ```text
 1. docs/product_polish_static.md
 2. docs/product_polish_runtime.md
-3. docs/deployment_static.md
-4. docs/deployment_runtime.md
-5. README.md
-6. ui_app.py
-7. model_manager.py
-8. settings.py
-9. resource_paths.py
-10. transcription_controller.py（1D 重点）
-11. transcript_store.py（合同参考，默认避免修改）
-12. packaging/ClassroomTranscriber.spec（1F 重点）
-13. 相关 testCodes/
+3. docs/repo_map.md
+4. docs/deployment_static.md
+5. docs/deployment_runtime.md
+6. README.md
+7. ui_app.py
+8. model_manager.py
+9. settings.py
+10. resource_paths.py
+11. transcription_controller.py（1D 重点）
+12. transcript_store.py（合同参考，默认避免修改）
+13. packaging/ClassroomTranscriber.spec（1F 重点）
+14. 相关 testCodes/
 ```
 
 Release / Deployment 历史继续由 `docs/deployment_runtime.md` 保存；不要把 Product / UX Step 1 的 ACTIVE 状态写回 LLM runtime。
