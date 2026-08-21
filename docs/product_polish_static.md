@@ -188,6 +188,20 @@ LLM sidecar integration
 ASR backend replacement
 ```
 
+### 5.1 Codex prompt / 实现分工原则
+
+Product / UX polish 的 Codex prompt 默认遵循：
+
+```text
+static + runtime = 当前方向、边界、已知事实、验收的最权威上下文
+ChatGPT / 人工负责方向、scope、不可破坏合同与验收标准
+Codex 负责读取当前代码上下文并选择最小正确实现
+```
+
+因此 prompt 不应重复大篇幅 background，也不应在没有合同必要性的情况下指定具体 class / function / widget 或实现细节。只有当某个代码细节本身已经是冻结合同或明确风险边界时，才在 prompt 中写死。
+
+Apple M4 Max 与 Apple M5 已完成当前项目实际运行验证；后续普通 Product / UX 开发把两台机器视为等价开发机。除非某个验收本身具有 hardware-specific 目的，否则 prompt 不强调当前在哪台机器，也不硬编码某台机器的开发路径；运行目录使用“当前已同步的项目 clone 根目录”这一实际上下文。
+
 ---
 
 ## 6. Output-root 语义边界
@@ -237,7 +251,7 @@ raw.txt / clean.txt / session.log / config.json
 repo worktree clean
 ```
 
-如果实际实现始终只触及 UI / settings 层且 packaged regression 正常，不默认要求重新跑 M4 Max 35 分钟课堂压力测试；若任何 Step 触碰 Runtime / ASR 边界，则必须升级验收并由人工决定是否继续。
+最终 packaged regression 可在任一当前已验证的 Apple Silicon 开发机完成。若实际实现始终只触及 UI / settings 层且 packaged regression 正常，不默认要求重新跑此前约 35 分钟课堂压力测试；若任何 Step 触碰 Runtime / ASR 边界，则必须升级验收并由人工决定是否继续。
 
 ---
 
@@ -246,7 +260,6 @@ repo worktree clean
 以下内容不因为本工作线启动而自动进入范围：
 
 ```text
-M4 Max 再重复一次 fresh Model Manager download 的纯验收动作
 M4 长课堂偶发单次 inference latency spike 的优化
 Developer ID signing
 notarization
@@ -260,7 +273,9 @@ persistent whisper backend
 ASR chunk / backend 重构
 ```
 
-前两项继续作为 non-blocking observation；只有出现可重复失败证据时才另行立项。
+此前记录的“M4 Max 再重复一次 fresh Model Manager download”已经在 0.2.0 Release App 上通过“自选模型目录 -> 下载 base.en -> 实际转录成功”完成，不再是 open observation，也不进入 Product / UX scope。
+
+剩余的偶发 latency spike 继续作为 non-blocking observation；只有出现可重复失败证据时才另行立项。
 
 ---
 
