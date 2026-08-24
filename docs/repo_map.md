@@ -6,8 +6,8 @@
 | --- | --- |
 | Repository | `smter6626/live_subtitle_generator` (Classroom Live Transcriber) |
 | Branch | `main` |
-| Structural baseline | Original full scan at `4d2059d273d0ba94373b1969b8236ef462b6acae`; affected ownership/flows updated through Product Polish Step 1F |
-| Updated | 2026-08-21 |
+| Structural baseline | Original full scan at `4d2059d27308e0a5c67e50daf887f8706412321b`; affected architecture ownership/flows updated through Product Polish Step 1F; documentation ownership synced through the 1.0.0 README refresh. |
+| Updated | 2026-08-24 |
 | Scan scope | 65 Git-tracked files at the original map baseline; later structural syncs update affected ownership/flows without re-running a full-file recount |
 | Document role | A derived architecture and change-navigation aid, not a product contract or API reference |
 
