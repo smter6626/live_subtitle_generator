@@ -53,7 +53,7 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | Reproducible source runtime and App packaging | `scripts/`, `packaging/runtime_manifest.json`, `packaging/icons/`, PyInstaller specs |
 | Release artifact creation and validation | `scripts/build_release_zip.py` |
 | Contract and regression coverage | `testCodes/` |
-| Governance, current state, user/build documentation | `docs/`, `README.md`, `PACKAGING.md` |
+| Governance, current state, user/build documentation | `README.md`, `README.zh-CN.md`, `PACKAGING.md`, `docs/` |
 
 ## File and module map
 
@@ -130,9 +130,12 @@ Tests are a mix of `unittest` contract suites and directly executable regression
 
 | Path / group | Current role in this repository map |
 | --- | --- |
+| `docs/` | Stable contracts, runtime/acceptance history, architecture/change-navigation, and governance documentation; specific document roles are listed below. |
 | `docs/product_polish_static.md`, `docs/product_polish_runtime.md` | Current Product/UX stable contract and execution state. This Repo Map reflects source through the Step 1B implementation commit; ACTIVE-step state remains owned by runtime. |
 | `docs/deployment_static.md`, `docs/deployment_runtime.md` | Deployment/release stable contract and recorded execution evidence; Deployment currently has no ACTIVE step. |
-| `README.md`, `PACKAGING.md` | User/developer navigation and packaging explanation. Treat current code and manifests as implementation truth where their wording differs. |
+| `README.md` | Primary English user-facing GitHub landing page and usage guide. |
+| `README.zh-CN.md` | Complete Simplified Chinese user-facing equivalent of `README.md`. |
+| `PACKAGING.md` | Developer packaging, reproducible build, Runtime verification, and Release ZIP documentation. |
 | `docs/工程细节.md` | Detailed explanatory engineering narrative; useful orientation, but secondary to current source/manifests/static/runtime. |
 | `docs/LLM_POSTPROCESSING_DESIGN.md`, `docs/LLMsteps.md`, `docs/goalForNextLevel.md`, `docs/user_understand.md` | Design/backlog material for an LLM sidecar and later directions. It does not describe a tracked LLM implementation on current `main`. |
 | `docs/Yeming_Dai_Audio_Transcription_Portfolio.md` | Portfolio-oriented description; it includes an externally referenced local image and is not an application asset or build input. |
