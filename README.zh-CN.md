@@ -20,7 +20,7 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 - 模型下载期间显示持续可见的 busy/progress 反馈
 - 可配置 Output Location
 - 中文和 English 两种界面语言
-- 独立的 Original Language 设置，支持英语、中文和中英混合音频
+- 独立的 Original Language 设置，支持英语、中文、日语、法语、西班牙语、德语、韩语和自动检测音频
 - Beam 范围为 3–8，默认值为 5
 - 持久保存模型、Beam、界面语言、模型位置和输出位置设置
 - 按时间戳保存完整 Session evidence 文件
@@ -57,7 +57,7 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 6. 点击**管理模型（Manage Models）**打开 Model Manager。
 7. 使用**下载模型（Download Model）**或**导入已有模型（Import Existing Model）**。下载后等待完整性验证结束并显示 `available`；如有需要，再选择该模型。
 8. 选择**界面语言（Interface Language）**：`中文` 或 `English`。
-9. 选择**音频原始语言（Audio / Original Language）**：英语、中文或中英混合。
+9. 选择**音频原始语言（Audio / Original Language）**：英语、中文、日语、法语、西班牙语、德语、韩语或自动检测。
 10. 一般情况下保持 **Beam** 默认值 `5` 即可。
 11. 如有需要，使用**选择输出位置（Choose Output Location）**设置未来 Session 的保存位置。
 12. 点击**开始录音（Start Recording）**。第一个音频 chunk 处理完成后，Clean Transcript 会开始更新。
@@ -101,11 +101,22 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 - **界面语言（Interface Language）**只改变 App 的按钮、标签和提示显示为中文或 English。
 - **音频原始语言（Audio / Original Language）**告诉 Whisper 麦克风音频主要使用什么语言。
 
-Original Language 的实际选项为：
+界面语言的两个选项只是 App 的 UI locale；它们不会限制可选的音频原始语言。
 
-- `English` → Whisper language `en`
-- `Chinese` → Whisper language `zh`
-- `Mixed Chinese/English` → 自动选择语言
+Original Language 的八个规范选择及其 Whisper code 为：
+
+- `English`（中文界面显示为“英语”）→ `en`
+- `Chinese`（中文界面显示为“中文”）→ `zh`
+- `Japanese`（中文界面显示为“日语”）→ `ja`
+- `French`（中文界面显示为“法语”）→ `fr`
+- `Spanish`（中文界面显示为“西班牙语”）→ `es`
+- `German`（中文界面显示为“德语”）→ `de`
+- `Korean`（中文界面显示为“韩语”）→ `ko`
+- `Auto Detect`（中文界面显示为“自动检测”）→ `auto`（自动检测语言）
+
+`Auto Detect` 是自动语言选择的规范名称。已有保存的 `Mixed Chinese/English`、`中英混合`、`mixed` 或 `auto` 仍然兼容，并会归一化为 `Auto Detect`。
+
+英语专用的 `.en` 模型（例如 `medium.en`、`small.en`、`base.en`）只接受 `English`（`en`）。其他所有列出的音频原始语言选项（包括 `Auto Detect`）都需要多语言模型；不兼容的 `.en` 组合会被明确拒绝，不会回退为英语。
 
 切换 Interface Language 不会改变 ASR Original Language、模型、Beam 或转写内容。
 
@@ -186,7 +197,7 @@ Start 创建 Session 后，点击**打开输出目录（Open Output Folder）**�
 - 当前 Release 使用 ad-hoc signing，未进行 Developer ID notarization，因此 Gatekeeper 首次启动时可能要求“仍要打开”。
 - 当前 inference 按重叠音频 chunk 调用 `whisper.cpp` CLI。转写属于近实时，不是零延迟，也不提供固定延迟保证。
 - Release 1.0.0 没有 LLM summary、云端翻译 sidecar、语义纠错或结构化课堂笔记。
-- 中英混合模式使用自动语言选择，效果取决于模型和音频。
+- 自动检测使用自动语言识别，效果取决于模型和音频。
 - Clean Transcript 只执行保守去重和有限的高置信过滤，不是语义改写。
 
 ## 开发者指南

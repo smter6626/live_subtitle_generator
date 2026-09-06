@@ -20,7 +20,7 @@ The current transcription path does not depend on a cloud LLM. Release 1.0.0 doe
 - Visible busy/progress feedback while a model is downloading
 - Configurable output location
 - Chinese and English interface languages
-- Separate Original Language selection for English, Chinese, or mixed Chinese/English audio
+- Separate Original Language selection for English, Chinese, Japanese, French, Spanish, German, Korean, or Auto Detect audio
 - Beam control from 3 to 8, with a default of 5
 - Persistent model, Beam, interface language, model location, and output settings
 - Timestamped session evidence files
@@ -57,7 +57,7 @@ No Terminal commands are required.
 6. Click **Manage Models** to open Model Manager.
 7. Use **Download Model** or **Import Existing Model**. Wait for a downloaded model to finish verification and show `available`, then select it if necessary.
 8. Choose **Interface Language**: `中文` or `English`.
-9. Choose **Audio / Original Language**: `English`, `Chinese`, or `Mixed Chinese/English`.
+9. Choose **Audio / Original Language**: `English`, `Chinese`, `Japanese`, `French`, `Spanish`, `German`, `Korean`, or `Auto Detect`.
 10. Leave **Beam Size** at its default of `5` unless you have a reason to change it.
 11. If desired, use **Choose Output Location** to select where future sessions will be stored.
 12. Click **Start Recording**. The Clean Transcript view will update after the first audio chunk has been processed.
@@ -101,11 +101,28 @@ These settings are independent:
 - **Interface Language** changes the app's visible controls and messages between Chinese and English.
 - **Audio / Original Language** tells Whisper what language is mainly present in the microphone audio.
 
+The two Interface Language choices are the application's UI locales; they do not limit
+the available Audio / Original Language choices.
+
 The Original Language choices are:
 
 - `English` → Whisper language `en`
 - `Chinese` → Whisper language `zh`
-- `Mixed Chinese/English` → automatic language selection
+- `Japanese` → Whisper language `ja`
+- `French` → Whisper language `fr`
+- `Spanish` → Whisper language `es`
+- `German` → Whisper language `de`
+- `Korean` → Whisper language `ko`
+- `Auto Detect` → Whisper language `auto` (automatic language detection)
+
+`Auto Detect` is the canonical automatic-language choice. Existing saved selections
+using `Mixed Chinese/English`, `中英混合`, `mixed`, or `auto` remain compatible and
+normalize to `Auto Detect`.
+
+English-only `.en` models, such as `medium.en`, `small.en`, and `base.en`, accept
+only `English` (`en`). Select a multilingual model for every other listed Original
+Language choice, including `Auto Detect`; incompatible `.en` combinations are rejected
+instead of falling back to English.
 
 Changing Interface Language does not change the ASR Original Language, model, Beam, or transcript contents.
 
@@ -186,7 +203,7 @@ After Start creates a session, click **Open Output Folder**. The main window als
 - The release is ad-hoc signed and is not Developer ID notarized, so Gatekeeper may require **Open Anyway** on first launch.
 - Inference currently invokes the `whisper.cpp` CLI in overlapping audio chunks. Transcription is near-real-time, not zero-latency or latency-guaranteed.
 - Release 1.0.0 has no LLM summary, cloud translation sidecar, semantic correction, or structured classroom notes.
-- Mixed Chinese/English uses automatic language selection, so results depend on the model and audio.
+- Auto Detect uses automatic language detection, so results depend on the model and audio.
 - Clean Transcript applies conservative deduplication and limited high-confidence filtering; it is not a semantic rewrite.
 
 ## For Developers
