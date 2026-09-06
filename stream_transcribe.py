@@ -74,7 +74,11 @@ FUZZY_DEBUG_NEAR_THRESHOLD = 0.75
 # If fuzzy overlap still misses after contraction expansion, try:
 # FUZZY_SCORE_THRESHOLD = 0.85 and FUZZY_BIGRAM_THRESHOLD = 0.45
 
-TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['`][A-Za-z0-9]+)*")
+# Keep ASCII words intact so contraction handling and existing English overlap
+# behavior stay stable.  The Unicode-letter alternative deliberately emits one
+# character per token: Japanese, Chinese, and Korean transcripts often have no
+# spaces, and a whole sentence must not become one non-overlappable token.
+TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['`][A-Za-z0-9]+)*|[^\W\d_]", re.UNICODE)
 TIMESTAMP_TAG_RE = re.compile(r"\[\d+(?:\.\d+)?s\s*->\s*\d+(?:\.\d+)?s\]")
 WHISPER_CPP_SEGMENT_RE = re.compile(
     r"\[(?P<start>\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d{1,3})?)\s*-->\s*"
