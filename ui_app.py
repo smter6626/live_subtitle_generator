@@ -50,7 +50,7 @@ from settings import (
     DEFAULT_UI_LANGUAGE,
     MAX_BEAM_SIZE,
     MIN_BEAM_SIZE,
-    ORIGINAL_LANGUAGE_OPTIONS,
+    ORIGINAL_LANGUAGE_CHOICES,
     UI_LANGUAGE_LABELS,
     UI_LANGUAGE_OPTIONS,
     UI_LANGUAGE_ZH,
@@ -85,7 +85,12 @@ TEXT = {
         "original_language": "音频原始语言",
         "original_language_english": "英语",
         "original_language_chinese": "中文",
-        "original_language_mixed": "中英混合",
+        "original_language_japanese": "日语",
+        "original_language_french": "法语",
+        "original_language_spanish": "西班牙语",
+        "original_language_german": "德语",
+        "original_language_korean": "韩语",
+        "original_language_auto_detect": "自动检测",
         "runtime": "运行时长",
         "queue": "队列",
         "output_folder": "输出目录",
@@ -167,7 +172,12 @@ TEXT = {
         "original_language": "Audio / Original Language",
         "original_language_english": "English",
         "original_language_chinese": "Chinese",
-        "original_language_mixed": "Mixed Chinese/English",
+        "original_language_japanese": "Japanese",
+        "original_language_french": "French",
+        "original_language_spanish": "Spanish",
+        "original_language_german": "German",
+        "original_language_korean": "Korean",
+        "original_language_auto_detect": "Auto Detect",
         "runtime": "Runtime",
         "queue": "Queue",
         "output_folder": "Output folder",
@@ -266,7 +276,12 @@ def tr(key):
 ORIGINAL_LANGUAGE_TEXT_KEYS = {
     "English": "original_language_english",
     "Chinese": "original_language_chinese",
-    "Mixed Chinese/English": "original_language_mixed",
+    "Japanese": "original_language_japanese",
+    "French": "original_language_french",
+    "Spanish": "original_language_spanish",
+    "German": "original_language_german",
+    "Korean": "original_language_korean",
+    "Auto Detect": "original_language_auto_detect",
 }
 
 
@@ -884,7 +899,7 @@ class MainWindow(QMainWindow):
         self.beam_combo.setCurrentText(str(default_beam))
 
         self.language_combo = QComboBox()
-        for label in ORIGINAL_LANGUAGE_OPTIONS:
+        for label in ORIGINAL_LANGUAGE_CHOICES:
             self.language_combo.addItem(display_original_language(label), label)
         self.language_combo.setCurrentIndex(
             self.language_combo.findData(DEFAULT_ORIGINAL_LANGUAGE_LABEL)
