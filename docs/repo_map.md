@@ -133,6 +133,7 @@ Tests are a mix of `unittest` contract suites and directly executable regression
 | `docs/` | Stable contracts, runtime/acceptance history, architecture/change-navigation, and governance documentation; specific document roles are listed below. |
 | `docs/product_polish_static.md`, `docs/product_polish_runtime.md` | Current Product/UX stable contract and execution state. This Repo Map reflects source through the Step 1B implementation commit; ACTIVE-step state remains owned by runtime. |
 | `docs/deployment_static.md`, `docs/deployment_runtime.md` | Deployment/release stable contract and recorded execution evidence; Deployment currently has no ACTIVE step. |
+| `docs/streaming_backend_upgrade/README.md` and linked archive | Branch-scoped governance and investigation material imported from `codex/streaming-backend-upgrade`; its Runtime `ACTIVE` state does not apply to `main` and does not record a streaming-backend or `multiLanguage_v1` implementation on `main`. |
 | `README.md` | Primary English user-facing GitHub landing page and usage guide. |
 | `README.zh-CN.md` | Complete Simplified Chinese user-facing equivalent of `README.md`. |
 | `PACKAGING.md` | Developer packaging, reproducible build, Runtime verification, and Release ZIP documentation. |

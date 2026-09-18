@@ -245,6 +245,7 @@ ASR 链路采集麦克风音频，生成重叠 chunk，重采样后调用本地 
 - [`docs/deployment_runtime.md`](docs/deployment_runtime.md)——deployment 和 Release 验收历史
 - [`docs/product_polish_static.md`](docs/product_polish_static.md)——稳定 Product/UX 边界
 - [`docs/product_polish_runtime.md`](docs/product_polish_runtime.md)——Product/UX 完成证据和 1.0.0 Release 记录
+- [`docs/streaming_backend_upgrade/README.md`](docs/streaming_backend_upgrade/README.md)——分支范围内的 streaming backend 治理和调研归档，并非 `main` 已实施的声明
 - [`docs/repo_map.md`](docs/repo_map.md)——仓库 ownership、architecture 和 change-navigation map
 
 Runtime/history 文档是工程证据；普通用户安装和使用 App 时不需要阅读。

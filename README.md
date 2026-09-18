@@ -245,6 +245,7 @@ The ASR path captures microphone audio, creates overlapping chunks, resamples th
 - [`docs/deployment_runtime.md`](docs/deployment_runtime.md) — deployment and release acceptance history
 - [`docs/product_polish_static.md`](docs/product_polish_static.md) — stable Product/UX boundaries
 - [`docs/product_polish_runtime.md`](docs/product_polish_runtime.md) — Product/UX completion evidence and 1.0.0 release record
+- [`docs/streaming_backend_upgrade/README.md`](docs/streaming_backend_upgrade/README.md) — branch-scoped streaming-backend governance and investigation archive, not a `main` implementation claim
 - [`docs/repo_map.md`](docs/repo_map.md) — repository ownership, architecture, and change-navigation map
 
 The runtime/history documents are engineering evidence. Ordinary users do not need to read them to install or use the app.
