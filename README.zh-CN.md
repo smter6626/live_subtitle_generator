@@ -56,13 +56,13 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 5. macOS 请求麦克风权限时允许访问；通常会在第一次开始录音时出现此请求。
 6. 点击**管理模型（Manage Models）**打开 Model Manager。
 7. 使用**下载模型（Download Model）**或**导入已有模型（Import Existing Model）**。下载后等待完整性验证结束并显示 `available`；如有需要，再选择该模型。
-8. 选择**界面语言（Interface Language）**：`中文` 或 `English`。
+8. 选择**语言/Language（Interface Language）**：`中文` 或 `English`。
 9. 选择**音频原始语言（Audio / Original Language）**：英语、中文、日语、法语、西班牙语、德语、韩语或自动检测。
 10. 一般情况下保持 **Beam** 默认值 `5` 即可。
 11. 如有需要，使用**选择输出位置（Choose Output Location）**设置未来 Session 的保存位置。
 12. 点击**开始录音（Start Recording）**。第一个音频 chunk 处理完成后，Clean Transcript 会开始更新。
 13. 课堂或录音结束时，点击**停止录音（Stop Recording）**。App 会停止继续采集，并完成已经提交处理的音频。
-14. 点击**打开输出目录（Open Output Folder）**查看本次 Session 文件。
+14. 点击**打开输出目录（Open Output Folder）**查看本次 Session 文件。**复制 Clean TXT 路径（Copy Clean TXT Path）**会复制当前 Session 的 `clean.txt` 绝对路径；**复制新增 Clean 文本（Copy New Clean Text）**首次复制当前显示的全部 Clean 行，之后只复制上次成功复制后新增的行，新 Session 会重置复制进度。
 
 ## Model Manager
 

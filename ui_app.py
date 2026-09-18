@@ -81,7 +81,7 @@ TEXT = {
         "model": "模型",
         "beam": "候选数（Beam）",
         "language": "音频语言",
-        "ui_language": "界面语言",
+        "ui_language": "语言/Language",
         "original_language": "音频原始语言",
         "original_language_english": "英语",
         "original_language_chinese": "中文",
@@ -143,6 +143,8 @@ TEXT = {
         "no_startable_model": "无法开始转写：未选择可用模型。",
         "open_output_folder": "打开输出目录",
         "export_clean_txt": "定位 Clean TXT",
+        "copy_clean_path": "复制 Clean TXT 路径",
+        "copy_clean_text": "复制新增 Clean 文本",
         "session": "本次 Session",
         "start_time": "开始时间",
         "raw_lines": "Raw 行数",
@@ -230,6 +232,8 @@ TEXT = {
         "no_startable_model": "Cannot start transcription: no available model is selected.",
         "open_output_folder": "Open Output Folder",
         "export_clean_txt": "Reveal Clean TXT",
+        "copy_clean_path": "Copy Clean TXT Path",
+        "copy_clean_text": "Copy New Clean Text",
         "session": "Session",
         "start_time": "Start time",
         "raw_lines": "Raw lines",
@@ -781,6 +785,9 @@ class MainWindow(QMainWindow):
 
         self.current_output_dir = None
         self.current_clean_path = None
+        self.active_session_id = None
+        self.active_session_generation = 0
+        self.clean_copy_row_cursor = 0
         self.session_started_at = None
         self.queue_size = 0
         self.raw_count = 0
@@ -917,6 +924,18 @@ class MainWindow(QMainWindow):
         self.export_clean_button.clicked.connect(lambda: self._safe_slot(self.reveal_clean_file))
         self.export_clean_button.setEnabled(False)
 
+        self.copy_clean_path_button = QPushButton(tr("copy_clean_path"))
+        self.copy_clean_path_button.clicked.connect(
+            lambda: self._safe_slot(self.copy_clean_path)
+        )
+        self.copy_clean_path_button.setEnabled(False)
+
+        self.copy_clean_text_button = QPushButton(tr("copy_clean_text"))
+        self.copy_clean_text_button.clicked.connect(
+            lambda: self._safe_slot(self.copy_clean_text)
+        )
+        self.copy_clean_text_button.setEnabled(False)
+
         controls_layout.addWidget(self.start_button)
         controls_layout.addWidget(self.stop_button)
         controls_layout.addSpacing(8)
@@ -979,6 +998,8 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(self.mark_button)
         controls_layout.addWidget(self.open_folder_button)
         controls_layout.addWidget(self.export_clean_button)
+        controls_layout.addWidget(self.copy_clean_path_button)
+        controls_layout.addWidget(self.copy_clean_text_button)
         layout.addWidget(self.controls_group)
 
         self.session_group = QGroupBox(tr("session"))
@@ -1238,6 +1259,8 @@ class MainWindow(QMainWindow):
         self.mark_button.setToolTip(tr("mark_tooltip"))
         self.open_folder_button.setText(tr("open_output_folder"))
         self.export_clean_button.setText(tr("export_clean_txt"))
+        self.copy_clean_path_button.setText(tr("copy_clean_path"))
+        self.copy_clean_text_button.setText(tr("copy_clean_text"))
         self.model_group.setTitle(tr("model_group"))
         self.current_model_title_label.setText(tr("current_model"))
         self.model_dropdown_title_label.setText(tr("model_dropdown"))
@@ -1448,6 +1471,8 @@ class MainWindow(QMainWindow):
         )
         self.open_folder_button.setEnabled(True)
         self.export_clean_button.setEnabled(True)
+        self.copy_clean_path_button.setEnabled(True)
+        self.copy_clean_text_button.setEnabled(True)
         crash_log(f"start recording completed: session_dir={session_dir}")
 
     def stop_recording(self):
@@ -1472,12 +1497,35 @@ class MainWindow(QMainWindow):
             self.controller.stop()
         except Exception as exc:
             log_exception("_stop_controller failed", exc)
-            self.bridge.event_received.emit({"type": "error", "message": str(exc)})
+            self.bridge.event_received.emit(
+                {
+                    "type": "error",
+                    "message": str(exc),
+                    "session_id": self.controller.active_session_id,
+                    "session_generation": self.controller.active_session_generation,
+                }
+            )
         finally:
             crash_log("_stop_controller completed")
 
     def handle_event(self, event):
         event_type = event.get("type")
+        session_id = event.get("session_id")
+        session_generation = event.get("session_generation")
+
+        if event_type == "session":
+            if (
+                not session_id
+                or not isinstance(session_generation, int)
+                or session_generation <= self.active_session_generation
+            ):
+                return
+        elif session_id is not None or session_generation is not None:
+            if (
+                session_id != self.active_session_id
+                or session_generation != self.active_session_generation
+            ):
+                return
 
         if event_type == "state":
             self._set_status(event.get("state", EngineState.IDLE.value))
@@ -1485,10 +1533,27 @@ class MainWindow(QMainWindow):
             if message:
                 self._append_log(message, level="ERROR")
         elif event_type == "session":
+            self.active_session_id = session_id
+            self.active_session_generation = session_generation
             self.current_output_dir = Path(event["session_dir"])
             self.current_clean_path = Path(event["clean_path"])
+            self.clean_table.table.setRowCount(0)
+            self.raw_table.table.setRowCount(0)
+            self.clean_table.live_mode = True
+            self.raw_table.live_mode = True
+            self.raw_count = event.get("raw_count", 0)
+            self.clean_count = event.get("clean_count", 0)
+            self.raw_lines_label.setText(str(self.raw_count))
+            self.clean_lines_label.setText(str(self.clean_count))
+            self.clean_copy_row_cursor = 0
+            self.queue_size = 0
+            self.queue_label.setText("0")
             self.output_folder_label.setText(str(self.current_output_dir))
             self.output_folder_label.setToolTip(str(self.current_output_dir))
+            self.open_folder_button.setEnabled(True)
+            self.export_clean_button.setEnabled(True)
+            self.copy_clean_path_button.setEnabled(True)
+            self.copy_clean_text_button.setEnabled(True)
             config = event.get("config", {})
             original_language_label = config.get("original_language_label")
             if original_language_label:
@@ -1600,6 +1665,30 @@ class MainWindow(QMainWindow):
             subprocess.run(["open", "-R", str(self.current_clean_path)], check=False)
         else:
             self.open_output_folder()
+
+    def copy_clean_path(self):
+        if (
+            not self.active_session_id
+            or not self.current_output_dir
+            or not self.current_output_dir.is_dir()
+            or not self.current_clean_path
+            or not self.current_clean_path.is_file()
+        ):
+            return
+        QApplication.clipboard().setText(str(self.current_clean_path.resolve()))
+
+    def copy_clean_text(self):
+        row_count = self.clean_table.table.rowCount()
+        if row_count <= self.clean_copy_row_cursor:
+            return
+
+        copied_rows = []
+        for row in range(self.clean_copy_row_cursor, row_count):
+            item = self.clean_table.table.item(row, 1)
+            copied_rows.append(item.text() if item is not None else "")
+
+        QApplication.clipboard().setText("\n".join(copied_rows))
+        self.clean_copy_row_cursor = row_count
 
     def closeEvent(self, event):
         crash_log(f"closeEvent entered: controller_state={self.controller.state.value}")

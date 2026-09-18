@@ -80,7 +80,7 @@ class UiLanguageContractTests(unittest.TestCase):
             for key, value in self.translations[language].items():
                 self.assertTrue(value.strip(), f"empty {language} translation for {key}")
 
-        self.assertEqual(self.translations["zh"]["ui_language"], "界面语言")
+        self.assertEqual(self.translations["zh"]["ui_language"], "语言/Language")
         self.assertEqual(
             self.translations["zh"]["original_language"],
             "音频原始语言",
@@ -220,6 +220,8 @@ class UiLanguageContractTests(unittest.TestCase):
             "stop_button",
             "ui_language_title_label",
             "original_language_title_label",
+            "copy_clean_path_button",
+            "copy_clean_text_button",
             "model_group",
             "output_group",
             "session_group",
@@ -277,6 +279,9 @@ class UiLanguageContractTests(unittest.TestCase):
 
             self.assertEqual(window.windowTitle(), "Whisper Classroom Transcriber")
             self.assertEqual(window.start_button.text(), "Start Recording")
+            self.assertEqual(window.ui_language_title_label.text(), "Interface Language")
+            self.assertEqual(window.copy_clean_path_button.text(), "Copy Clean TXT Path")
+            self.assertEqual(window.copy_clean_text_button.text(), "Copy New Clean Text")
             self.assertEqual(
                 window.original_language_title_label.text(),
                 "Audio / Original Language",
@@ -308,6 +313,9 @@ class UiLanguageContractTests(unittest.TestCase):
             app.processEvents()
             self.assertEqual(window.windowTitle(), "Whisper 课堂实时转写")
             self.assertEqual(window.start_button.text(), "开始录音")
+            self.assertEqual(window.ui_language_title_label.text(), "语言/Language")
+            self.assertEqual(window.copy_clean_path_button.text(), "复制 Clean TXT 路径")
+            self.assertEqual(window.copy_clean_text_button.text(), "复制新增 Clean 文本")
             self.assertEqual(window.original_language_title_label.text(), "音频原始语言")
             self.assertEqual(window.clean_table.table.horizontalHeaderItem(1).text(), "正文")
             self.assertEqual(

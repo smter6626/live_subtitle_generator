@@ -62,7 +62,7 @@ No Terminal commands are required.
 11. If desired, use **Choose Output Location** to select where future sessions will be stored.
 12. Click **Start Recording**. The Clean Transcript view will update after the first audio chunk has been processed.
 13. Click **Stop Recording** when the class or recording is finished. The app stops capture and finishes audio already submitted for processing.
-14. Click **Open Output Folder** to find the session files.
+14. Click **Open Output Folder** to find the session files. **Copy Clean TXT Path** copies the current session's absolute `clean.txt` path. **Copy New Clean Text** copies the displayed Clean rows once, then only rows added since the last successful copy; starting a new session resets that progress.
 
 ## Model Manager
 
