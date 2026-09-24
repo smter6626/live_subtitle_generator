@@ -20,6 +20,7 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 - 模型下载期间显示持续可见的 busy/progress 反馈
 - 可配置 Output Location
 - 中文和 English 两种界面语言
+- 主窗口高度受当前屏幕可用范围约束，左侧控制栏可独立纵向滚动
 - 独立的 Original Language 设置，支持英语、中文、日语、法语、西班牙语、德语、韩语和自动检测音频
 - Beam 范围为 3–8，默认值为 5
 - 持久保存模型、Beam、界面语言、模型位置和输出位置设置
@@ -63,6 +64,8 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 12. 点击**开始录音（Start Recording）**。第一个音频 chunk 处理完成后，Clean Transcript 会开始更新。
 13. 课堂或录音结束时，点击**停止录音（Stop Recording）**。App 会停止继续采集，并完成已经提交处理的音频。
 14. 点击**打开输出目录（Open Output Folder）**查看本次 Session 文件。**复制 Clean TXT 路径（Copy Clean TXT Path）**会复制当前 Session 的 `clean.txt` 绝对路径；**复制新增 Clean 文本（Copy New Clean Text）**首次复制当前显示的全部 Clean 行，之后只复制上次成功复制后新增的行，新 Session 会重置复制进度。
+
+如果屏幕高度不足以显示全部控件，可使用左侧控制/Session 栏的滚动条、鼠标滚轮、触控板或键盘焦点遍历继续访问。顶部状态栏保持在滚动区外；Clean Transcript、Raw Transcript 和 Logs 仍各自独立滚动。
 
 ## Model Manager
 

@@ -27,11 +27,13 @@ try:
         QHeaderView,
         QHBoxLayout,
         QLabel,
+        QLayout,
         QMainWindow,
         QMessageBox,
         QPlainTextEdit,
         QProgressBar,
         QPushButton,
+        QScrollArea,
         QTableWidget,
         QTableWidgetItem,
         QTabWidget,
@@ -748,10 +750,15 @@ class ModelManagerDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, available_geometry_provider=None):
         super().__init__()
         crash_log("MainWindow init entered")
         self.resize(1200, 800)
+        self._available_geometry_provider = (
+            available_geometry_provider or self._qt_available_geometry
+        )
+        self._bound_screen = None
+        self._bound_window_handle = None
         self._shutdown_started = False
         self._shutdown_complete = False
         self._stop_thread = None
@@ -799,6 +806,7 @@ class MainWindow(QMainWindow):
         self._populate_model_combo()
         self._update_model_labels()
         self._set_status(EngineState.IDLE.value)
+        self._apply_available_geometry_bounds()
 
         self.runtime_timer = QTimer(self)
         self.runtime_timer.timeout.connect(self._update_runtime_labels)
@@ -808,17 +816,103 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         root = QWidget()
         root_layout = QVBoxLayout(root)
+        root_layout.setSizeConstraint(QLayout.SetNoConstraint)
         root_layout.setContentsMargins(12, 12, 12, 12)
         root_layout.setSpacing(10)
-        root_layout.addWidget(self._build_status_strip())
+        self.status_strip = self._build_status_strip()
+        root_layout.addWidget(self.status_strip)
 
         body = QHBoxLayout()
         body.setSpacing(12)
-        body.addWidget(self._build_controls())
+        body.addWidget(self._build_controls_scroll_area())
         body.addWidget(self._build_tabs(), stretch=1)
         root_layout.addLayout(body, stretch=1)
 
         self.setCentralWidget(root)
+
+    def _build_controls_scroll_area(self):
+        self.controls_scroll_area = QScrollArea()
+        self.controls_scroll_area.setObjectName("controlsScrollArea")
+        self.controls_scroll_area.setWidgetResizable(True)
+        self.controls_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarAlwaysOff
+        )
+        self.controls_scroll_area.setFrameShape(QFrame.NoFrame)
+        self.controls_scroll_area.setFixedWidth(310)
+        self.controls_panel = self._build_controls()
+        self.controls_scroll_area.setWidget(self.controls_panel)
+        return self.controls_scroll_area
+
+    def _qt_available_geometry(self):
+        screen = self._effective_screen()
+        return screen.availableGeometry() if screen is not None else None
+
+    def _effective_screen(self):
+        handle = self.windowHandle()
+        if handle is not None and handle.screen() is not None:
+            return handle.screen()
+        screen = self.screen()
+        if screen is not None:
+            return screen
+        return QApplication.primaryScreen()
+
+    def _apply_available_geometry_bounds(self):
+        available = self._available_geometry_provider()
+        if available is None or available.height() <= 0:
+            return
+
+        frame_overhead = max(
+            0,
+            self.frameGeometry().height() - self.geometry().height(),
+        )
+        client_height_limit = max(1, available.height() - frame_overhead)
+        self.setMinimumHeight(0)
+        self.setMaximumHeight(client_height_limit)
+        if self.height() > client_height_limit:
+            self.resize(self.width(), client_height_limit)
+
+    def _bind_screen_geometry(self, screen):
+        if screen is self._bound_screen:
+            return
+        if self._bound_screen is not None:
+            for signal in (
+                self._bound_screen.availableGeometryChanged,
+                self._bound_screen.geometryChanged,
+            ):
+                try:
+                    signal.disconnect(self._on_available_geometry_changed)
+                except (RuntimeError, TypeError):
+                    pass
+        self._bound_screen = screen
+        if screen is not None:
+            screen.availableGeometryChanged.connect(
+                self._on_available_geometry_changed
+            )
+            screen.geometryChanged.connect(self._on_available_geometry_changed)
+
+    def _on_effective_screen_changed(self, screen):
+        self._bind_screen_geometry(screen)
+        self._apply_available_geometry_bounds()
+
+    def _on_available_geometry_changed(self, *_args):
+        self._apply_available_geometry_bounds()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        handle = self.windowHandle()
+        if handle is not None and handle is not self._bound_window_handle:
+            if self._bound_window_handle is not None:
+                try:
+                    self._bound_window_handle.screenChanged.disconnect(
+                        self._on_effective_screen_changed
+                    )
+                except (RuntimeError, TypeError):
+                    pass
+            self._bound_window_handle = handle
+            handle.screenChanged.connect(self._on_effective_screen_changed)
+        self._bind_screen_geometry(self._effective_screen())
+        self._apply_available_geometry_bounds()
+        QTimer.singleShot(0, self._apply_available_geometry_bounds)
 
     def _build_status_strip(self):
         strip = QFrame()
@@ -873,7 +967,6 @@ class MainWindow(QMainWindow):
 
     def _build_controls(self):
         panel = QWidget()
-        panel.setFixedWidth(310)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)

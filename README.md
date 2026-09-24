@@ -20,6 +20,7 @@ The current transcription path does not depend on a cloud LLM. Release 1.0.0 doe
 - Visible busy/progress feedback while a model is downloading
 - Configurable output location
 - Chinese and English interface languages
+- Main-window height bounded to the current screen, with an independently scrollable controls column
 - Separate Original Language selection for English, Chinese, Japanese, French, Spanish, German, Korean, or Auto Detect audio
 - Beam control from 3 to 8, with a default of 5
 - Persistent model, Beam, interface language, model location, and output settings
@@ -63,6 +64,8 @@ No Terminal commands are required.
 12. Click **Start Recording**. The Clean Transcript view will update after the first audio chunk has been processed.
 13. Click **Stop Recording** when the class or recording is finished. The app stops capture and finishes audio already submitted for processing.
 14. Click **Open Output Folder** to find the session files. **Copy Clean TXT Path** copies the current session's absolute `clean.txt` path. **Copy New Clean Text** copies the displayed Clean rows once, then only rows added since the last successful copy; starting a new session resets that progress.
+
+If the screen is not tall enough to show every control, scroll the left controls/session column with its scrollbar, mouse wheel, trackpad, or keyboard focus traversal. The status strip stays visible above it, and Clean Transcript, Raw Transcript, and Logs keep their own independent scrolling.
 
 ## Model Manager
 
