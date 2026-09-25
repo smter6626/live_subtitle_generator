@@ -22,6 +22,14 @@ class CleanRenameError(ValueError):
     """A rejected Clean filename or unsafe source/destination."""
 
 
+class CleanRenameVerificationError(CleanRenameError):
+    """The rename committed, but its destination could not be verified."""
+
+    def __init__(self, destination: Path):
+        super().__init__("rename_outcome_ambiguous")
+        self.destination = destination
+
+
 def validate_clean_stem(stem: str) -> str:
     if not isinstance(stem, str) or not stem.strip():
         raise CleanRenameError("name_empty")
@@ -200,6 +208,7 @@ class TranscriptStore:
                     if (opened_stat.st_dev, opened_stat.st_ino) != self._session_identity:
                         raise CleanRenameError("source_unsafe")
                     _rename_noreplace(source, destination, dir_fd)
+                    self.clean_path = destination
                 except BaseException:
                     try:
                         os.close(dir_fd)
@@ -217,13 +226,24 @@ class TranscriptStore:
             try:
                 destination_stat = destination.lstat()
             except OSError as exc:
-                raise CleanRenameError("rename_outcome_ambiguous") from exc
-            if not stat.S_ISREG(destination_stat.st_mode) or (
-                destination_stat.st_dev, destination_stat.st_ino
-            ) != self._clean_identity:
-                raise CleanRenameError("rename_outcome_ambiguous")
-            self.clean_path = destination
-            return destination
+                verification_error = exc
+            else:
+                if stat.S_ISREG(destination_stat.st_mode) and (
+                    destination_stat.st_dev, destination_stat.st_ino
+                ) == self._clean_identity:
+                    return destination
+                verification_error = CleanRenameError("rename_outcome_ambiguous")
+            try:
+                source_stat = source.lstat()
+            except OSError:
+                pass
+            else:
+                if stat.S_ISREG(source_stat.st_mode) and (
+                    source_stat.st_dev, source_stat.st_ino
+                ) == self._clean_identity:
+                    self.clean_path = source
+                    raise CleanRenameError("rename_outcome_ambiguous") from verification_error
+            raise CleanRenameVerificationError(destination) from verification_error
 
     def log(self, message: str, level: str = "INFO"):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

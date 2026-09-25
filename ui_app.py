@@ -74,7 +74,7 @@ from model_manager import (
     validate_import_model,
 )
 from transcript_store import format_runtime, parse_transcript_line
-from transcript_store import CleanRenameError
+from transcript_store import CleanRenameError, CleanRenameVerificationError
 from transcription_controller import EngineState, TranscriptionController
 
 
@@ -158,6 +158,7 @@ TEXT = {
         "rename_title": "重命名 Clean TXT",
         "rename_prompt": "文件名",
         "rename_success": "Clean TXT 已重命名为：{name}",
+        "rename_verification_warning": "Clean TXT 已重命名为 {name}，但无法验证目标文件：{error}",
         "rename_error_title": "无法重命名 Clean TXT",
         "name_empty": "请输入文件名。",
         "name_invalid": "文件名不能是 . 或 ..，不能包含路径分隔符、控制字符或首尾空格。",
@@ -265,6 +266,7 @@ TEXT = {
         "rename_title": "Rename Clean TXT",
         "rename_prompt": "Filename",
         "rename_success": "Clean TXT renamed to: {name}",
+        "rename_verification_warning": "Clean TXT was renamed to {name}, but its destination could not be verified: {error}",
         "rename_error_title": "Cannot Rename Clean TXT",
         "name_empty": "Enter a filename.",
         "name_invalid": "Use a name without . or .., path separators, control characters, or surrounding spaces.",
@@ -1868,6 +1870,15 @@ class MainWindow(QMainWindow):
             stem = name_edit.text()
         try:
             path = self.controller.rename_clean(stem, session_id, generation)
+        except CleanRenameVerificationError as exc:
+            self.current_clean_path = exc.destination
+            QMessageBox.warning(
+                self, tr("rename_title"),
+                tr("rename_verification_warning").format(
+                    name=exc.destination.name, error=exc.__cause__
+                ),
+            )
+            return
         except (CleanRenameError, ValueError) as exc:
             key = str(exc)
             message = tr(key) if key in TEXT[current_language()] else tr("rename_io_error").format(error=exc)

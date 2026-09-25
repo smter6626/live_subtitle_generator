@@ -351,6 +351,35 @@ class WindowRenameTests(unittest.TestCase):
         self.store.append_clean(["after"])
         self.assertEqual(destination.read_bytes(), b"before\nafter\n")
 
+    def test_destination_stat_error_after_rename_keeps_store_and_ui_path_usable(self):
+        source = self.store.clean_path
+        destination = source.with_name("after_stat_error.txt")
+        inode = source.stat().st_ino
+        self.store.append_clean(["before"])
+        real_lstat = Path.lstat
+
+        def fail_verification(path, *args, **kwargs):
+            if path == destination and not source.exists():
+                raise PermissionError("injected destination stat error")
+            return real_lstat(path, *args, **kwargs)
+
+        with patch.object(Path, "lstat", autospec=True, side_effect=fail_verification):
+            self.window.rename_clean_file("after_stat_error")
+        self.assertFalse(source.exists())
+        self.assertEqual(self.store.clean_path, destination)
+        self.assertEqual(self.window.current_clean_path, destination)
+        self.assertEqual(destination.stat().st_ino, inode)
+        self.info_mock.assert_not_called()
+        self.warn_mock.assert_called_once()
+        self.assertIn("无法验证", self.warn_mock.call_args.args[2])
+        with patch.object(ui_app.subprocess, "run") as run:
+            self.window.reveal_clean_file()
+            run.assert_called_once_with(["open", "-R", str(destination)], check=False)
+        self.window.copy_clean_path()
+        self.assertEqual(self.app.clipboard().text(), str(destination.resolve()))
+        self.store.append_clean(["after"])
+        self.assertEqual(destination.read_bytes(), b"before\nafter\n")
+
 
 if __name__ == "__main__":
     unittest.main()
