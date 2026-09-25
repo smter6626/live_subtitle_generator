@@ -323,6 +323,126 @@ class StoreRenameTests(unittest.TestCase):
         self.assertFalse((store.session_dir / "write-failed.txt").exists())
         self.assertFalse(list(store.session_dir.glob(".clean-recovery-*.tmp")))
 
+    def test_active_recovery_rejects_session_path_replacement_before_publication(self):
+        store = self.store
+        store.append_clean(["before"])
+        outside = Path(self.tmp.name) / "outside.txt"
+        store.clean_path.rename(outside)
+        old_writer = store._clean_file
+        old_identity = store._clean_identity
+        moved_session = Path(self.tmp.name) / "moved-session"
+        replacement = Path(self.tmp.name) / "replacement-session"
+        real_noreplace = store_module._rename_noreplace
+
+        def replace_session_after_publish(src, dst, dir_fd):
+            real_noreplace(src, dst, dir_fd)
+            store.session_dir.rename(moved_session)
+            replacement.mkdir()
+            replacement.joinpath("recovered.txt").write_bytes(b"decoy\n")
+            replacement.rename(store.session_dir)
+
+        with patch.object(
+            store_module, "_rename_noreplace", side_effect=replace_session_after_publish
+        ):
+            with self.assertRaisesRegex(CleanRenameError, "source_unsafe"):
+                store.recover_clean("recovered")
+
+        self.assertIs(store._clean_file, old_writer)
+        self.assertFalse(old_writer.closed)
+        self.assertEqual(store._clean_identity, old_identity)
+        self.assertIsNone(store.clean_path)
+        self.assertEqual(
+            store.session_dir.joinpath("recovered.txt").read_bytes(), b"decoy\n"
+        )
+        self.assertFalse((moved_session / "recovered.txt").exists())
+        store.append_clean(["after"])
+        self.assertEqual(outside.read_bytes(), b"before\nafter\n")
+
+        saved_replacement = Path(self.tmp.name) / "saved-replacement"
+        store.session_dir.rename(saved_replacement)
+        moved_session.rename(store.session_dir)
+        recovered = store.recover_clean("recovered")
+        self.assertEqual(recovered.read_bytes(), b"before\nafter\n")
+        self.assertEqual((saved_replacement / "recovered.txt").read_bytes(), b"decoy\n")
+
+    def test_stopped_recovery_rejects_session_path_replacement_before_publication(self):
+        store = self.store
+        store.append_clean(["before stop"])
+        store.close()
+        store.clean_path.unlink()
+        old_writer = store._clean_file
+        old_identity = store._clean_identity
+        moved_session = Path(self.tmp.name) / "moved-stopped-session"
+        replacement = Path(self.tmp.name) / "replacement-stopped-session"
+        real_noreplace = store_module._rename_noreplace
+
+        def replace_session_after_publish(src, dst, dir_fd):
+            real_noreplace(src, dst, dir_fd)
+            store.session_dir.rename(moved_session)
+            replacement.mkdir()
+            replacement.joinpath("stopped.txt").write_bytes(b"stopped decoy\n")
+            replacement.rename(store.session_dir)
+
+        with patch.object(
+            store_module, "_rename_noreplace", side_effect=replace_session_after_publish
+        ):
+            with self.assertRaisesRegex(CleanRenameError, "source_unsafe"):
+                store.recover_clean("stopped")
+
+        self.assertIs(store._clean_file, old_writer)
+        self.assertTrue(old_writer.closed)
+        self.assertEqual(store._clean_identity, old_identity)
+        self.assertIsNone(store.clean_path)
+        self.assertEqual(
+            store.session_dir.joinpath("stopped.txt").read_bytes(), b"stopped decoy\n"
+        )
+        self.assertFalse((moved_session / "stopped.txt").exists())
+
+        saved_replacement = Path(self.tmp.name) / "saved-stopped-replacement"
+        store.session_dir.rename(saved_replacement)
+        moved_session.rename(store.session_dir)
+        recovered = store.recover_clean("stopped")
+        self.assertEqual(recovered.read_bytes(), b"before stop\n")
+        self.assertEqual((saved_replacement / "stopped.txt").read_bytes(), b"stopped decoy\n")
+
+    def test_recovery_rejects_destination_replacement_after_candidate_open(self):
+        store = self.store
+        store.append_clean(["before"])
+        outside = Path(self.tmp.name) / "outside.txt"
+        store.clean_path.rename(outside)
+        old_writer = store._clean_file
+        old_identity = store._clean_identity
+        destination = store.session_dir / "recovered.txt"
+        displaced = store.session_dir / "displaced-owned.txt"
+        saved_decoy = store.session_dir / "saved-decoy.txt"
+        real_fdopen = os.fdopen
+
+        def replace_destination_after_open(fd, *args, **kwargs):
+            candidate = real_fdopen(fd, *args, **kwargs)
+            destination.rename(displaced)
+            destination.write_bytes(b"decoy\n")
+            return candidate
+
+        with patch.object(
+            store_module.os, "fdopen", side_effect=replace_destination_after_open
+        ):
+            with self.assertRaisesRegex(CleanRenameError, "source_unsafe"):
+                store.recover_clean("recovered")
+
+        self.assertIs(store._clean_file, old_writer)
+        self.assertFalse(old_writer.closed)
+        self.assertEqual(store._clean_identity, old_identity)
+        self.assertIsNone(store.clean_path)
+        self.assertFalse(displaced.exists())
+        self.assertEqual(destination.read_bytes(), b"decoy\n")
+        store.append_clean(["after"])
+        self.assertEqual(outside.read_bytes(), b"before\nafter\n")
+
+        destination.rename(saved_decoy)
+        recovered = store.recover_clean("recovered")
+        self.assertEqual(recovered.read_bytes(), b"before\nafter\n")
+        self.assertEqual(saved_decoy.read_bytes(), b"decoy\n")
+
     def test_uncertain_scan_read_and_replaced_directory_never_offer_absence(self):
         store = self.store
         outside = Path(self.tmp.name) / "outside.txt"

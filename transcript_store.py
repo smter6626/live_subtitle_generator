@@ -234,6 +234,64 @@ class TranscriptStore:
         self._clean_snapshot = snapshot
         return snapshot
 
+    def _verify_recovery_binding(self, destination: Path, owned_identity: tuple):
+        """Rebind the public Session path and recovery name before publication."""
+        binding_fd = None
+        try:
+            try:
+                binding_fd = self._open_verified_session_dir()
+            except CleanRenameError as exc:
+                if str(exc) == "source_unverified":
+                    raise
+                raise CleanRenameError("source_unsafe") from exc
+            try:
+                destination_stat = os.stat(
+                    destination.name, dir_fd=binding_fd, follow_symlinks=False
+                )
+            except FileNotFoundError as exc:
+                raise CleanRenameError("source_unsafe") from exc
+            except OSError as exc:
+                raise CleanRenameError("source_unverified") from exc
+            if not stat.S_ISREG(destination_stat.st_mode) or (
+                destination_stat.st_dev, destination_stat.st_ino
+            ) != owned_identity:
+                raise CleanRenameError("source_unsafe")
+        finally:
+            if binding_fd is not None:
+                try:
+                    os.close(binding_fd)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _cleanup_owned_recovery(dir_fd: int, owned_identity: tuple):
+        """Remove at most the recovery inode, using only the verified directory fd."""
+        try:
+            with os.scandir(dir_fd) as entries:
+                for entry in entries:
+                    try:
+                        entry_stat = entry.stat(follow_symlinks=False)
+                    except OSError:
+                        continue
+                    if not stat.S_ISREG(entry_stat.st_mode) or (
+                        entry_stat.st_dev, entry_stat.st_ino
+                    ) != owned_identity:
+                        continue
+                    try:
+                        current_stat = os.stat(
+                            entry.name, dir_fd=dir_fd, follow_symlinks=False
+                        )
+                        if not stat.S_ISREG(current_stat.st_mode) or (
+                            current_stat.st_dev, current_stat.st_ino
+                        ) != owned_identity:
+                            continue
+                        os.unlink(entry.name, dir_fd=dir_fd)
+                    except OSError:
+                        pass
+                    return
+        except OSError:
+            pass
+
     def verified_clean_path(self, preferred: Path | None = None) -> Path:
         """Find a Session-local regular path for the open Clean writer's inode."""
         with self._clean_lock:
@@ -300,7 +358,6 @@ class TranscriptStore:
             new_fd = None
             new_file = None
             owned_identity = None
-            published = False
             try:
                 flags = (
                     os.O_RDWR
@@ -326,7 +383,6 @@ class TranscriptStore:
                     raise OSError(errno.EIO, "Clean recovery verification failed")
 
                 _rename_noreplace(temp_path, destination, dir_fd)
-                published = True
                 os.fsync(dir_fd)
 
                 if not self.closed:
@@ -350,6 +406,7 @@ class TranscriptStore:
                     )
                     new_fd = None
 
+                self._verify_recovery_binding(destination, owned_identity)
                 old_file = self._clean_file
                 if new_file is not None:
                     self._clean_file = new_file
@@ -383,18 +440,8 @@ class TranscriptStore:
                         os.close(temp_fd)
                     except OSError:
                         pass
-                cleanup_name = destination.name if published and self.clean_path != destination else temp_name
-                if owned_identity is not None:
-                    try:
-                        cleanup_stat = os.stat(
-                            cleanup_name, dir_fd=dir_fd, follow_symlinks=False
-                        )
-                        if (cleanup_stat.st_dev, cleanup_stat.st_ino) == owned_identity:
-                            os.unlink(cleanup_name, dir_fd=dir_fd)
-                    except FileNotFoundError:
-                        pass
-                    except OSError:
-                        pass
+                if owned_identity is not None and self.clean_path != destination:
+                    self._cleanup_owned_recovery(dir_fd, owned_identity)
                 try:
                     os.close(dir_fd)
                 except OSError:
