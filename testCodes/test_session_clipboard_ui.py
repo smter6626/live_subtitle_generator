@@ -161,35 +161,43 @@ class MainWindowClipboardTests(unittest.TestCase):
             patcher.start()
         self.window = ui_module.MainWindow()
         self.clipboard = self.app.clipboard()
+        self.fixture_stores = {}
 
     def tearDown(self):
         self.window.safe_shutdown()
         self.window.close()
+        for store in self.fixture_stores.values():
+            store.close()
         for patcher in reversed(self.patchers):
             patcher.stop()
         ui_module.set_current_language(UI_LANGUAGE_ZH)
         self.tmp.cleanup()
 
     def make_session(self, name, generation, clean_bytes=b""):
-        session_dir = self.root / name
-        session_dir.mkdir()
-        clean_path = session_dir / "clean.txt"
-        raw_path = session_dir / "raw.txt"
-        log_path = session_dir / "session.log"
-        clean_path.write_bytes(clean_bytes)
-        raw_path.write_bytes(b"raw file bytes\n")
-        log_path.write_bytes(b"log file bytes\n")
+        store = TranscriptStore(self.root, name)
+        self.fixture_stores[name] = store
+        store._clean_file.write(clean_bytes.decode("utf-8"))
+        store._clean_file.flush()
+        store._raw_file.write("raw file bytes\n")
+        store._raw_file.flush()
+        store._log_file.write("log file bytes\n")
+        store._log_file.flush()
         return {
             "type": "session",
             "session_id": f"owner-{generation}",
             "session_generation": generation,
-            "session_dir": str(session_dir),
-            "clean_path": str(clean_path),
-            "raw_path": str(raw_path),
+            "session_dir": str(store.session_dir),
+            "clean_path": str(store.clean_path),
+            "raw_path": str(store.raw_path),
             "raw_count": 0,
             "clean_count": 0,
             "config": {"original_language_label": "English", "model": "test-model"},
         }
+
+    def activate_store(self, event):
+        self.window.controller.store = self.fixture_stores[Path(event["session_dir"]).name]
+        self.window.controller.active_session_id = event["session_id"]
+        self.window.controller.active_session_generation = event["session_generation"]
 
     def emit_for_active(self, event_type, **payload):
         self.window.handle_event(
@@ -213,19 +221,21 @@ class MainWindowClipboardTests(unittest.TestCase):
             path.name: path.read_bytes() for path in Path(first["session_dir"]).iterdir()
         }
         self.window.handle_event(first)
+        self.activate_store(first)
         self.window.copy_clean_path()
-        self.assertEqual(self.clipboard.text(), str(Path(first["clean_path"]).resolve()))
+        self.assertEqual(self.clipboard.text(), str(Path(first["clean_path"]).absolute()))
         self.assertEqual(self.window.clean_copy_row_cursor, 0)
 
         self.emit_for_active("state", state=EngineState.IDLE.value, message="")
         self.clipboard.setText("after stop")
         self.window.copy_clean_path()
-        self.assertEqual(self.clipboard.text(), str(Path(first["clean_path"]).resolve()))
+        self.assertEqual(self.clipboard.text(), str(Path(first["clean_path"]).absolute()))
 
         second = self.make_session("second", 2)
         self.window.handle_event(second)
+        self.activate_store(second)
         self.window.copy_clean_path()
-        self.assertEqual(self.clipboard.text(), str(Path(second["clean_path"]).resolve()))
+        self.assertEqual(self.clipboard.text(), str(Path(second["clean_path"]).absolute()))
         self.assertEqual(
             {path.name: path.read_bytes() for path in Path(first["session_dir"]).iterdir()},
             first_snapshot,
@@ -263,6 +273,7 @@ class MainWindowClipboardTests(unittest.TestCase):
     def test_start_failure_before_session_creation_preserves_previous_ui(self):
         session = self.make_session("preserved", 1)
         self.window.handle_event(session)
+        self.activate_store(session)
         self.emit_for_active(
             "raw_lines", lines=["[0.00s -> 1.00s] old raw"], raw_count=1
         )
@@ -313,7 +324,7 @@ class MainWindowClipboardTests(unittest.TestCase):
         )
         self.clipboard.setText("replace me")
         self.window.copy_clean_path()
-        self.assertEqual(self.clipboard.text(), str(Path(session["clean_path"]).resolve()))
+        self.assertEqual(self.clipboard.text(), str(Path(session["clean_path"]).absolute()))
 
     def test_text_copy_uses_only_displayed_clean_text_and_is_incremental(self):
         session = self.make_session(
@@ -322,6 +333,7 @@ class MainWindowClipboardTests(unittest.TestCase):
             clean_bytes="[9.00s -> 10.00s] undisplayed file content\n".encode("utf-8"),
         )
         self.window.handle_event(session)
+        self.activate_store(session)
         self.emit_for_active(
             "raw_lines", lines=["[1.00s -> 2.00s] raw secret"], raw_count=1
         )
@@ -354,7 +366,7 @@ class MainWindowClipboardTests(unittest.TestCase):
 
         self.window.copy_clean_path()
         self.assertEqual(self.window.clean_copy_row_cursor, 3)
-        self.assertEqual(self.clipboard.text(), str(Path(session["clean_path"]).resolve()))
+        self.assertEqual(self.clipboard.text(), str(Path(session["clean_path"]).absolute()))
 
     def test_failed_clipboard_write_does_not_advance_text_cursor(self):
         session = self.make_session("write-failure", 1)

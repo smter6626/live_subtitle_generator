@@ -35,11 +35,23 @@ class TranscriptionController:
         with self._session_lock:
             if (
                 not self.store
+                or not session_id
                 or session_id != self.active_session_id
                 or session_generation != self.active_session_generation
             ):
                 raise ValueError("stale_session")
             return self.store.rename_clean(stem)
+
+    def verified_clean_path(self, session_id, session_generation):
+        with self._session_lock:
+            if (
+                not self.store
+                or not session_id
+                or session_id != self.active_session_id
+                or session_generation != self.active_session_generation
+            ):
+                raise ValueError("stale_session")
+            return self.store.verified_clean_path()
 
     def start(
         self,

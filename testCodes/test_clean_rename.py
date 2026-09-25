@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
 import transcript_store as store_module  # noqa: E402
 import ui_app  # noqa: E402
 from settings import UI_LANGUAGE_EN, UI_LANGUAGE_ZH  # noqa: E402
-from transcript_store import CleanRenameError, TranscriptStore  # noqa: E402
+from transcript_store import CleanRenameError, CleanRenameVerificationError, TranscriptStore  # noqa: E402
 from transcription_controller import EngineState, TranscriptionController  # noqa: E402
 
 
@@ -127,6 +127,110 @@ class StoreRenameTests(unittest.TestCase):
         self.assertTrue(source.exists())
         self.assertFalse((self.store.session_dir / "not_moved.txt").exists())
 
+    def test_committed_destination_replaced_with_decoy_recovers_writer(self):
+        store = self.store
+        store.append_clean(["before"])
+        source = store.clean_path
+        inode = os.fstat(store._clean_file.fileno()).st_ino
+        recovered = store.session_dir / "moved.txt"
+        destination = store.session_dir / "target.txt"
+        real_noreplace = store_module._rename_noreplace
+
+        def replace_after_commit(src, dst, dir_fd):
+            real_noreplace(src, dst, dir_fd)
+            self.assertEqual(store.clean_path, source)
+            dst.rename(recovered)
+            dst.write_bytes(b"decoy\n")
+
+        with patch.object(store_module, "_rename_noreplace", side_effect=replace_after_commit):
+            with self.assertRaises(CleanRenameVerificationError) as raised:
+                store.rename_clean("target")
+        self.assertEqual(raised.exception.verified_path, recovered)
+        self.assertEqual(store.clean_path, recovered)
+        self.assertFalse(source.exists())
+        self.assertEqual(recovered.stat().st_ino, inode)
+        store.append_clean(["after"])
+        self.assertEqual(recovered.read_bytes(), b"before\nafter\n")
+        self.assertEqual(destination.read_bytes(), b"decoy\n")
+        self.assertEqual(store.rename_clean("again").read_bytes(), b"before\nafter\n")
+
+    def test_committed_destination_missing_or_symlink_recovers_writer(self):
+        for symlink in (False, True):
+            with self.subTest(symlink=symlink):
+                destination = self.store.session_dir / "target.txt"
+                recovered = self.store.session_dir / "moved.txt"
+                real_noreplace = store_module._rename_noreplace
+
+                def move_after_commit(src, dst, dir_fd):
+                    real_noreplace(src, dst, dir_fd)
+                    dst.rename(recovered)
+                    if symlink:
+                        dst.symlink_to(recovered)
+
+                with patch.object(store_module, "_rename_noreplace", side_effect=move_after_commit):
+                    with self.assertRaises(CleanRenameVerificationError) as raised:
+                        self.store.rename_clean("target")
+                self.assertEqual(raised.exception.verified_path, recovered)
+                self.assertEqual(self.store.verified_clean_path(), recovered)
+                if symlink:
+                    self.assertTrue(destination.is_symlink())
+                    destination.unlink()
+                self.store.rename_clean("clean")
+
+    def test_verification_io_error_uses_independent_inode_scan(self):
+        destination = self.store.session_dir / "target.txt"
+        real_lstat = Path.lstat
+
+        def fail_destination(path, *args, **kwargs):
+            if path == destination and not self.store.session_dir.joinpath("clean.txt").exists():
+                raise PermissionError("injected lstat error")
+            return real_lstat(path, *args, **kwargs)
+
+        with patch.object(Path, "lstat", autospec=True, side_effect=fail_destination):
+            self.assertEqual(self.store.rename_clean("target"), destination)
+        self.assertEqual(self.store.verified_clean_path(), destination)
+
+    def test_persistent_verification_io_error_does_not_publish_destination(self):
+        source = self.store.clean_path
+        destination = self.store.session_dir / "target.txt"
+        real_lstat = Path.lstat
+
+        def fail_destination(path, *args, **kwargs):
+            if path == destination and not source.exists():
+                raise PermissionError("injected destination lstat error")
+            return real_lstat(path, *args, **kwargs)
+
+        with patch.object(Path, "lstat", autospec=True, side_effect=fail_destination):
+            with patch.object(store_module.os, "scandir", side_effect=PermissionError("injected scan error")):
+                with self.assertRaises(CleanRenameVerificationError) as raised:
+                    self.store.rename_clean("target")
+        self.assertIsNone(raised.exception.verified_path)
+        self.assertIsNone(self.store.clean_path)
+        self.assertEqual(self.store.verified_clean_path(), destination)
+
+    def test_writer_moved_outside_session_fails_closed(self):
+        source = self.store.clean_path
+        destination = self.store.session_dir / "target.txt"
+        outside = Path(self.tmp.name) / "outside.txt"
+        real_noreplace = store_module._rename_noreplace
+
+        def move_out_after_commit(src, dst, dir_fd):
+            real_noreplace(src, dst, dir_fd)
+            dst.rename(outside)
+            dst.write_bytes(b"decoy\n")
+
+        with patch.object(store_module, "_rename_noreplace", side_effect=move_out_after_commit):
+            with self.assertRaises(CleanRenameVerificationError) as raised:
+                self.store.rename_clean("target")
+        self.assertIsNone(raised.exception.verified_path)
+        self.assertIsNone(self.store.clean_path)
+        with self.assertRaises(CleanRenameError):
+            self.store.verified_clean_path()
+        self.store.append_clean(["after"])
+        self.assertEqual(outside.read_bytes(), b"after\n")
+        self.assertEqual(destination.read_bytes(), b"decoy\n")
+        self.assertFalse(source.exists())
+
     def test_background_close_and_rename_finish_without_deadlock(self):
         self.store.append_clean(["before"])
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -209,6 +313,9 @@ class ControllerRenameTests(unittest.TestCase):
             controller.active_session_generation = 2
             with self.assertRaisesRegex(ValueError, "stale_session"):
                 controller.rename_clean("stale", "one", 1)
+            with self.assertRaisesRegex(ValueError, "stale_session"):
+                controller.verified_clean_path("one", 1)
+            self.assertEqual(controller.verified_clean_path("two", 2), second.clean_path)
             self.assertEqual(controller.state, EngineState.IDLE)
             self.assertEqual(second.clean_path.name, "clean.txt")
             self.assertEqual(first.clean_path.read_text(), "old\n")
@@ -279,7 +386,7 @@ class WindowRenameTests(unittest.TestCase):
             window.reveal_clean_file()
             run.assert_called_once_with(["open", "-R", str(self.store.clean_path)], check=False)
         window.copy_clean_path()
-        self.assertEqual(self.app.clipboard().text(), str(self.store.clean_path.resolve()))
+        self.assertEqual(self.app.clipboard().text(), str(self.store.clean_path.absolute()))
         window.handle_event({"type": "session", "session_id": "stale", "session_generation": 1,
                              "session_dir": str(old.parent), "clean_path": str(old)})
         self.assertEqual(window.current_clean_path, self.store.clean_path)
@@ -340,7 +447,7 @@ class WindowRenameTests(unittest.TestCase):
 
         with patch.object(store_module.os, "close", side_effect=close_then_raise) as close_mock:
             self.window.rename_clean_file("after_cleanup_error")
-        close_mock.assert_called_once()
+        self.assertGreaterEqual(close_mock.call_count, 1)
         destination = self.store.clean_path
         self.assertFalse(source.exists())
         self.assertEqual(destination.name, "after_cleanup_error.txt")
@@ -369,16 +476,92 @@ class WindowRenameTests(unittest.TestCase):
         self.assertEqual(self.store.clean_path, destination)
         self.assertEqual(self.window.current_clean_path, destination)
         self.assertEqual(destination.stat().st_ino, inode)
-        self.info_mock.assert_not_called()
-        self.warn_mock.assert_called_once()
-        self.assertIn("无法验证", self.warn_mock.call_args.args[2])
+        self.info_mock.assert_called_once()
+        self.warn_mock.assert_not_called()
         with patch.object(ui_app.subprocess, "run") as run:
             self.window.reveal_clean_file()
             run.assert_called_once_with(["open", "-R", str(destination)], check=False)
         self.window.copy_clean_path()
-        self.assertEqual(self.app.clipboard().text(), str(destination.resolve()))
+        self.assertEqual(self.app.clipboard().text(), str(destination.absolute()))
         self.store.append_clean(["after"])
         self.assertEqual(destination.read_bytes(), b"before\nafter\n")
+
+    def test_replaced_destination_and_later_path_are_never_revealed_or_copied(self):
+        store = self.store
+        store.append_clean(["before"])
+        destination = store.session_dir / "target.txt"
+        recovered = store.session_dir / "recovered.txt"
+        later = store.session_dir / "later.txt"
+        inode = os.fstat(store._clean_file.fileno()).st_ino
+        real_noreplace = store_module._rename_noreplace
+
+        def replace_after_commit(src, dst, dir_fd):
+            real_noreplace(src, dst, dir_fd)
+            self.assertNotEqual(store.clean_path, dst)
+            dst.rename(recovered)
+            dst.write_bytes(b"decoy\n")
+
+        with patch.object(store_module, "_rename_noreplace", side_effect=replace_after_commit):
+            self.window.rename_clean_file("target")
+        self.info_mock.assert_not_called()
+        self.warn_mock.assert_called_once()
+        self.assertEqual(self.window.current_clean_path, recovered)
+        self.assertEqual(store.clean_path, recovered)
+        self.app.clipboard().setText("sentinel")
+        self.window.copy_clean_path()
+        self.assertEqual(self.app.clipboard().text(), str(recovered.absolute()))
+        with patch.object(ui_app.subprocess, "run") as run:
+            self.window.reveal_clean_file()
+            run.assert_called_once_with(["open", "-R", str(recovered)], check=False)
+
+        recovered.rename(later)
+        recovered.write_bytes(b"later decoy\n")
+        self.window.copy_clean_path()
+        self.assertEqual(self.app.clipboard().text(), str(later.absolute()))
+        self.assertEqual(self.window.current_clean_path, later)
+        with patch.object(ui_app.subprocess, "run") as run:
+            self.window.reveal_clean_file()
+            run.assert_called_once_with(["open", "-R", str(later)], check=False)
+        self.assertEqual(later.stat().st_ino, inode)
+        store.append_clean(["after"])
+        self.assertEqual(later.read_bytes(), b"before\nafter\n")
+        self.assertEqual(destination.read_bytes(), b"decoy\n")
+        self.assertEqual(recovered.read_bytes(), b"later decoy\n")
+
+        store.close()
+        self.window.rename_clean_file("stopped")
+        self.assertEqual(store.clean_path.name, "stopped.txt")
+        self.assertEqual(store.clean_path.read_bytes(), b"before\nafter\n")
+        self.window.handle_event({"type": "session", "session_id": "stale", "session_generation": 1,
+                                  "session_dir": str(store.session_dir), "clean_path": str(destination)})
+        self.assertEqual(self.window.current_clean_path, store.clean_path)
+
+    def test_unlocatable_writer_keeps_clipboard_and_finder_unchanged(self):
+        store = self.store
+        destination = store.session_dir / "target.txt"
+        outside = Path(self.tmp.name) / "outside.txt"
+        real_noreplace = store_module._rename_noreplace
+
+        def move_out_after_commit(src, dst, dir_fd):
+            real_noreplace(src, dst, dir_fd)
+            dst.rename(outside)
+            dst.write_bytes(b"decoy\n")
+
+        with patch.object(store_module, "_rename_noreplace", side_effect=move_out_after_commit):
+            self.window.rename_clean_file("target")
+        self.assertIsNone(store.clean_path)
+        self.assertIsNone(self.window.current_clean_path)
+        self.warn_mock.assert_called_once()
+        self.info_mock.assert_not_called()
+        self.app.clipboard().setText("sentinel")
+        self.window.copy_clean_path()
+        self.assertEqual(self.app.clipboard().text(), "sentinel")
+        with patch.object(ui_app.subprocess, "run") as run:
+            self.window.reveal_clean_file()
+            run.assert_not_called()
+        self.window.rename_clean_file("next")
+        self.assertFalse((store.session_dir / "next.txt").exists())
+        self.assertEqual(destination.read_bytes(), b"decoy\n")
 
 
 if __name__ == "__main__":

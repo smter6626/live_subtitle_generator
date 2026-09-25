@@ -158,13 +158,14 @@ TEXT = {
         "rename_title": "重命名 Clean TXT",
         "rename_prompt": "文件名",
         "rename_success": "Clean TXT 已重命名为：{name}",
-        "rename_verification_warning": "Clean TXT 已重命名为 {name}，但无法验证目标文件：{error}",
+        "rename_verification_warning": "无法验证 Clean TXT 重命名结果或当前文件路径：{error}",
         "rename_error_title": "无法重命名 Clean TXT",
         "name_empty": "请输入文件名。",
         "name_invalid": "文件名不能是 . 或 ..，不能包含路径分隔符、控制字符或首尾空格。",
         "name_suffix": "只输入文件名，不要输入 .txt 后缀。",
         "source_missing": "当前 Clean TXT 文件不存在。",
         "source_unsafe": "当前 Clean TXT 文件不是安全的普通文件。",
+        "source_unverified": "无法验证当前 Clean TXT 文件路径。",
         "destination_exists": "目标文件已存在。",
         "rename_unavailable": "此系统不支持安全的原子无覆盖重命名。",
         "stale_session": "Session 已变化，请重试。",
@@ -266,13 +267,14 @@ TEXT = {
         "rename_title": "Rename Clean TXT",
         "rename_prompt": "Filename",
         "rename_success": "Clean TXT renamed to: {name}",
-        "rename_verification_warning": "Clean TXT was renamed to {name}, but its destination could not be verified: {error}",
+        "rename_verification_warning": "Cannot verify the Clean TXT rename result or current file path: {error}",
         "rename_error_title": "Cannot Rename Clean TXT",
         "name_empty": "Enter a filename.",
         "name_invalid": "Use a name without . or .., path separators, control characters, or surrounding spaces.",
         "name_suffix": "Enter the filename only, without the .txt suffix.",
         "source_missing": "The current Clean TXT file is missing.",
         "source_unsafe": "The current Clean TXT file is not a safe regular file.",
+        "source_unverified": "The current Clean TXT file path cannot be verified.",
         "destination_exists": "The destination file already exists.",
         "rename_unavailable": "This system does not support atomic no-replace rename.",
         "stale_session": "The Session changed. Try again.",
@@ -1816,21 +1818,26 @@ class MainWindow(QMainWindow):
             subprocess.run(["open", str(self.current_output_dir)], check=False)
 
     def reveal_clean_file(self):
-        if self.current_clean_path and self.current_clean_path.exists():
-            subprocess.run(["open", "-R", str(self.current_clean_path)], check=False)
-        else:
-            self.open_output_folder()
+        try:
+            path = self.controller.verified_clean_path(
+                self.active_session_id, self.active_session_generation
+            )
+        except (CleanRenameError, ValueError, OSError):
+            self.current_clean_path = None
+            return
+        self.current_clean_path = path
+        subprocess.run(["open", "-R", str(path)], check=False)
 
     def copy_clean_path(self):
-        if (
-            not self.active_session_id
-            or not self.current_output_dir
-            or not self.current_output_dir.is_dir()
-            or not self.current_clean_path
-            or not self.current_clean_path.is_file()
-        ):
+        try:
+            path = self.controller.verified_clean_path(
+                self.active_session_id, self.active_session_generation
+            )
+        except (CleanRenameError, ValueError, OSError):
+            self.current_clean_path = None
             return
-        QApplication.clipboard().setText(str(self.current_clean_path.resolve()))
+        self.current_clean_path = path
+        QApplication.clipboard().setText(str(path.absolute()))
 
     def copy_clean_text(self):
         row_count = self.clean_table.table.rowCount()
@@ -1849,14 +1856,18 @@ class MainWindow(QMainWindow):
         session_id = self.active_session_id
         generation = self.active_session_generation
         if stem is None:
-            if not session_id or not self.current_clean_path:
+            try:
+                current_path = self.controller.verified_clean_path(session_id, generation)
+            except (CleanRenameError, ValueError, OSError):
+                self.current_clean_path = None
                 return
+            self.current_clean_path = current_path
             dialog = QDialog(self)
             dialog.setWindowTitle(tr("rename_title"))
             layout = QVBoxLayout(dialog)
             layout.addWidget(QLabel(tr("rename_prompt")))
             row = QHBoxLayout()
-            name_edit = QLineEdit(self.current_clean_path.stem)
+            name_edit = QLineEdit(current_path.stem)
             row.addWidget(name_edit)
             suffix = QLabel(".txt")
             row.addWidget(suffix)
@@ -1871,15 +1882,19 @@ class MainWindow(QMainWindow):
         try:
             path = self.controller.rename_clean(stem, session_id, generation)
         except CleanRenameVerificationError as exc:
-            self.current_clean_path = exc.destination
+            self.current_clean_path = exc.verified_path
             QMessageBox.warning(
                 self, tr("rename_title"),
                 tr("rename_verification_warning").format(
-                    name=exc.destination.name, error=exc.__cause__
+                    error=exc.__cause__ or tr("source_unverified")
                 ),
             )
             return
         except (CleanRenameError, ValueError) as exc:
+            try:
+                self.current_clean_path = self.controller.verified_clean_path(session_id, generation)
+            except (CleanRenameError, ValueError, OSError):
+                self.current_clean_path = None
             key = str(exc)
             message = tr(key) if key in TEXT[current_language()] else tr("rename_io_error").format(error=exc)
             QMessageBox.warning(self, tr("rename_error_title"), message)

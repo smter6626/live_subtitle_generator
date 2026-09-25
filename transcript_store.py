@@ -25,9 +25,10 @@ class CleanRenameError(ValueError):
 class CleanRenameVerificationError(CleanRenameError):
     """The rename committed, but its destination could not be verified."""
 
-    def __init__(self, destination: Path):
+    def __init__(self, destination: Path, verified_path: Path | None):
         super().__init__("rename_outcome_ambiguous")
         self.destination = destination
+        self.verified_path = verified_path
 
 
 def validate_clean_stem(stem: str) -> str:
@@ -137,6 +138,7 @@ class TranscriptStore:
 
         self.raw_path = self.session_dir / "raw.txt"
         self.clean_path = self.session_dir / "clean.txt"
+        self._clean_path_hint = self.clean_path
         self.log_path = self.session_dir / "session.log"
         self.config_path = self.session_dir / "config.json"
 
@@ -165,10 +167,84 @@ class TranscriptStore:
             self.clean_lines += len(lines)
             self._clean_file.flush()
 
+    def verified_clean_path(self, preferred: Path | None = None) -> Path:
+        """Find a Session-local regular path for the open Clean writer's inode."""
+        with self._clean_lock:
+            try:
+                directory_stat = self.session_dir.lstat()
+                if not stat.S_ISDIR(directory_stat.st_mode) or (
+                    directory_stat.st_dev, directory_stat.st_ino
+                ) != self._session_identity:
+                    self.clean_path = None
+                    raise CleanRenameError("source_unsafe")
+                flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+                dir_fd = os.open(self.session_dir, flags)
+            except FileNotFoundError as exc:
+                self.clean_path = None
+                raise CleanRenameError("source_missing") from exc
+            except OSError as exc:
+                self.clean_path = None
+                raise CleanRenameError("source_unverified") from exc
+            try:
+                opened_stat = os.fstat(dir_fd)
+                if (opened_stat.st_dev, opened_stat.st_ino) != self._session_identity:
+                    self.clean_path = None
+                    raise CleanRenameError("source_unsafe")
+                unsafe_source = False
+                candidates = (preferred, self.clean_path, self._clean_path_hint)
+                for candidate in candidates:
+                    if candidate is None or candidate.parent != self.session_dir or candidate.suffix != ".txt":
+                        continue
+                    try:
+                        file_stat = candidate.lstat()
+                    except OSError:
+                        continue
+                    if stat.S_ISREG(file_stat.st_mode) and (
+                        file_stat.st_dev, file_stat.st_ino
+                    ) == self._clean_identity:
+                        current_dir = self.session_dir.lstat()
+                        if (current_dir.st_dev, current_dir.st_ino) != self._session_identity:
+                            self.clean_path = None
+                            raise CleanRenameError("source_unsafe")
+                        self.clean_path = candidate
+                        self._clean_path_hint = candidate
+                        return candidate
+                    if candidate == self._clean_path_hint:
+                        unsafe_source = True
+                with os.scandir(dir_fd) as entries:
+                    for entry in entries:
+                        if not entry.name.endswith(".txt"):
+                            continue
+                        try:
+                            file_stat = entry.stat(follow_symlinks=False)
+                        except OSError:
+                            continue
+                        if stat.S_ISREG(file_stat.st_mode) and (
+                            file_stat.st_dev, file_stat.st_ino
+                        ) == self._clean_identity:
+                            current_dir = self.session_dir.lstat()
+                            if (current_dir.st_dev, current_dir.st_ino) != self._session_identity:
+                                self.clean_path = None
+                                raise CleanRenameError("source_unsafe")
+                            path = self.session_dir / entry.name
+                            self.clean_path = path
+                            self._clean_path_hint = path
+                            return path
+            except OSError as exc:
+                self.clean_path = None
+                raise CleanRenameError("source_unverified") from exc
+            finally:
+                try:
+                    os.close(dir_fd)
+                except OSError:
+                    pass
+            self.clean_path = None
+            raise CleanRenameError("source_unsafe" if unsafe_source else "source_unverified")
+
     def rename_clean(self, stem: str) -> Path:
         stem = validate_clean_stem(stem)
         with self._clean_lock:
-            source = self.clean_path
+            source = self.verified_clean_path()
             destination = self.session_dir / f"{stem}.txt"
             if source.parent != self.session_dir or destination.parent != self.session_dir:
                 raise CleanRenameError("name_invalid")
@@ -208,7 +284,6 @@ class TranscriptStore:
                     if (opened_stat.st_dev, opened_stat.st_ino) != self._session_identity:
                         raise CleanRenameError("source_unsafe")
                     _rename_noreplace(source, destination, dir_fd)
-                    self.clean_path = destination
                 except BaseException:
                     try:
                         os.close(dir_fd)
@@ -224,26 +299,12 @@ class TranscriptStore:
                     raise CleanRenameError("destination_exists") from exc
                 raise
             try:
-                destination_stat = destination.lstat()
-            except OSError as exc:
-                verification_error = exc
-            else:
-                if stat.S_ISREG(destination_stat.st_mode) and (
-                    destination_stat.st_dev, destination_stat.st_ino
-                ) == self._clean_identity:
-                    return destination
-                verification_error = CleanRenameError("rename_outcome_ambiguous")
-            try:
-                source_stat = source.lstat()
-            except OSError:
-                pass
-            else:
-                if stat.S_ISREG(source_stat.st_mode) and (
-                    source_stat.st_dev, source_stat.st_ino
-                ) == self._clean_identity:
-                    self.clean_path = source
-                    raise CleanRenameError("rename_outcome_ambiguous") from verification_error
-            raise CleanRenameVerificationError(destination) from verification_error
+                verified_path = self.verified_clean_path(preferred=destination)
+            except CleanRenameError as exc:
+                raise CleanRenameVerificationError(destination, None) from exc
+            if verified_path == destination:
+                return destination
+            raise CleanRenameVerificationError(destination, verified_path)
 
     def log(self, message: str, level: str = "INFO"):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
