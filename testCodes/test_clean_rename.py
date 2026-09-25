@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -102,6 +103,30 @@ class StoreRenameTests(unittest.TestCase):
                 self.store.rename_clean("other")
         self.assertTrue(self.store.clean_path.exists())
 
+    def test_cleanup_error_preserves_pre_rename_failure(self):
+        source = self.store.clean_path
+        real_close = os.close
+
+        def close_then_raise(fd):
+            real_close(fd)
+            raise OSError("injected directory close error")
+
+        with patch.object(store_module, "_rename_noreplace", side_effect=PermissionError("denied")):
+            with patch.object(store_module.os, "close", side_effect=close_then_raise):
+                with self.assertRaisesRegex(PermissionError, "denied"):
+                    self.store.rename_clean("other")
+        self.assertEqual(self.store.clean_path, source)
+        self.assertTrue(source.exists())
+
+    def test_unverified_destination_is_not_reported_as_success(self):
+        source = self.store.clean_path
+        with patch.object(store_module, "_rename_noreplace", return_value=None):
+            with self.assertRaisesRegex(CleanRenameError, "rename_outcome_ambiguous"):
+                self.store.rename_clean("not_moved")
+        self.assertEqual(self.store.clean_path, source)
+        self.assertTrue(source.exists())
+        self.assertFalse((self.store.session_dir / "not_moved.txt").exists())
+
     def test_background_close_and_rename_finish_without_deadlock(self):
         self.store.append_clean(["before"])
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -110,6 +135,48 @@ class StoreRenameTests(unittest.TestCase):
             self.assertEqual(rename.result(timeout=3).name, "concurrent.txt")
             close.result(timeout=3)
         self.assertEqual(self.store.clean_path.read_bytes(), b"before\n")
+
+    def test_append_waits_for_rename_and_keeps_complete_lines(self):
+        store = self.store
+        source = store.clean_path
+        inode = source.stat().st_ino
+        store.append_clean(["before"])
+        rename_entered = threading.Event()
+        release_rename = threading.Event()
+        append_started = threading.Event()
+        append_finished = threading.Event()
+        real_noreplace = store_module._rename_noreplace
+
+        def held_rename(src, dst, dir_fd):
+            rename_entered.set()
+            if not release_rename.wait(3):
+                raise TimeoutError("rename was not released")
+            return real_noreplace(src, dst, dir_fd)
+
+        def append_during_rename():
+            append_started.set()
+            store.append_clean(["during one", "during two"])
+            append_finished.set()
+
+        with patch.object(store_module, "_rename_noreplace", side_effect=held_rename):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                try:
+                    rename = pool.submit(store.rename_clean, "interleaved")
+                    self.assertTrue(rename_entered.wait(3))
+                    append = pool.submit(append_during_rename)
+                    self.assertTrue(append_started.wait(3))
+                    self.assertFalse(append_finished.wait(0.05))
+                    self.assertEqual(store.clean_lines, 1)
+                finally:
+                    release_rename.set()
+                destination = rename.result(timeout=3)
+                append.result(timeout=3)
+        store.append_clean(["after"])
+        self.assertFalse(source.exists())
+        self.assertEqual(destination.stat().st_ino, inode)
+        self.assertEqual(store.clean_path, destination)
+        self.assertEqual(store.clean_lines, 4)
+        self.assertEqual(destination.read_bytes(), b"before\nduring one\nduring two\nafter\n")
 
     def test_replaced_session_directory_is_rejected(self):
         store = self.store
@@ -260,6 +327,29 @@ class WindowRenameTests(unittest.TestCase):
         self.assertIn("absolute path", self.window.copy_clean_path_button.toolTip())
         self.window.rename_clean_file("good")
         self.assertIn("good.txt", self.info_mock.call_args.args[2])
+
+    def test_cleanup_error_after_rename_updates_ui_and_keeps_writer(self):
+        source = self.store.clean_path
+        inode = source.stat().st_ino
+        self.store.append_clean(["before"])
+        real_close = os.close
+
+        def close_then_raise(fd):
+            real_close(fd)
+            raise OSError("injected directory close error")
+
+        with patch.object(store_module.os, "close", side_effect=close_then_raise) as close_mock:
+            self.window.rename_clean_file("after_cleanup_error")
+        close_mock.assert_called_once()
+        destination = self.store.clean_path
+        self.assertFalse(source.exists())
+        self.assertEqual(destination.name, "after_cleanup_error.txt")
+        self.assertEqual(self.window.current_clean_path, destination)
+        self.assertEqual(destination.stat().st_ino, inode)
+        self.info_mock.assert_called_once()
+        self.warn_mock.assert_not_called()
+        self.store.append_clean(["after"])
+        self.assertEqual(destination.read_bytes(), b"before\nafter\n")
 
 
 if __name__ == "__main__":

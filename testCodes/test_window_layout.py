@@ -260,6 +260,14 @@ class MainWindowLayoutTests(unittest.TestCase):
         for language in (UI_LANGUAGE_ZH, UI_LANGUAGE_EN):
             window.ui_language_combo.setCurrentIndex(window.ui_language_combo.findData(language))
             self.app.processEvents()
+            rename = window.rename_clean_button.geometry()
+            copy = window.copy_clean_text_button.geometry()
+            jump = window.clean_table.jump_button.geometry()
+            toolbar_rect = toolbar.geometry()
+            self.assertEqual(rename.left(), toolbar_rect.left())
+            self.assertEqual(jump.right(), toolbar_rect.right())
+            self.assertGreater(copy.left() - rename.right(), toolbar.spacing() + 20)
+            self.assertEqual(jump.left() - copy.right() - 1, toolbar.spacing())
             for button in (window.export_clean_button, window.copy_clean_path_button,
                            window.rename_clean_button, window.copy_clean_text_button):
                 self.assertGreaterEqual(

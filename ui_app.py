@@ -1192,7 +1192,7 @@ class MainWindow(QMainWindow):
     def _build_tabs(self):
         self.tabs = QTabWidget()
         self.clean_table = TranscriptTable(tr("clean_transcript"))
-        self.clean_table.toolbar.insertWidget(1, self.rename_clean_button)
+        self.clean_table.toolbar.insertWidget(0, self.rename_clean_button)
         self.clean_table.toolbar.insertWidget(2, self.copy_clean_text_button)
         self.raw_table = TranscriptTable(tr("raw_transcript"))
         self.logs_text = QPlainTextEdit()

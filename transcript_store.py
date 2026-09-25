@@ -200,12 +200,28 @@ class TranscriptStore:
                     if (opened_stat.st_dev, opened_stat.st_ino) != self._session_identity:
                         raise CleanRenameError("source_unsafe")
                     _rename_noreplace(source, destination, dir_fd)
-                finally:
+                except BaseException:
+                    try:
+                        os.close(dir_fd)
+                    except OSError:
+                        pass  # Keep the failure that preceded the rename.
+                    raise
+                try:
                     os.close(dir_fd)
+                except OSError:
+                    pass  # The rename committed; reconcile the destination below.
             except OSError as exc:
                 if exc.errno == errno.EEXIST:
                     raise CleanRenameError("destination_exists") from exc
                 raise
+            try:
+                destination_stat = destination.lstat()
+            except OSError as exc:
+                raise CleanRenameError("rename_outcome_ambiguous") from exc
+            if not stat.S_ISREG(destination_stat.st_mode) or (
+                destination_stat.st_dev, destination_stat.st_ino
+            ) != self._clean_identity:
+                raise CleanRenameError("rename_outcome_ambiguous")
             self.clean_path = destination
             return destination
 
