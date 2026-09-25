@@ -455,8 +455,9 @@ class MainWindowClipboardTests(unittest.TestCase):
     def test_bilingual_labels_retranslate_immediately(self):
         self.assertEqual(self.window.ui_language_title_label.text(), "语言/Language")
         self.assertEqual(self.window.original_language_title_label.text(), "音频原始语言")
-        self.assertEqual(self.window.copy_clean_path_button.text(), "复制 Clean TXT 路径")
-        self.assertEqual(self.window.copy_clean_text_button.text(), "复制新增 Clean 文本")
+        self.assertEqual(self.window.copy_clean_path_button.text(), "复制 Clean 路径")
+        self.assertEqual(self.window.copy_clean_text_button.text(), "复制新增文本")
+        self.assertEqual(self.window.rename_clean_button.text(), "重命名 Clean TXT")
 
         english_index = self.window.ui_language_combo.findData(UI_LANGUAGE_EN)
         self.window.ui_language_combo.setCurrentIndex(english_index)
@@ -466,8 +467,9 @@ class MainWindowClipboardTests(unittest.TestCase):
             self.window.original_language_title_label.text(),
             "Audio / Original Language",
         )
-        self.assertEqual(self.window.copy_clean_path_button.text(), "Copy Clean TXT Path")
-        self.assertEqual(self.window.copy_clean_text_button.text(), "Copy New Clean Text")
+        self.assertEqual(self.window.copy_clean_path_button.text(), "Copy Clean Path")
+        self.assertEqual(self.window.copy_clean_text_button.text(), "Copy New Text")
+        self.assertEqual(self.window.rename_clean_button.text(), "Rename Clean TXT")
 
 
 if __name__ == "__main__":

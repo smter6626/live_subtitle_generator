@@ -280,8 +280,9 @@ class UiLanguageContractTests(unittest.TestCase):
             self.assertEqual(window.windowTitle(), "Whisper Classroom Transcriber")
             self.assertEqual(window.start_button.text(), "Start Recording")
             self.assertEqual(window.ui_language_title_label.text(), "Interface Language")
-            self.assertEqual(window.copy_clean_path_button.text(), "Copy Clean TXT Path")
-            self.assertEqual(window.copy_clean_text_button.text(), "Copy New Clean Text")
+            self.assertEqual(window.copy_clean_path_button.text(), "Copy Clean Path")
+            self.assertEqual(window.copy_clean_text_button.text(), "Copy New Text")
+            self.assertEqual(window.rename_clean_button.text(), "Rename Clean TXT")
             self.assertEqual(
                 window.original_language_title_label.text(),
                 "Audio / Original Language",
@@ -314,8 +315,9 @@ class UiLanguageContractTests(unittest.TestCase):
             self.assertEqual(window.windowTitle(), "Whisper 课堂实时转写")
             self.assertEqual(window.start_button.text(), "开始录音")
             self.assertEqual(window.ui_language_title_label.text(), "语言/Language")
-            self.assertEqual(window.copy_clean_path_button.text(), "复制 Clean TXT 路径")
-            self.assertEqual(window.copy_clean_text_button.text(), "复制新增 Clean 文本")
+            self.assertEqual(window.copy_clean_path_button.text(), "复制 Clean 路径")
+            self.assertEqual(window.copy_clean_text_button.text(), "复制新增文本")
+            self.assertEqual(window.rename_clean_button.text(), "重命名 Clean TXT")
             self.assertEqual(window.original_language_title_label.text(), "音频原始语言")
             self.assertEqual(window.clean_table.table.horizontalHeaderItem(1).text(), "正文")
             self.assertEqual(

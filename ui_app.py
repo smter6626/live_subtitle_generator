@@ -20,6 +20,7 @@ try:
         QAbstractItemView,
         QComboBox,
         QDialog,
+        QDialogButtonBox,
         QFileDialog,
         QFrame,
         QGridLayout,
@@ -27,6 +28,7 @@ try:
         QHeaderView,
         QHBoxLayout,
         QLabel,
+        QLineEdit,
         QLayout,
         QMainWindow,
         QMessageBox,
@@ -72,6 +74,7 @@ from model_manager import (
     validate_import_model,
 )
 from transcript_store import format_runtime, parse_transcript_line
+from transcript_store import CleanRenameError
 from transcription_controller import EngineState, TranscriptionController
 
 
@@ -144,9 +147,27 @@ TEXT = {
         "models_found": "已发现模型数量",
         "no_startable_model": "无法开始转写：未选择可用模型。",
         "open_output_folder": "打开输出目录",
-        "export_clean_txt": "定位 Clean TXT",
-        "copy_clean_path": "复制 Clean TXT 路径",
-        "copy_clean_text": "复制新增 Clean 文本",
+        "export_clean_txt": "定位 Clean",
+        "copy_clean_path": "复制 Clean 路径",
+        "copy_clean_text": "复制新增文本",
+        "rename_clean_txt": "重命名 Clean TXT",
+        "reveal_clean_tip": "在访达中定位当前 Session 的 Clean TXT 文件。",
+        "copy_clean_path_tip": "复制当前 Session 的 Clean TXT 绝对路径。",
+        "copy_clean_text_tip": "复制上次成功复制后新增的 Clean 行；新 Session 重置进度。",
+        "rename_clean_tip": "仅修改当前 Session 的 Clean TXT 文件名，转写继续写入同一文件。",
+        "rename_title": "重命名 Clean TXT",
+        "rename_prompt": "文件名",
+        "rename_success": "Clean TXT 已重命名为：{name}",
+        "rename_error_title": "无法重命名 Clean TXT",
+        "name_empty": "请输入文件名。",
+        "name_invalid": "文件名不能是 . 或 ..，不能包含路径分隔符、控制字符或首尾空格。",
+        "name_suffix": "只输入文件名，不要输入 .txt 后缀。",
+        "source_missing": "当前 Clean TXT 文件不存在。",
+        "source_unsafe": "当前 Clean TXT 文件不是安全的普通文件。",
+        "destination_exists": "目标文件已存在。",
+        "rename_unavailable": "此系统不支持安全的原子无覆盖重命名。",
+        "stale_session": "Session 已变化，请重试。",
+        "rename_io_error": "文件重命名失败：{error}",
         "session": "本次 Session",
         "start_time": "开始时间",
         "raw_lines": "Raw 行数",
@@ -233,9 +254,27 @@ TEXT = {
         "models_found": "Models found",
         "no_startable_model": "Cannot start transcription: no available model is selected.",
         "open_output_folder": "Open Output Folder",
-        "export_clean_txt": "Reveal Clean TXT",
-        "copy_clean_path": "Copy Clean TXT Path",
-        "copy_clean_text": "Copy New Clean Text",
+        "export_clean_txt": "Reveal Clean",
+        "copy_clean_path": "Copy Clean Path",
+        "copy_clean_text": "Copy New Text",
+        "rename_clean_txt": "Rename Clean TXT",
+        "reveal_clean_tip": "Reveal this Session's current Clean TXT file in Finder.",
+        "copy_clean_path_tip": "Copy the absolute path of this Session's current Clean TXT file.",
+        "copy_clean_text_tip": "Copy Clean rows added since the last successful copy; a new Session resets progress.",
+        "rename_clean_tip": "Rename this Session's Clean TXT file while transcription continues in the same file.",
+        "rename_title": "Rename Clean TXT",
+        "rename_prompt": "Filename",
+        "rename_success": "Clean TXT renamed to: {name}",
+        "rename_error_title": "Cannot Rename Clean TXT",
+        "name_empty": "Enter a filename.",
+        "name_invalid": "Use a name without . or .., path separators, control characters, or surrounding spaces.",
+        "name_suffix": "Enter the filename only, without the .txt suffix.",
+        "source_missing": "The current Clean TXT file is missing.",
+        "source_unsafe": "The current Clean TXT file is not a safe regular file.",
+        "destination_exists": "The destination file already exists.",
+        "rename_unavailable": "This system does not support atomic no-replace rename.",
+        "stale_session": "The Session changed. Try again.",
+        "rename_io_error": "File rename failed: {error}",
         "session": "Session",
         "start_time": "Start time",
         "raw_lines": "Raw lines",
@@ -318,6 +357,7 @@ class TranscriptTable(QWidget):
 
         layout = QVBoxLayout(self)
         toolbar = QHBoxLayout()
+        self.toolbar = toolbar
         toolbar.addStretch()
         self.jump_button = QPushButton(tr("jump_to_live"))
         self.jump_button.clicked.connect(self.jump_to_live)
@@ -1016,18 +1056,28 @@ class MainWindow(QMainWindow):
         self.export_clean_button = QPushButton(tr("export_clean_txt"))
         self.export_clean_button.clicked.connect(lambda: self._safe_slot(self.reveal_clean_file))
         self.export_clean_button.setEnabled(False)
+        self.export_clean_button.setToolTip(tr("reveal_clean_tip"))
 
         self.copy_clean_path_button = QPushButton(tr("copy_clean_path"))
         self.copy_clean_path_button.clicked.connect(
             lambda: self._safe_slot(self.copy_clean_path)
         )
         self.copy_clean_path_button.setEnabled(False)
+        self.copy_clean_path_button.setToolTip(tr("copy_clean_path_tip"))
 
         self.copy_clean_text_button = QPushButton(tr("copy_clean_text"))
         self.copy_clean_text_button.clicked.connect(
             lambda: self._safe_slot(self.copy_clean_text)
         )
         self.copy_clean_text_button.setEnabled(False)
+        self.copy_clean_text_button.setToolTip(tr("copy_clean_text_tip"))
+
+        self.rename_clean_button = QPushButton(tr("rename_clean_txt"))
+        self.rename_clean_button.clicked.connect(
+            lambda: self._safe_slot(self.rename_clean_file)
+        )
+        self.rename_clean_button.setEnabled(False)
+        self.rename_clean_button.setToolTip(tr("rename_clean_tip"))
 
         controls_layout.addWidget(self.start_button)
         controls_layout.addWidget(self.stop_button)
@@ -1090,9 +1140,10 @@ class MainWindow(QMainWindow):
 
         controls_layout.addWidget(self.mark_button)
         controls_layout.addWidget(self.open_folder_button)
-        controls_layout.addWidget(self.export_clean_button)
-        controls_layout.addWidget(self.copy_clean_path_button)
-        controls_layout.addWidget(self.copy_clean_text_button)
+        clean_path_row = QHBoxLayout()
+        clean_path_row.addWidget(self.export_clean_button)
+        clean_path_row.addWidget(self.copy_clean_path_button)
+        controls_layout.addLayout(clean_path_row)
         layout.addWidget(self.controls_group)
 
         self.session_group = QGroupBox(tr("session"))
@@ -1141,6 +1192,8 @@ class MainWindow(QMainWindow):
     def _build_tabs(self):
         self.tabs = QTabWidget()
         self.clean_table = TranscriptTable(tr("clean_transcript"))
+        self.clean_table.toolbar.insertWidget(1, self.rename_clean_button)
+        self.clean_table.toolbar.insertWidget(2, self.copy_clean_text_button)
         self.raw_table = TranscriptTable(tr("raw_transcript"))
         self.logs_text = QPlainTextEdit()
         self.logs_text.setReadOnly(True)
@@ -1352,8 +1405,13 @@ class MainWindow(QMainWindow):
         self.mark_button.setToolTip(tr("mark_tooltip"))
         self.open_folder_button.setText(tr("open_output_folder"))
         self.export_clean_button.setText(tr("export_clean_txt"))
+        self.export_clean_button.setToolTip(tr("reveal_clean_tip"))
         self.copy_clean_path_button.setText(tr("copy_clean_path"))
+        self.copy_clean_path_button.setToolTip(tr("copy_clean_path_tip"))
         self.copy_clean_text_button.setText(tr("copy_clean_text"))
+        self.copy_clean_text_button.setToolTip(tr("copy_clean_text_tip"))
+        self.rename_clean_button.setText(tr("rename_clean_txt"))
+        self.rename_clean_button.setToolTip(tr("rename_clean_tip"))
         self.model_group.setTitle(tr("model_group"))
         self.current_model_title_label.setText(tr("current_model"))
         self.model_dropdown_title_label.setText(tr("model_dropdown"))
@@ -1547,7 +1605,7 @@ class MainWindow(QMainWindow):
             return
 
         self.current_output_dir = Path(session_dir)
-        self.current_clean_path = self.current_output_dir / "clean.txt"
+        self.current_clean_path = self.controller.store.clean_path
         self.session_started_at = time.time()
         self.session_start_label.setText(time.strftime("%Y-%m-%d %H:%M:%S"))
         self.output_folder_label.setText(str(self.current_output_dir))
@@ -1566,6 +1624,7 @@ class MainWindow(QMainWindow):
         self.export_clean_button.setEnabled(True)
         self.copy_clean_path_button.setEnabled(True)
         self.copy_clean_text_button.setEnabled(True)
+        self.rename_clean_button.setEnabled(True)
         crash_log(f"start recording completed: session_dir={session_dir}")
 
     def stop_recording(self):
@@ -1647,6 +1706,7 @@ class MainWindow(QMainWindow):
             self.export_clean_button.setEnabled(True)
             self.copy_clean_path_button.setEnabled(True)
             self.copy_clean_text_button.setEnabled(True)
+            self.rename_clean_button.setEnabled(True)
             config = event.get("config", {})
             original_language_label = config.get("original_language_label")
             if original_language_label:
@@ -1782,6 +1842,46 @@ class MainWindow(QMainWindow):
 
         QApplication.clipboard().setText("\n".join(copied_rows))
         self.clean_copy_row_cursor = row_count
+
+    def rename_clean_file(self, stem=None):
+        session_id = self.active_session_id
+        generation = self.active_session_generation
+        if stem is None:
+            if not session_id or not self.current_clean_path:
+                return
+            dialog = QDialog(self)
+            dialog.setWindowTitle(tr("rename_title"))
+            layout = QVBoxLayout(dialog)
+            layout.addWidget(QLabel(tr("rename_prompt")))
+            row = QHBoxLayout()
+            name_edit = QLineEdit(self.current_clean_path.stem)
+            row.addWidget(name_edit)
+            suffix = QLabel(".txt")
+            row.addWidget(suffix)
+            layout.addLayout(row)
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+            if dialog.exec() != QDialog.Accepted:
+                return
+            stem = name_edit.text()
+        try:
+            path = self.controller.rename_clean(stem, session_id, generation)
+        except (CleanRenameError, ValueError) as exc:
+            key = str(exc)
+            message = tr(key) if key in TEXT[current_language()] else tr("rename_io_error").format(error=exc)
+            QMessageBox.warning(self, tr("rename_error_title"), message)
+            return
+        except OSError as exc:
+            QMessageBox.warning(
+                self, tr("rename_error_title"), tr("rename_io_error").format(error=exc)
+            )
+            return
+        self.current_clean_path = path
+        QMessageBox.information(
+            self, tr("rename_title"), tr("rename_success").format(name=path.name)
+        )
 
     def closeEvent(self, event):
         crash_log(f"closeEvent entered: controller_state={self.controller.state.value}")

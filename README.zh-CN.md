@@ -63,7 +63,7 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 11. 如有需要，使用**选择输出位置（Choose Output Location）**设置未来 Session 的保存位置。
 12. 点击**开始录音（Start Recording）**。第一个音频 chunk 处理完成后，Clean Transcript 会开始更新。
 13. 课堂或录音结束时，点击**停止录音（Stop Recording）**。App 会停止继续采集，并完成已经提交处理的音频。
-14. 点击**打开输出目录（Open Output Folder）**查看本次 Session 文件。**复制 Clean TXT 路径（Copy Clean TXT Path）**会复制当前 Session 的 `clean.txt` 绝对路径；**复制新增 Clean 文本（Copy New Clean Text）**首次复制当前显示的全部 Clean 行，之后只复制上次成功复制后新增的行，新 Session 会重置复制进度。
+14. 左侧的**定位 Clean（Reveal Clean）**和**复制 Clean 路径（Copy Clean Path）**可定位或复制当前 Session 的 Clean TXT 绝对路径。Clean 表格工具栏中的**重命名 Clean TXT（Rename Clean TXT）**仅修改文件名主体，`.txt` 后缀固定；录音中或停止后均可操作。**复制新增文本（Copy New Text）**首次复制当前显示的全部 Clean 行，之后只复制上次成功复制后新增的行，新 Session 会重置复制进度。Raw 和 Logs 没有这些工具栏按钮。
 
 如果屏幕高度不足以显示全部控件，可使用左侧控制/Session 栏的滚动条、鼠标滚轮、触控板或键盘焦点遍历继续访问。顶部状态栏保持在滚动区外；Clean Transcript、Raw Transcript 和 Logs 仍各自独立滚动。
 
@@ -148,7 +148,7 @@ Beam 控制转写时的搜索量。当前范围为 `3` 到 `8`，默认值为 `5
 ```
 
 - `raw.txt`——后端产生的原始 timestamp transcript evidence
-- `clean.txt`——经过保守边界去重和少量过滤后的可读版本
+- `clean.txt`——经过保守边界去重和少量过滤后的可读版本；重命名后本 Session 可使用新文件名，并继续向同一文件追加内容
 - `session.log`——Session、chunk、backend、warning、error 和 stop 事件日志
 - `config.json`——本次 Session 使用的模型、语言、Beam、路径和音频配置
 

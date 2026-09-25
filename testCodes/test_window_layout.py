@@ -103,7 +103,7 @@ class MainWindowLayoutTests(unittest.TestCase):
 
     def matrix_row(self, name, injected, window, right_side=None):
         first = window.start_button
-        last = window.copy_clean_text_button
+        last = window.copy_clean_path_button
         scroll_bar = window.controls_scroll_area.verticalScrollBar()
         return {
             "case": name,
@@ -173,7 +173,7 @@ class MainWindowLayoutTests(unittest.TestCase):
         scroll_bar.setValue(scroll_bar.maximum())
         self.app.processEvents()
         self.assertTrue(
-            self.is_visible_in_controls_viewport(window, window.copy_clean_text_button)
+            self.is_visible_in_controls_viewport(window, window.copy_clean_path_button)
         )
 
         for widget in window.controls_panel.findChildren(QWidget):
@@ -184,13 +184,13 @@ class MainWindowLayoutTests(unittest.TestCase):
         window.start_button.setFocus(Qt.OtherFocusReason)
         self.app.processEvents()
         for _attempt in range(40):
-            if self.app.focusWidget() is window.copy_clean_text_button:
+            if self.app.focusWidget() is window.copy_clean_path_button:
                 break
             QTest.keyClick(self.app.focusWidget(), Qt.Key_Tab)
             self.app.processEvents()
-        self.assertIs(self.app.focusWidget(), window.copy_clean_text_button)
+        self.assertIs(self.app.focusWidget(), window.copy_clean_path_button)
         self.assertTrue(
-            self.is_visible_in_controls_viewport(window, window.copy_clean_text_button)
+            self.is_visible_in_controls_viewport(window, window.copy_clean_path_button)
         )
 
         for _attempt in range(40):
@@ -251,6 +251,27 @@ class MainWindowLayoutTests(unittest.TestCase):
             self.matrix_row("scroll_ownership", geometry, window, right_results)
         )
 
+    def test_clean_toolbar_location_and_short_labels_fit(self):
+        window, _available = self.make_window(QRect(0, 0, 1400, 480))
+        toolbar = window.clean_table.toolbar
+        self.assertLess(toolbar.indexOf(window.rename_clean_button), toolbar.indexOf(window.copy_clean_text_button))
+        self.assertLess(toolbar.indexOf(window.copy_clean_text_button), toolbar.indexOf(window.clean_table.jump_button))
+        self.assertEqual(window.raw_table.toolbar.indexOf(window.rename_clean_button), -1)
+        for language in (UI_LANGUAGE_ZH, UI_LANGUAGE_EN):
+            window.ui_language_combo.setCurrentIndex(window.ui_language_combo.findData(language))
+            self.app.processEvents()
+            for button in (window.export_clean_button, window.copy_clean_path_button,
+                           window.rename_clean_button, window.copy_clean_text_button):
+                self.assertGreaterEqual(
+                    button.width(), button.fontMetrics().horizontalAdvance(button.text()) + 12,
+                    f"clipped {button.text()}",
+                )
+                self.assertTrue(button.toolTip())
+        window.clean_table.table.setFocus(Qt.OtherFocusReason)
+        self.app.processEvents()
+        self.assertTrue(window.rename_clean_button.isVisible())
+        self.assertTrue(window.copy_clean_text_button.isVisible())
+
     def test_geometry_handler_resize_and_retranslation_preserve_bounds_and_reachability(self):
         normal = QRect(0, 0, 1600, 1000)
         short = QRect(0, 0, 1400, 480)
@@ -270,10 +291,10 @@ class MainWindowLayoutTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(window.start_button.text(), "Start Recording")
         self.assertLessEqual(window.frameGeometry().height(), short.height())
-        window.controls_scroll_area.ensureWidgetVisible(window.copy_clean_text_button)
+        window.controls_scroll_area.ensureWidgetVisible(window.copy_clean_path_button)
         self.app.processEvents()
         self.assertTrue(
-            self.is_visible_in_controls_viewport(window, window.copy_clean_text_button)
+            self.is_visible_in_controls_viewport(window, window.copy_clean_path_button)
         )
 
         chinese_index = window.ui_language_combo.findData(UI_LANGUAGE_ZH)

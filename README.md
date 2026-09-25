@@ -63,7 +63,7 @@ No Terminal commands are required.
 11. If desired, use **Choose Output Location** to select where future sessions will be stored.
 12. Click **Start Recording**. The Clean Transcript view will update after the first audio chunk has been processed.
 13. Click **Stop Recording** when the class or recording is finished. The app stops capture and finishes audio already submitted for processing.
-14. Click **Open Output Folder** to find the session files. **Copy Clean TXT Path** copies the current session's absolute `clean.txt` path. **Copy New Clean Text** copies the displayed Clean rows once, then only rows added since the last successful copy; starting a new session resets that progress.
+14. Use **Reveal Clean** and **Copy Clean Path** in the left controls to locate or copy the current Session's absolute Clean TXT path. In the Clean table toolbar, **Rename Clean TXT** changes only the filename stem (the `.txt` suffix is fixed), during recording or after Stop. **Copy New Text** copies displayed Clean rows once, then only rows added since the last successful copy; starting a new Session resets that progress. These actions are absent from Raw and Logs.
 
 If the screen is not tall enough to show every control, scroll the left controls/session column with its scrollbar, mouse wheel, trackpad, or keyboard focus traversal. The status strip stays visible above it, and Clean Transcript, Raw Transcript, and Logs keep their own independent scrolling.
 
@@ -154,7 +154,7 @@ Every session is stored under an `outputs` directory:
 ```
 
 - `raw.txt` — original timestamped transcript evidence from the backend
-- `clean.txt` — a more readable transcript after conservative boundary deduplication and limited filtering
+- `clean.txt` — a more readable transcript after conservative boundary deduplication and limited filtering; Rename Clean TXT may change this Session's filename while preserving its file contents and continued appends
 - `session.log` — session, chunk, backend, warning, error, and stop events
 - `config.json` — the model, language, Beam, paths, and audio configuration for that session
 

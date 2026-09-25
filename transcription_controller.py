@@ -1,4 +1,5 @@
 from enum import Enum
+import threading
 from uuid import uuid4
 
 from settings import (
@@ -28,6 +29,17 @@ class TranscriptionController:
         self.engine = None
         self.active_session_id = None
         self.active_session_generation = 0
+        self._session_lock = threading.RLock()
+
+    def rename_clean(self, stem, session_id, session_generation):
+        with self._session_lock:
+            if (
+                not self.store
+                or session_id != self.active_session_id
+                or session_generation != self.active_session_generation
+            ):
+                raise ValueError("stale_session")
+            return self.store.rename_clean(stem)
 
     def start(
         self,
@@ -70,10 +82,11 @@ class TranscriptionController:
 
         session_id = uuid4().hex
         session_generation = self.active_session_generation + 1
-        self.settings = settings
-        self.store = store
-        self.active_session_id = session_id
-        self.active_session_generation = session_generation
+        with self._session_lock:
+            self.settings = settings
+            self.store = store
+            self.active_session_id = session_id
+            self.active_session_generation = session_generation
         self._emit(
             {
                 "type": "session",
