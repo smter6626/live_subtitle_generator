@@ -8,6 +8,7 @@ import threading
 import unicodedata
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from settings import write_config_json
 
@@ -29,6 +30,14 @@ class CleanRenameVerificationError(CleanRenameError):
         super().__init__("rename_outcome_ambiguous")
         self.destination = destination
         self.verified_path = verified_path
+
+
+class CleanPathUnavailableError(CleanRenameError):
+    """The writer has no regular .txt path in a fully verified Session directory."""
+
+    def __init__(self, path_hint: Path | None):
+        super().__init__("source_unavailable")
+        self.path_hint = path_hint
 
 
 def validate_clean_stem(stem: str) -> str:
@@ -143,7 +152,7 @@ class TranscriptStore:
         self.config_path = self.session_dir / "config.json"
 
         self._raw_file = open(self.raw_path, "w", encoding="utf-8", buffering=1)
-        self._clean_file = open(self.clean_path, "w", encoding="utf-8", buffering=1)
+        self._clean_file = open(self.clean_path, "w+", encoding="utf-8", buffering=1)
         clean_stat = os.fstat(self._clean_file.fileno())
         self._clean_identity = (clean_stat.st_dev, clean_stat.st_ino)
         self._log_file = open(self.log_path, "w", encoding="utf-8", buffering=1)
@@ -152,6 +161,7 @@ class TranscriptStore:
         self.clean_lines = 0
         self.closed = False
         self._clean_lock = threading.RLock()
+        self._clean_snapshot = None
 
     def write_config(self, config: dict):
         write_config_json(self.config_path, config)
@@ -167,79 +177,228 @@ class TranscriptStore:
             self.clean_lines += len(lines)
             self._clean_file.flush()
 
+    def _open_verified_session_dir(self) -> int:
+        try:
+            directory_stat = self.session_dir.lstat()
+            if not stat.S_ISDIR(directory_stat.st_mode) or (
+                directory_stat.st_dev, directory_stat.st_ino
+            ) != self._session_identity:
+                raise CleanRenameError("source_unsafe")
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            dir_fd = os.open(self.session_dir, flags)
+        except FileNotFoundError as exc:
+            raise CleanRenameError("source_missing") from exc
+        except CleanRenameError:
+            raise
+        except OSError as exc:
+            raise CleanRenameError("source_unverified") from exc
+        try:
+            opened_stat = os.fstat(dir_fd)
+            if (opened_stat.st_dev, opened_stat.st_ino) != self._session_identity:
+                raise CleanRenameError("source_unsafe")
+            return dir_fd
+        except BaseException:
+            try:
+                os.close(dir_fd)
+            except OSError:
+                pass
+            raise
+
+    @staticmethod
+    def _read_exact_fd(fd: int, expected_size: int) -> bytes:
+        chunks = []
+        offset = 0
+        while offset < expected_size:
+            chunk = os.pread(fd, min(1024 * 1024, expected_size - offset), offset)
+            if not chunk:
+                raise OSError(errno.EIO, "short read while capturing Clean history")
+            chunks.append(chunk)
+            offset += len(chunk)
+        return b"".join(chunks)
+
+    def _snapshot_clean_locked(self) -> bytes:
+        if self.closed:
+            if self._clean_snapshot is None:
+                raise CleanRenameError("source_unverified")
+            return self._clean_snapshot
+        try:
+            self._clean_file.flush()
+            file_stat = os.fstat(self._clean_file.fileno())
+            snapshot = self._read_exact_fd(self._clean_file.fileno(), file_stat.st_size)
+        except (OSError, ValueError) as exc:
+            raise CleanRenameError("source_unverified") from exc
+        self._clean_snapshot = snapshot
+        return snapshot
+
     def verified_clean_path(self, preferred: Path | None = None) -> Path:
         """Find a Session-local regular path for the open Clean writer's inode."""
         with self._clean_lock:
             try:
-                directory_stat = self.session_dir.lstat()
-                if not stat.S_ISDIR(directory_stat.st_mode) or (
-                    directory_stat.st_dev, directory_stat.st_ino
-                ) != self._session_identity:
-                    self.clean_path = None
-                    raise CleanRenameError("source_unsafe")
-                flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-                dir_fd = os.open(self.session_dir, flags)
-            except FileNotFoundError as exc:
-                self.clean_path = None
-                raise CleanRenameError("source_missing") from exc
-            except OSError as exc:
-                self.clean_path = None
-                raise CleanRenameError("source_unverified") from exc
-            try:
-                opened_stat = os.fstat(dir_fd)
-                if (opened_stat.st_dev, opened_stat.st_ino) != self._session_identity:
-                    self.clean_path = None
-                    raise CleanRenameError("source_unsafe")
-                unsafe_source = False
-                candidates = (preferred, self.clean_path, self._clean_path_hint)
-                for candidate in candidates:
-                    if candidate is None or candidate.parent != self.session_dir or candidate.suffix != ".txt":
-                        continue
-                    try:
-                        file_stat = candidate.lstat()
-                    except OSError:
-                        continue
-                    if stat.S_ISREG(file_stat.st_mode) and (
-                        file_stat.st_dev, file_stat.st_ino
-                    ) == self._clean_identity:
-                        current_dir = self.session_dir.lstat()
-                        if (current_dir.st_dev, current_dir.st_ino) != self._session_identity:
-                            self.clean_path = None
-                            raise CleanRenameError("source_unsafe")
-                        self.clean_path = candidate
-                        self._clean_path_hint = candidate
-                        return candidate
-                    if candidate == self._clean_path_hint:
-                        unsafe_source = True
+                dir_fd = self._open_verified_session_dir()
                 with os.scandir(dir_fd) as entries:
                     for entry in entries:
                         if not entry.name.endswith(".txt"):
                             continue
                         try:
                             file_stat = entry.stat(follow_symlinks=False)
-                        except OSError:
-                            continue
+                        except OSError as exc:
+                            raise CleanRenameError("source_unverified") from exc
                         if stat.S_ISREG(file_stat.st_mode) and (
                             file_stat.st_dev, file_stat.st_ino
                         ) == self._clean_identity:
                             current_dir = self.session_dir.lstat()
-                            if (current_dir.st_dev, current_dir.st_ino) != self._session_identity:
-                                self.clean_path = None
+                            if not stat.S_ISDIR(current_dir.st_mode) or (
+                                current_dir.st_dev, current_dir.st_ino
+                            ) != self._session_identity:
                                 raise CleanRenameError("source_unsafe")
                             path = self.session_dir / entry.name
                             self.clean_path = path
                             self._clean_path_hint = path
                             return path
+                current_dir = self.session_dir.lstat()
+                if not stat.S_ISDIR(current_dir.st_mode) or (
+                    current_dir.st_dev, current_dir.st_ino
+                ) != self._session_identity:
+                    raise CleanRenameError("source_unsafe")
+                self._snapshot_clean_locked()
+            except CleanRenameError:
+                self.clean_path = None
+                raise
             except OSError as exc:
                 self.clean_path = None
                 raise CleanRenameError("source_unverified") from exc
             finally:
                 try:
                     os.close(dir_fd)
+                except (OSError, UnboundLocalError):
+                    pass
+            hint = preferred or self.clean_path or self._clean_path_hint
+            self.clean_path = None
+            raise CleanPathUnavailableError(hint)
+
+    def recover_clean(self, stem: str) -> Path:
+        """Create a verified no-clobber copy and switch the active writer if needed."""
+        stem = validate_clean_stem(stem)
+        with self._clean_lock:
+            try:
+                self.verified_clean_path()
+            except CleanPathUnavailableError:
+                pass
+            else:
+                raise CleanRenameError("source_available")
+
+            snapshot = self._snapshot_clean_locked()
+            destination = self.session_dir / f"{stem}.txt"
+            dir_fd = self._open_verified_session_dir()
+            temp_name = f".clean-recovery-{uuid4().hex}.tmp"
+            temp_path = self.session_dir / temp_name
+            temp_fd = None
+            new_fd = None
+            new_file = None
+            owned_identity = None
+            published = False
+            try:
+                flags = (
+                    os.O_RDWR
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_CLOEXEC", 0)
+                )
+                temp_fd = os.open(temp_name, flags, 0o600, dir_fd=dir_fd)
+                owned_stat = os.fstat(temp_fd)
+                owned_identity = (owned_stat.st_dev, owned_stat.st_ino)
+                offset = 0
+                while offset < len(snapshot):
+                    written = os.write(temp_fd, snapshot[offset:])
+                    if written <= 0:
+                        raise OSError(errno.EIO, "short write during Clean recovery")
+                    offset += written
+                os.fsync(temp_fd)
+                temp_stat = os.fstat(temp_fd)
+                if temp_stat.st_size != len(snapshot) or self._read_exact_fd(
+                    temp_fd, temp_stat.st_size
+                ) != snapshot:
+                    raise OSError(errno.EIO, "Clean recovery verification failed")
+
+                _rename_noreplace(temp_path, destination, dir_fd)
+                published = True
+                os.fsync(dir_fd)
+
+                if not self.closed:
+                    open_flags = (
+                        os.O_RDWR
+                        | os.O_APPEND
+                        | getattr(os, "O_NOFOLLOW", 0)
+                        | getattr(os, "O_CLOEXEC", 0)
+                    )
+                    new_fd = os.open(destination.name, open_flags, dir_fd=dir_fd)
+                    new_stat = os.fstat(new_fd)
+                    if (
+                        not stat.S_ISREG(new_stat.st_mode)
+                        or (new_stat.st_dev, new_stat.st_ino) != owned_identity
+                        or new_stat.st_size != len(snapshot)
+                        or self._read_exact_fd(new_fd, new_stat.st_size) != snapshot
+                    ):
+                        raise OSError(errno.EIO, "Clean recovery switch verification failed")
+                    new_file = os.fdopen(
+                        new_fd, "a+", encoding="utf-8", buffering=1, newline=""
+                    )
+                    new_fd = None
+
+                old_file = self._clean_file
+                if new_file is not None:
+                    self._clean_file = new_file
+                self._clean_identity = owned_identity
+                self.clean_path = destination
+                self._clean_path_hint = destination
+                self._clean_snapshot = snapshot
+                if new_file is not None:
+                    try:
+                        old_file.close()
+                    except OSError:
+                        pass
+                return destination
+            except OSError as exc:
+                if exc.errno == errno.EEXIST:
+                    raise CleanRenameError("destination_exists") from exc
+                raise
+            finally:
+                if new_file is not None and self._clean_file is not new_file:
+                    try:
+                        new_file.close()
+                    except OSError:
+                        pass
+                elif new_fd is not None:
+                    try:
+                        os.close(new_fd)
+                    except OSError:
+                        pass
+                if temp_fd is not None:
+                    try:
+                        os.close(temp_fd)
+                    except OSError:
+                        pass
+                cleanup_name = destination.name if published and self.clean_path != destination else temp_name
+                if owned_identity is not None:
+                    try:
+                        cleanup_stat = os.stat(
+                            cleanup_name, dir_fd=dir_fd, follow_symlinks=False
+                        )
+                        if (cleanup_stat.st_dev, cleanup_stat.st_ino) == owned_identity:
+                            os.unlink(cleanup_name, dir_fd=dir_fd)
+                    except FileNotFoundError:
+                        pass
+                    except OSError:
+                        pass
+                try:
+                    os.close(dir_fd)
                 except OSError:
                     pass
-            self.clean_path = None
-            raise CleanRenameError("source_unsafe" if unsafe_source else "source_unverified")
 
     def rename_clean(self, stem: str) -> Path:
         stem = validate_clean_stem(stem)
@@ -315,6 +474,7 @@ class TranscriptStore:
         with self._clean_lock:
             if self.closed:
                 return
+            self._clean_snapshot = self._snapshot_clean_locked()
             for file_handle in (self._raw_file, self._clean_file, self._log_file):
                 file_handle.flush()
                 file_handle.close()

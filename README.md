@@ -63,7 +63,7 @@ No Terminal commands are required.
 11. If desired, use **Choose Output Location** to select where future sessions will be stored.
 12. Click **Start Recording**. The Clean Transcript view will update after the first audio chunk has been processed.
 13. Click **Stop Recording** when the class or recording is finished. The app stops capture and finishes audio already submitted for processing.
-14. Use **Reveal Clean** and **Copy Clean Path** in the left controls to locate or copy the current Session's absolute Clean TXT path. Both check that the path still identifies the file being written; if it cannot be verified, they leave Finder and the clipboard unchanged. In the Clean table toolbar, **Rename Clean TXT** changes only the filename stem (the `.txt` suffix is fixed), during recording or after Stop. **Copy New Text** copies displayed Clean rows once, then only rows added since the last successful copy; starting a new Session resets that progress. These actions are absent from Raw and Logs.
+14. Use **Reveal Clean** and **Copy Clean Path** in the left controls to locate or copy the current Session's absolute Clean TXT path. Both check that the path still identifies the file being written; if it cannot be verified, they leave Finder and the clipboard unchanged. In the Clean table toolbar, **Rename Clean TXT** changes only the filename stem (the `.txt` suffix is fixed), during recording or after Stop. If a complete check proves that the open Clean writer no longer has a `.txt` path in its original Session directory, Rename offers to create the requested name from the complete Clean history. Yes creates a no-clobber recovery file and sends later active-recording appends only to it; No changes nothing and the action remains retryable. Permission, inspection, or unsafe-directory uncertainty shows an error instead of this recovery choice. **Copy New Text** copies displayed Clean rows once, then only rows added since the last successful copy; starting a new Session resets that progress. These actions are absent from Raw and Logs.
 
 If the screen is not tall enough to show every control, scroll the left controls/session column with its scrollbar, mouse wheel, trackpad, or keyboard focus traversal. The status strip stays visible above it, and Clean Transcript, Raw Transcript, and Logs keep their own independent scrolling.
 
@@ -154,7 +154,7 @@ Every session is stored under an `outputs` directory:
 ```
 
 - `raw.txt` — original timestamped transcript evidence from the backend
-- `clean.txt` — a more readable transcript after conservative boundary deduplication and limited filtering; Rename Clean TXT may change this Session's filename while preserving its file contents and continued appends
+- `clean.txt` — a more readable transcript after conservative boundary deduplication and limited filtering; Rename Clean TXT may change this Session's filename while preserving its file contents and continued appends, or recover the complete writer history to a new no-clobber `.txt` when the original Session path is conclusively unavailable
 - `session.log` — session, chunk, backend, warning, error, and stop events
 - `config.json` — the model, language, Beam, paths, and audio configuration for that session
 

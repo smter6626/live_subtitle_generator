@@ -16,7 +16,12 @@ if str(ROOT) not in sys.path:
 import transcript_store as store_module  # noqa: E402
 import ui_app  # noqa: E402
 from settings import UI_LANGUAGE_EN, UI_LANGUAGE_ZH  # noqa: E402
-from transcript_store import CleanRenameError, CleanRenameVerificationError, TranscriptStore  # noqa: E402
+from transcript_store import (  # noqa: E402
+    CleanPathUnavailableError,
+    CleanRenameError,
+    CleanRenameVerificationError,
+    TranscriptStore,
+)
 from transcription_controller import EngineState, TranscriptionController  # noqa: E402
 
 
@@ -93,7 +98,7 @@ class StoreRenameTests(unittest.TestCase):
             store.rename_clean("linked")
         source.unlink()
         source.mkdir()
-        with self.assertRaisesRegex(CleanRenameError, "source_unsafe"):
+        with self.assertRaisesRegex(CleanPathUnavailableError, "source_unavailable"):
             store.rename_clean("directory")
         source.rmdir()
 
@@ -193,20 +198,230 @@ class StoreRenameTests(unittest.TestCase):
     def test_persistent_verification_io_error_does_not_publish_destination(self):
         source = self.store.clean_path
         destination = self.store.session_dir / "target.txt"
-        real_lstat = Path.lstat
+        real_scandir = os.scandir
+        renamed = False
+        real_noreplace = store_module._rename_noreplace
 
-        def fail_destination(path, *args, **kwargs):
-            if path == destination and not source.exists():
-                raise PermissionError("injected destination lstat error")
-            return real_lstat(path, *args, **kwargs)
+        def commit(src, dst, dir_fd):
+            nonlocal renamed
+            real_noreplace(src, dst, dir_fd)
+            renamed = True
 
-        with patch.object(Path, "lstat", autospec=True, side_effect=fail_destination):
-            with patch.object(store_module.os, "scandir", side_effect=PermissionError("injected scan error")):
+        def fail_after_commit(path):
+            if renamed:
+                raise PermissionError("injected scan error")
+            return real_scandir(path)
+
+        with patch.object(store_module, "_rename_noreplace", side_effect=commit):
+            with patch.object(store_module.os, "scandir", side_effect=fail_after_commit):
                 with self.assertRaises(CleanRenameVerificationError) as raised:
                     self.store.rename_clean("target")
         self.assertIsNone(raised.exception.verified_path)
         self.assertIsNone(self.store.clean_path)
         self.assertEqual(self.store.verified_clean_path(), destination)
+
+    def test_active_recovery_uses_exact_bytes_and_switches_future_appends(self):
+        store = self.store
+        before = ["[0.00s -> 1.25s] 你好 café", "[1.25s -> 2.50s] 😀"]
+        store.append_clean(before)
+        original = store.clean_path
+        outside = Path(self.tmp.name) / "outside.txt"
+        original.rename(outside)
+        original.write_bytes(b"decoy\n")
+
+        with self.assertRaises(CleanPathUnavailableError):
+            store.verified_clean_path()
+        recovered = store.recover_clean("完整记录")
+        store.append_clean(["[2.50s -> 3.00s] after"])
+
+        expected_before = ("\n".join(before) + "\n").encode("utf-8")
+        self.assertEqual(outside.read_bytes(), expected_before)
+        self.assertEqual(original.read_bytes(), b"decoy\n")
+        self.assertEqual(
+            recovered.read_bytes(), expected_before + b"[2.50s -> 3.00s] after\n"
+        )
+        self.assertEqual(store.verified_clean_path(), recovered)
+
+    def test_unlinked_writer_recovers_and_post_stop_snapshot_recovers(self):
+        store = self.store
+        store.append_clean(["[0.00s -> 1.00s] before", "雪"])
+        expected = "[0.00s -> 1.00s] before\n雪\n".encode("utf-8")
+        store.clean_path.unlink()
+        recovered = store.recover_clean("active")
+        self.assertEqual(recovered.read_bytes(), expected)
+        store.append_clean(["after"])
+        expected += b"after\n"
+        recovered.unlink()
+        store.close()
+        stopped = store.recover_clean("stopped")
+        self.assertEqual(stopped.read_bytes(), expected)
+        self.assertTrue(store.closed)
+        self.assertTrue(store._clean_file.closed)
+
+    def test_append_waits_for_recovery_and_preserves_order(self):
+        store = self.store
+        store.append_clean(["before"])
+        outside = Path(self.tmp.name) / "outside.txt"
+        store.clean_path.rename(outside)
+        recovery_entered = threading.Event()
+        release_recovery = threading.Event()
+        append_finished = threading.Event()
+        real_noreplace = store_module._rename_noreplace
+
+        def held_publish(src, dst, dir_fd):
+            recovery_entered.set()
+            if not release_recovery.wait(3):
+                raise TimeoutError("recovery was not released")
+            return real_noreplace(src, dst, dir_fd)
+
+        def append_during_recovery():
+            store.append_clean(["during"])
+            append_finished.set()
+
+        with patch.object(store_module, "_rename_noreplace", side_effect=held_publish):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                recovery = pool.submit(store.recover_clean, "recovered")
+                self.assertTrue(recovery_entered.wait(3))
+                append = pool.submit(append_during_recovery)
+                self.assertFalse(append_finished.wait(0.05))
+                release_recovery.set()
+                destination = recovery.result(timeout=3)
+                append.result(timeout=3)
+        store.append_clean(["after"])
+        self.assertEqual(destination.read_bytes(), b"before\nduring\nafter\n")
+        self.assertEqual(outside.read_bytes(), b"before\n")
+
+    def test_recovery_collisions_and_failures_preserve_active_writer(self):
+        store = self.store
+        store.append_clean(["before"])
+        outside = Path(self.tmp.name) / "outside.txt"
+        store.clean_path.rename(outside)
+        destination = store.session_dir / "recovered.txt"
+
+        destination.write_bytes(b"keep")
+        with self.assertRaisesRegex(CleanRenameError, "destination_exists"):
+            store.recover_clean("recovered")
+        self.assertEqual(destination.read_bytes(), b"keep")
+        destination.unlink()
+        destination.symlink_to(outside)
+        with self.assertRaisesRegex(CleanRenameError, "destination_exists"):
+            store.recover_clean("recovered")
+        self.assertTrue(destination.is_symlink())
+        destination.unlink()
+
+        with patch.object(store_module.os, "fdopen", side_effect=OSError("switch failed")):
+            with self.assertRaisesRegex(OSError, "switch failed"):
+                store.recover_clean("recovered")
+        self.assertFalse(destination.exists())
+        self.assertFalse(list(store.session_dir.glob(".clean-recovery-*.tmp")))
+        store.append_clean(["after failure"])
+        self.assertEqual(outside.read_bytes(), b"before\nafter failure\n")
+
+        with patch.object(store_module.os, "write", side_effect=OSError("disk full")):
+            with self.assertRaisesRegex(OSError, "disk full"):
+                store.recover_clean("write-failed")
+        self.assertFalse((store.session_dir / "write-failed.txt").exists())
+        self.assertFalse(list(store.session_dir.glob(".clean-recovery-*.tmp")))
+
+    def test_uncertain_scan_read_and_replaced_directory_never_offer_absence(self):
+        store = self.store
+        outside = Path(self.tmp.name) / "outside.txt"
+        store.clean_path.rename(outside)
+        with patch.object(store_module.os, "scandir", side_effect=PermissionError("scan")):
+            with self.assertRaisesRegex(CleanRenameError, "source_unverified"):
+                store.verified_clean_path()
+        with patch.object(store, "_read_exact_fd", side_effect=OSError("read")):
+            with self.assertRaisesRegex(CleanRenameError, "source_unverified"):
+                store.verified_clean_path()
+
+        replacement = Path(self.tmp.name) / "replacement"
+        replacement.mkdir()
+        moved = Path(self.tmp.name) / "moved-session"
+        store.session_dir.rename(moved)
+        store.session_dir.symlink_to(replacement, target_is_directory=True)
+        with self.assertRaisesRegex(CleanRenameError, "source_unsafe"):
+            store.verified_clean_path()
+        self.assertFalse((replacement / "escape.txt").exists())
+        store.session_dir.unlink()
+        moved.rename(store.session_dir)
+
+    def test_entry_stat_and_flush_failures_are_uncertain(self):
+        store = self.store
+        outside = Path(self.tmp.name) / "outside.txt"
+        store.clean_path.rename(outside)
+
+        class UnreadableEntry:
+            name = "unreadable.txt"
+
+            def stat(self, follow_symlinks=False):
+                raise PermissionError("entry stat denied")
+
+        class FakeScan:
+            def __enter__(self):
+                return iter([UnreadableEntry()])
+
+            def __exit__(self, *args):
+                return False
+
+        with patch.object(store_module.os, "scandir", return_value=FakeScan()):
+            with self.assertRaisesRegex(CleanRenameError, "source_unverified"):
+                store.verified_clean_path()
+
+        real_file = store._clean_file
+
+        class FlushFailWriter:
+            def flush(self):
+                raise OSError("flush denied")
+
+            def __getattr__(self, name):
+                return getattr(real_file, name)
+
+        store._clean_file = FlushFailWriter()
+        try:
+            with self.assertRaisesRegex(CleanRenameError, "source_unverified"):
+                store.verified_clean_path()
+        finally:
+            store._clean_file = real_file
+        store.append_clean(["still writable"])
+        self.assertEqual(outside.read_bytes(), b"still writable\n")
+
+    def test_recovery_fsync_open_and_verification_failures_leave_no_target(self):
+        store = self.store
+        store.append_clean(["before"])
+        outside = Path(self.tmp.name) / "outside.txt"
+        store.clean_path.rename(outside)
+
+        with patch.object(store_module.os, "fsync", side_effect=OSError("fsync failed")):
+            with self.assertRaisesRegex(OSError, "fsync failed"):
+                store.recover_clean("fsync-failed")
+        self.assertFalse((store.session_dir / "fsync-failed.txt").exists())
+
+        real_open = os.open
+
+        def fail_destination_open(path, flags, *args, **kwargs):
+            if path == "open-failed.txt" and flags & os.O_APPEND:
+                raise PermissionError("open failed")
+            return real_open(path, flags, *args, **kwargs)
+
+        with patch.object(store_module.os, "open", side_effect=fail_destination_open):
+            with self.assertRaisesRegex(PermissionError, "open failed"):
+                store.recover_clean("open-failed")
+        self.assertFalse((store.session_dir / "open-failed.txt").exists())
+
+        real_read = store._read_exact_fd
+        writer_fd = store._clean_file.fileno()
+
+        def corrupt_temp_verification(fd, size):
+            value = real_read(fd, size)
+            return value if fd == writer_fd else b"x" * len(value)
+
+        with patch.object(store, "_read_exact_fd", side_effect=corrupt_temp_verification):
+            with self.assertRaisesRegex(OSError, "verification failed"):
+                store.recover_clean("verify-failed")
+        self.assertFalse((store.session_dir / "verify-failed.txt").exists())
+        self.assertFalse(list(store.session_dir.glob(".clean-recovery-*.tmp")))
+        store.append_clean(["after"])
+        self.assertEqual(outside.read_bytes(), b"before\nafter\n")
 
     def test_writer_moved_outside_session_fails_closed(self):
         source = self.store.clean_path
@@ -315,6 +530,8 @@ class ControllerRenameTests(unittest.TestCase):
                 controller.rename_clean("stale", "one", 1)
             with self.assertRaisesRegex(ValueError, "stale_session"):
                 controller.verified_clean_path("one", 1)
+            with self.assertRaisesRegex(ValueError, "stale_session"):
+                controller.recover_clean("stale", "one", 1)
             self.assertEqual(controller.verified_clean_path("two", 2), second.clean_path)
             self.assertEqual(controller.state, EngineState.IDLE)
             self.assertEqual(second.clean_path.name, "clean.txt")
@@ -559,9 +776,124 @@ class WindowRenameTests(unittest.TestCase):
         with patch.object(ui_app.subprocess, "run") as run:
             self.window.reveal_clean_file()
             run.assert_not_called()
-        self.window.rename_clean_file("next")
+        with patch.object(
+            ui_app.QMessageBox, "question",
+            return_value=ui_app.QMessageBox.StandardButton.No,
+        ) as question:
+            self.window.rename_clean_file("next")
+        question.assert_called_once()
         self.assertFalse((store.session_dir / "next.txt").exists())
         self.assertEqual(destination.read_bytes(), b"decoy\n")
+
+    def test_recovery_no_then_retry_yes_preserves_history_and_ui_state(self):
+        store = self.store
+        store.append_clean(["[0.00s -> 1.00s] 你好"])
+        self.window.handle_event({
+            "type": "clean_lines", "session_id": "owner", "session_generation": 1,
+            "lines": ["[0.00s -> 1.00s] 你好"], "clean_count": 1,
+        })
+        self.window.copy_clean_text()
+        outside = Path(self.tmp.name) / "outside.txt"
+        old = store.clean_path
+        old.rename(outside)
+        old.write_bytes(b"decoy\n")
+
+        with patch.object(
+            ui_app.QMessageBox, "question",
+            return_value=ui_app.QMessageBox.StandardButton.No,
+        ) as question:
+            self.window.rename_clean_file("recovered")
+        text = question.call_args.args[2]
+        self.assertIn(str(old), text)
+        self.assertIn("完整 Clean 历史", text)
+        self.assertIn("文件句柄", text)
+        self.assertFalse((store.session_dir / "recovered.txt").exists())
+        store.append_clean(["[1.00s -> 2.00s] continued"])
+        self.assertEqual(outside.read_bytes(), "[0.00s -> 1.00s] 你好\n[1.00s -> 2.00s] continued\n".encode())
+        self.assertEqual(old.read_bytes(), b"decoy\n")
+
+        with patch.object(
+            ui_app.QMessageBox, "question",
+            return_value=ui_app.QMessageBox.StandardButton.Yes,
+        ):
+            self.window.rename_clean_file("recovered")
+        recovered = store.session_dir / "recovered.txt"
+        self.assertEqual(self.window.current_clean_path, recovered)
+        self.assertEqual(recovered.read_bytes(), outside.read_bytes())
+        store.append_clean(["[2.00s -> 3.00s] later"])
+        self.assertEqual(
+            recovered.read_bytes(),
+            "[0.00s -> 1.00s] 你好\n[1.00s -> 2.00s] continued\n[2.00s -> 3.00s] later\n".encode(),
+        )
+        self.assertEqual(self.window.clean_copy_row_cursor, 1)
+        self.assertEqual(self.window.clean_table.table.rowCount(), 1)
+
+    def test_english_recovery_text_and_stale_confirmation_fail_closed(self):
+        store = self.store
+        store.append_clean(["old"])
+        outside = Path(self.tmp.name) / "outside.txt"
+        store.clean_path.rename(outside)
+        index = self.window.ui_language_combo.findData(UI_LANGUAGE_EN)
+        self.window.ui_language_combo.setCurrentIndex(index)
+
+        next_store = TranscriptStore(Path(self.tmp.name), "next-during-confirmation")
+
+        def replace_session(*args, **kwargs):
+            self.window.controller.store = next_store
+            self.window.controller.active_session_id = "new-owner"
+            self.window.controller.active_session_generation = 2
+            return ui_app.QMessageBox.StandardButton.Yes
+
+        try:
+            with patch.object(ui_app.QMessageBox, "question", side_effect=replace_session) as question:
+                self.window.rename_clean_file("stale-target")
+            text = question.call_args.args[2]
+            self.assertIn("complete Clean history", text)
+            self.assertIn("open file handle", text)
+            self.assertIn("durable saved output", text)
+            self.assertFalse((store.session_dir / "stale-target.txt").exists())
+            self.assertFalse((next_store.session_dir / "stale-target.txt").exists())
+            self.assertEqual(next_store.clean_path.name, "clean.txt")
+            self.assertIn("Session changed", self.warn_mock.call_args.args[2])
+        finally:
+            next_store.close()
+
+    def test_uncertain_missing_state_shows_error_without_recovery_choice(self):
+        store = self.store
+        outside = Path(self.tmp.name) / "outside.txt"
+        store.clean_path.rename(outside)
+        self.app.clipboard().setText("sentinel")
+        with patch.object(store_module.os, "scandir", side_effect=PermissionError("denied")):
+            with patch.object(ui_app.QMessageBox, "question") as question:
+                self.window.rename_clean_file("unsafe")
+                self.window.copy_clean_path()
+                with patch.object(ui_app.subprocess, "run") as run:
+                    self.window.reveal_clean_file()
+                    run.assert_not_called()
+        question.assert_not_called()
+        self.assertFalse((store.session_dir / "unsafe.txt").exists())
+        self.assertEqual(self.app.clipboard().text(), "sentinel")
+        self.warn_mock.assert_called_once()
+
+    def test_missing_path_still_collects_and_validates_filename(self):
+        store = self.store
+        outside = Path(self.tmp.name) / "outside.txt"
+        store.clean_path.rename(outside)
+
+        def accept_with_name(dialog):
+            edits = dialog.findChildren(ui_app.QLineEdit)
+            self.assertEqual(len(edits), 1)
+            edits[0].setText("课堂记录")
+            return ui_app.QDialog.Accepted
+
+        with patch.object(ui_app.QDialog, "exec", accept_with_name):
+            with patch.object(
+                ui_app.QMessageBox, "question",
+                return_value=ui_app.QMessageBox.StandardButton.No,
+            ) as question:
+                self.window.rename_clean_file()
+        self.assertIn("课堂记录.txt", question.call_args.args[2])
+        self.assertFalse((store.session_dir / "课堂记录.txt").exists())
 
 
 if __name__ == "__main__":

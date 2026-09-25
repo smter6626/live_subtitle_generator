@@ -12,6 +12,7 @@
 
 | Record | 状态 | 说明 |
 | --- | --- | --- |
+| [Clean full-text recovery R2](clean_fulltext_recovery_r2.md) | 等待独立审查和 macOS 实机 Human Gate | 原 Session 路径确认不可用时的完整 Clean 字节恢复、写入切换、失败关闭和双语确认 |
 | [Session clipboard UI v1](session_clipboard_ui_v1.md) | 功能 ACCEPT；功能分支尚未 merge/release | Clean 路径复制、新 Session 清屏、增量复制、双语 label、session ownership 和测试结论 |
 | [Window layout v1](window_layout_v1.md) | 等待独立审查和 macOS 实机 Human Gate | 主窗口可用屏幕高度约束、左侧控制区滚动和右侧滚动 ownership |
 

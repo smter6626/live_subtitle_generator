@@ -74,7 +74,11 @@ from model_manager import (
     validate_import_model,
 )
 from transcript_store import format_runtime, parse_transcript_line
-from transcript_store import CleanRenameError, CleanRenameVerificationError
+from transcript_store import (
+    CleanPathUnavailableError,
+    CleanRenameError,
+    CleanRenameVerificationError,
+)
 from transcription_controller import EngineState, TranscriptionController
 
 
@@ -158,14 +162,19 @@ TEXT = {
         "rename_title": "重命名 Clean TXT",
         "rename_prompt": "文件名",
         "rename_success": "Clean TXT 已重命名为：{name}",
+        "recovery_success": "已从完整 Clean 历史恢复并创建：{name}",
         "rename_verification_warning": "无法验证 Clean TXT 重命名结果或当前文件路径：{error}",
         "rename_error_title": "无法重命名 Clean TXT",
+        "recovery_title": "恢复 Clean TXT？",
+        "recovery_question": "原路径提示（当前不可用）：{path}\n\n选择“是”将在已验证的原 Session 目录中创建 {name}.txt，并写入完整 Clean 历史；如果录音仍在进行，之后的内容只会继续写入新文件。\n\n选择“否”或取消不会创建或切换任何文件。继续向已打开的文件句柄写入，并不能保证存在安全路径，也不能保证在关闭文件或退出 App 后仍有持久保存的输出。",
         "name_empty": "请输入文件名。",
         "name_invalid": "文件名不能是 . 或 ..，不能包含路径分隔符、控制字符或首尾空格。",
         "name_suffix": "只输入文件名，不要输入 .txt 后缀。",
         "source_missing": "当前 Clean TXT 文件不存在。",
         "source_unsafe": "当前 Clean TXT 文件不是安全的普通文件。",
         "source_unverified": "无法验证当前 Clean TXT 文件路径。",
+        "source_unavailable": "已确认写入中的 Clean 文件在原 Session 目录内没有可用的 .txt 路径。",
+        "source_available": "Clean TXT 路径已重新可用，请重试重命名。",
         "destination_exists": "目标文件已存在。",
         "rename_unavailable": "此系统不支持安全的原子无覆盖重命名。",
         "stale_session": "Session 已变化，请重试。",
@@ -267,14 +276,19 @@ TEXT = {
         "rename_title": "Rename Clean TXT",
         "rename_prompt": "Filename",
         "rename_success": "Clean TXT renamed to: {name}",
+        "recovery_success": "Created from the complete Clean history: {name}",
         "rename_verification_warning": "Cannot verify the Clean TXT rename result or current file path: {error}",
         "rename_error_title": "Cannot Rename Clean TXT",
+        "recovery_title": "Recover Clean TXT?",
+        "recovery_question": "Unavailable path hint: {path}\n\nYes creates {name}.txt in the verified original Session directory with the complete Clean history. If recording is active, all later appends go only to the new file.\n\nNo or cancel creates and switches nothing. Continued writes to an open file handle do not guarantee a safe path or durable saved output after the file is closed or the app exits.",
         "name_empty": "Enter a filename.",
         "name_invalid": "Use a name without . or .., path separators, control characters, or surrounding spaces.",
         "name_suffix": "Enter the filename only, without the .txt suffix.",
         "source_missing": "The current Clean TXT file is missing.",
         "source_unsafe": "The current Clean TXT file is not a safe regular file.",
         "source_unverified": "The current Clean TXT file path cannot be verified.",
+        "source_unavailable": "The Clean writer conclusively has no available .txt path in the original Session directory.",
+        "source_available": "The Clean TXT path is available again. Retry the rename.",
         "destination_exists": "The destination file already exists.",
         "rename_unavailable": "This system does not support atomic no-replace rename.",
         "stale_session": "The Session changed. Try again.",
@@ -1855,19 +1869,27 @@ class MainWindow(QMainWindow):
     def rename_clean_file(self, stem=None):
         session_id = self.active_session_id
         generation = self.active_session_generation
+        path_hint = self.current_clean_path
         if stem is None:
             try:
                 current_path = self.controller.verified_clean_path(session_id, generation)
-            except (CleanRenameError, ValueError, OSError):
+            except CleanPathUnavailableError as exc:
                 self.current_clean_path = None
+                path_hint = exc.path_hint or path_hint
+                current_path = path_hint
+            except (CleanRenameError, ValueError, OSError) as exc:
+                self.current_clean_path = None
+                self._show_clean_rename_error(exc)
                 return
-            self.current_clean_path = current_path
+            else:
+                self.current_clean_path = current_path
+                path_hint = current_path
             dialog = QDialog(self)
             dialog.setWindowTitle(tr("rename_title"))
             layout = QVBoxLayout(dialog)
             layout.addWidget(QLabel(tr("rename_prompt")))
             row = QHBoxLayout()
-            name_edit = QLineEdit(current_path.stem)
+            name_edit = QLineEdit(current_path.stem if current_path else "clean")
             row.addWidget(name_edit)
             suffix = QLabel(".txt")
             row.addWidget(suffix)
@@ -1881,6 +1903,31 @@ class MainWindow(QMainWindow):
             stem = name_edit.text()
         try:
             path = self.controller.rename_clean(stem, session_id, generation)
+        except CleanPathUnavailableError as exc:
+            self.current_clean_path = None
+            path_hint = exc.path_hint or path_hint
+            answer = QMessageBox.question(
+                self,
+                tr("recovery_title"),
+                tr("recovery_question").format(
+                    path=path_hint or tr("source_unavailable"), name=stem
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            try:
+                path = self.controller.recover_clean(stem, session_id, generation)
+            except (CleanRenameError, ValueError, OSError) as recovery_exc:
+                self.current_clean_path = None
+                self._show_clean_rename_error(recovery_exc)
+                return
+            self.current_clean_path = path
+            QMessageBox.information(
+                self, tr("recovery_title"), tr("recovery_success").format(name=path.name)
+            )
+            return
         except CleanRenameVerificationError as exc:
             self.current_clean_path = exc.verified_path
             QMessageBox.warning(
@@ -1895,19 +1942,24 @@ class MainWindow(QMainWindow):
                 self.current_clean_path = self.controller.verified_clean_path(session_id, generation)
             except (CleanRenameError, ValueError, OSError):
                 self.current_clean_path = None
-            key = str(exc)
-            message = tr(key) if key in TEXT[current_language()] else tr("rename_io_error").format(error=exc)
-            QMessageBox.warning(self, tr("rename_error_title"), message)
+            self._show_clean_rename_error(exc)
             return
         except OSError as exc:
-            QMessageBox.warning(
-                self, tr("rename_error_title"), tr("rename_io_error").format(error=exc)
-            )
+            self._show_clean_rename_error(exc)
             return
         self.current_clean_path = path
         QMessageBox.information(
             self, tr("rename_title"), tr("rename_success").format(name=path.name)
         )
+
+    def _show_clean_rename_error(self, error):
+        key = str(error)
+        message = (
+            tr(key)
+            if key in TEXT[current_language()]
+            else tr("rename_io_error").format(error=error)
+        )
+        QMessageBox.warning(self, tr("rename_error_title"), message)
 
     def closeEvent(self, event):
         crash_log(f"closeEvent entered: controller_state={self.controller.state.value}")
