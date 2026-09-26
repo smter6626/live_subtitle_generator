@@ -6,7 +6,7 @@
 | --- | --- |
 | Repository | `smter6626/live_subtitle_generator` (Classroom Live Transcriber) |
 | Branch | `main` baseline plus current `codex/clean-toolbar-rename-v1` feature delta; feature integration remains pending |
-| Structural baseline | Original full scan at `4d2059d273d0ba94373b1969b8236ef462b6acae`; affected architecture ownership/flows updated through Product Polish Step 1F, session clipboard UI commit `cb4261825b7d51d3ec33a97e083683c50e6b9e82`, the window-layout change based on `fb7e38e4248b1b6fcf58a14193dbfe9315f90f34`, and Clean full-text recovery R2 based on `b62ef6947d6a634c56e695740e4ea446751e6c79`. |
+| Structural baseline | Original full scan at `4d2059d273d0ba94373b1969b8236ef462b6acae`; affected architecture ownership/flows updated through Product Polish Step 1F, session clipboard UI commit `cb4261825b7d51d3ec33a97e083683c50e6b9e82`, window-layout commit `569e5c551c101811ed80fca23bd5708d6ac880cf`, and final Clean full-text recovery R2 commit `fb317ea4a2b1db557133e91590e852c0241a3cd8`. |
 | Updated | 2026-09-25 |
 | Scan scope | 65 Git-tracked files at the original map baseline; later structural syncs update affected ownership/flows without re-running a full-file recount |
 | Document role | A derived architecture and change-navigation aid, not a product contract or API reference |
@@ -135,12 +135,11 @@ Tests are a mix of `unittest` contract suites and directly executable regression
 | `docs/` | Stable contracts, runtime/acceptance history, architecture/change-navigation, and governance documentation; specific document roles are listed below. |
 | `docs/product_polish_static.md`, `docs/product_polish_runtime.md` | Current Product/UX stable contract and execution state. This Repo Map reflects source through the Step 1B implementation commit; ACTIVE-step state remains owned by runtime. |
 | `docs/deployment_static.md`, `docs/deployment_runtime.md` | Deployment/release stable contract and recorded execution evidence; Deployment currently has no ACTIVE step. |
-| `docs/change_records/` | Compact target-side records for accepted cross-repository changes. These preserve product behavior, commit/test provenance, known limitations, and follow-up direction without duplicating 1PCloop Runtime or raw Agent evidence. |
 | `README.md` | Primary English user-facing GitHub landing page and usage guide. |
 | `README.zh-CN.md` | Complete Simplified Chinese user-facing equivalent of `README.md`. |
 | `PACKAGING.md` | Developer packaging, reproducible build, Runtime verification, and Release ZIP documentation. |
 | `docs/工程细节.md` | Detailed explanatory engineering narrative; useful orientation, but secondary to current source/manifests/static/runtime. |
-| `docs/LLM_POSTPROCESSING_DESIGN.md`, `docs/LLMsteps.md`, `docs/goalForNextLevel.md`, `docs/user_understand.md` | Design/backlog material for an LLM sidecar and later directions. It does not describe a tracked LLM implementation on current `main`. |
+| `docs/LLM_POSTPROCESSING_DESIGN.md`, `docs/LLMsteps.md`, `docs/goalForNextLevel.md`, `docs/user_understand.md` | Design/backlog material for an LLM sidecar and later directions. It does not describe a tracked LLM implementation on current `main`; its input path is gated on a not-yet-implemented trusted current-Clean resolver. |
 | `docs/Yeming_Dai_Audio_Transcription_Portfolio.md` | Portfolio-oriented description; it includes an externally referenced local image and is not an application asset or build input. |
 | `docs/whisper历史记录.pdf` | Historical archive (8-page PDF); not parsed as an active architecture authority. |
 
@@ -244,9 +243,9 @@ controller.start()
 -> engine.stop() drains queued work, logs Stop complete, then closes all handles
 ```
 
-The Clean writer continues appending to the same inode after a current-Session rename. If that inode conclusively has no `.txt` path in the verified original Session, recovery copies its exact flushed history to a no-clobber file and, while active, switches later appends to the verified new writer; Stop preserves an exact snapshot for the same operation. A new Session always creates its own `clean.txt`. The UI path buttons follow only the store's currently verified path. `docs/LLM_POSTPROCESSING_DESIGN.md` and `docs/LLMsteps.md` still describe a future fixed-`clean.txt` reader; that reader needs a separate migration before implementation.
+The Clean writer continues appending to the same inode after a current-Session rename. If that inode conclusively has no `.txt` path in the verified original Session, recovery copies its exact flushed history to a no-clobber file and, while active, switches later appends to the verified new writer; Stop preserves an exact snapshot for the same operation. A new Session always creates its own initial `clean.txt`. The UI path buttons follow only the Store's currently verified path.
 
-The store owns directory creation, open handles, append counters, flushes, and close. The controller owns session creation; the engine owns continued evidence writes while running; the UI owns only current-session paths for Finder reveal and display. No tracked component moves or rewrites a completed session.
+The Store owns directory creation, open handles, append counters, flushes, current-writer identity, rename/recovery and close. The Controller owns Session creation and ID + generation ownership; the engine owns continued evidence writes while running; the UI owns no independent file authority. A completed Session is normally immutable, but an explicit post-Stop Rename or full-history recovery may rename the verified writer or create a new current Clean `.txt`. No persistent current-Clean locator exists across App restart yet. Future LLM/Session Browser work must first implement a trusted resolver or manifest and must fail closed if identity cannot be proven; scanning a directory and choosing an arbitrary `.txt` is not acceptable.
 
 ### F. Build, package, and Release path
 

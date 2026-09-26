@@ -17,6 +17,23 @@ PySide6 UI
 LLM work must remain outside that live transcription path unless a later design
 explicitly reopens this decision.
 
+### Current-Clean resolution prerequisite
+
+This design originally used `session_dir/clean.txt` as if the filename were a
+permanent identity. That is no longer valid on the current feature branch. A
+Session starts with `clean.txt`, but the verified writer may be renamed or a
+post-Stop full-history recovery may create a user-named `.txt`.
+
+No persistent current-Clean locator exists across app restart yet. Before any
+LLM production implementation, the project must add and validate a trusted
+current-Clean resolver or manifest that binds a completed Session to the exact
+artifact selected by the app. It must not scan the directory and choose an
+arbitrary `.txt`, trust a same-name decoy, or silently fall back to a stale
+`clean.txt`. If identity cannot be proven, summary generation must fail closed
+without creating LLM output. The rest of this document uses "current Clean
+artifact" for that resolver result; references to `clean.txt` describe the
+initial filename or the transcript format, not a fixed path contract.
+
 ## Scope and Phases
 
 ### Phase 1: after-stop summary
@@ -24,8 +41,8 @@ explicitly reopens this decision.
 Phase 1 is an after-stop summary pipeline.
 
 - Trigger: only after Stop has completed for a session.
-- Input source: `clean.txt` is the first input source and the only required
-  transcript input for the first version.
+- Input source: the trusted resolver's current Clean artifact is the first
+  input source and the only required transcript input for the first version.
 - `raw.txt`: reserved for future optional evidence lookup only. It does not
   participate in Phase 1.
 - Output language: default output language is Chinese.
@@ -35,7 +52,7 @@ Phase 1 is an after-stop summary pipeline.
 ```text
 session_dir/
   raw.txt
-  clean.txt
+  clean.txt or <user-name>.txt
   session.log
   config.json
   llm/
@@ -47,21 +64,21 @@ session_dir/
     llm_errors.log
 ```
 
-Phase 1 does not include minute-based translation, realtime LLM calls, LLM
-cleanup of `clean.txt`, or any replacement of existing session files. LLM jobs
-must not modify raw.txt or clean.txt.
+Phase 1 does not include minute-based translation, realtime LLM calls, semantic
+cleanup of the current Clean artifact, or any replacement of existing session
+files. LLM jobs must not modify `raw.txt` or the resolved current Clean artifact.
 
 ### Phase 2: minute-based Chinese translation sidecar
 
 Phase 2 is a minute-based Chinese translation sidecar and is a later feature.
 
 - Default state: off.
-- Input mode: read-only snapshots of `clean.txt`.
+- Input mode: read-only snapshots from a resolver-bound current Clean artifact.
 - Output mode: sidecar artifacts only, under a future `session_dir/llm/` or
   similarly isolated translation subdirectory.
 - It must not enter audio capture, chunk scheduling, dedup, backend execution,
   or the `TranscriptStore` main write path.
-- It must not write back into `raw.txt` or `clean.txt`.
+- It must not write back into `raw.txt` or the resolved current Clean artifact.
 - It is not a Phase 1 acceptance criterion.
 
 The sidecar may poll or receive a safe snapshot signal in a later design, but it
@@ -75,8 +92,8 @@ The first version explicitly does not do the following:
 - No realtime per-chunk LLM calls.
 - No minute-based translation in Phase 1.
 - No automatic semantic correction of transcript files.
-- No overwrite, append, or rewrite of `raw.txt`, `clean.txt`, `session.log`, or
-  `config.json`.
+- No overwrite, append, or rewrite of `raw.txt`, the resolved current Clean
+  artifact, `session.log`, or `config.json`.
 - No LLM work inside microphone capture, ring buffer management, chunk
   scheduling, whisper.cpp backend calls, dedup, or `TranscriptStore` writes.
 - No API key storage in repository files, app settings, `config.json`, session
@@ -154,8 +171,8 @@ secrets, and still must not contain the API key.
 
 ## Transcript Parsing and Chunking
 
-Phase 1 reads `session_dir/clean.txt` after Stop completes. The current clean
-line format is:
+Phase 1 resolves the verified current Clean artifact after Stop completes, then
+opens that exact artifact read-only. Its line format is:
 
 ```text
 [12.34s -> 18.90s] transcript text
@@ -169,7 +186,7 @@ semantics:
 - Skip empty lines.
 - Keep malformed/no-timestamp lines as text-only entries rather than failing the
   entire job.
-- Never rewrite the source `clean.txt`.
+- Never rewrite the resolved source artifact.
 
 Chunking should be deterministic and based on timestamp order plus a character
 or token budget:
@@ -179,7 +196,8 @@ or token budget:
 - Track `chunk_id`, `start_time`, `end_time`, and original line ranges.
 - Include session metadata from `config.json` only as read-only context if
   needed; do not write back to `config.json`.
-- Use `clean.txt` as the authoritative first source for Phase 1.
+- Use the resolver-bound current Clean artifact as the authoritative first
+  source for Phase 1.
 - Reserve `raw.txt` as future optional evidence for unclear terms, not as a
   Phase 1 input.
 
@@ -205,7 +223,7 @@ Section prompt inputs:
 session metadata, if available
 chunk id
 chunk start/end time
-clean.txt transcript chunk
+resolver-bound Clean transcript chunk
 ```
 
 Section prompt output target:
@@ -226,7 +244,7 @@ Global prompt inputs:
 
 ```text
 all section summaries
-high-value clean.txt excerpts selected by the chunker/pipeline
+high-value current-Clean excerpts selected by the chunker/pipeline
 ```
 
 Global prompt output target:
@@ -245,7 +263,8 @@ Global prompt output target:
 ## Output Schema
 
 All output files are written under `session_dir/llm/`. Creating or replacing the
-`llm/` directory contents must not modify raw.txt or clean.txt.
+`llm/` directory contents must not modify `raw.txt` or the resolved current
+Clean artifact.
 
 `summary.md`:
 
@@ -263,7 +282,8 @@ All output files are written under `session_dir/llm/`. Creating or replacing the
   "output_language": "zh",
   "source": {
     "session_dir": "...",
-    "transcript": "clean.txt",
+    "transcript": "<resolver-bound basename>",
+    "transcript_identity": "<safe resolver identity>",
     "raw_used": false
   },
   "generated_at": "ISO-8601 timestamp",
@@ -353,7 +373,7 @@ Hard rules:
 
 Transcript privacy:
 
-- `clean.txt` content is sent to the provider in Phase 1.
+- The resolver-bound current Clean content is sent to the provider in Phase 1.
 - `raw.txt` and audio files are not sent in Phase 1.
 - Future raw evidence support must be opt-in at design level and must still not
   modify source transcript files.
@@ -365,7 +385,7 @@ LLM failure isolation is mandatory.
 All LLM failures must not affect:
 
 - `raw.txt`
-- `clean.txt`
+- the resolver-bound current Clean artifact
 - `session.log`
 - `config.json`
 - Start/Stop behavior
@@ -409,15 +429,19 @@ python -m llm.cli summarize outputs/YYYY-MM-DD_HH-MM-SS
 Workflow:
 
 1. Validate `session_dir` exists.
-2. Validate `session_dir/clean.txt` exists and is readable.
-3. Validate `DEEPSEEK_API_KEY` exists in the environment.
-4. Create `session_dir/llm/`.
-5. Parse and chunk `clean.txt`.
-6. Run mock provider or DeepSeek provider depending on CLI mode.
-7. Write `summary.md`, `summary.json`, `sections.json`, `key_terms.json`,
+2. Load the persistent current-Clean locator and prove it resolves to the exact
+   Session-owned regular file. Missing, stale, ambiguous, symlinked, or
+   otherwise unverified identity stops the job.
+3. Open the resolved current Clean artifact read-only and bind its identity for
+   the job; do not infer a path by scanning `.txt` files.
+4. Validate `DEEPSEEK_API_KEY` exists in the environment.
+5. Create `session_dir/llm/`.
+6. Parse and chunk the resolved Clean artifact.
+7. Run mock provider or DeepSeek provider depending on CLI mode.
+8. Write `summary.md`, `summary.json`, `sections.json`, `key_terms.json`,
    `action_items.json`.
-8. Write `llm_errors.log` on failure or warnings.
-9. Exit without modifying `raw.txt`, `clean.txt`, `session.log`, or
+9. Write `llm_errors.log` on failure or warnings.
+10. Exit without modifying `raw.txt`, the resolved Clean artifact, `session.log`, or
    `config.json`.
 
 Implementation sequence:
@@ -437,7 +461,7 @@ UI integration is last and must remain minimal.
 Future UI behavior:
 
 - Enable `Generate Summary` only after Stop has completed and a current session
-  directory exists.
+  directory exists and current-Clean identity has been resolved successfully.
 - Run LLM work on a background thread or worker, never on the Qt main thread.
 - Show status: idle, running, failed, complete.
 - Provide `Open Summary` only when `summary.md` exists.
@@ -467,7 +491,8 @@ testCodes/test_llm_provider_mock.py
 
 Required coverage for the later implementation:
 
-- `clean.txt` timestamp parser.
+- Current-Clean timestamp parser after successful resolver binding.
+- Resolver rejection for missing, stale, ambiguous, symlinked, or decoy input.
 - No-timestamp fallback lines.
 - Empty transcript handling.
 - Deterministic chunking.
@@ -477,7 +502,7 @@ Required coverage for the later implementation:
 - Missing `DEEPSEEK_API_KEY` CLI behavior.
 - Output schema validation.
 - API key redaction from all outputs/logs.
-- LLM error does not modify `raw.txt` or `clean.txt`.
+- LLM error does not modify `raw.txt` or the resolved current Clean artifact.
 - Phase 1 does not create minute-based translation outputs.
 
 Manual real API test, after mock tests pass:
@@ -496,7 +521,7 @@ Primary risks:
 - Accidentally moving LLM into the realtime ASR path.
 - Treating minute-based translation as Phase 1 work.
 - Saving API keys into settings or session files.
-- Rewriting `clean.txt` as an LLM-corrected transcript.
+- Rewriting the current Clean artifact as an LLM-corrected transcript.
 - Blocking Stop or UI shutdown on network/API work.
 - Over-trusting LLM output without timestamp grounding.
 

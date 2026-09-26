@@ -21,6 +21,8 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 - 可配置 Output Location
 - 中文和 English 两种界面语言
 - 主窗口高度受当前屏幕可用范围约束，左侧控制栏可独立纵向滚动
+- Session 独占的 Clean 工具栏，支持无覆盖重命名、增量文本复制、在访达中定位和复制绝对路径
+- 当当前 writer 在原 Session 中确定不存在 `.txt` 路径时，可从完整历史恢复 Clean 文件
 - 独立的 Original Language 设置，支持英语、中文、日语、法语、西班牙语、德语、韩语和自动检测音频
 - Beam 范围为 3–8，默认值为 5
 - 持久保存模型、Beam、界面语言、模型位置和输出位置设置
@@ -33,6 +35,8 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 
 - [Classroom Transcriber 1.0.0 GitHub Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.0.0)
 - 正式 asset：`ClassroomTranscriber-1.0.0-macOS-AppleSilicon.zip`
+
+下文所述的 Clean 工具栏、窗口高度约束、Session 重置/复制行为和全文恢复已经在当前 `codex/clean-toolbar-rename-v1` feature branch 实现，并完成人工实机验证；它们尚未 merge、tag 或打包进 Release 1.0.0。因此，当前可下载的 1.0.0 App 还不包含这些 feature-branch 改动。
 
 普通用户**不需要** clone 本仓库，不需要安装 Python，也不需要自行编译 `whisper.cpp`。ZIP 不包含 Whisper 模型；打开 App 后，请通过 Model Manager 下载或导入模型。
 
@@ -63,7 +67,16 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 11. 如有需要，使用**选择输出位置（Choose Output Location）**设置未来 Session 的保存位置。
 12. 点击**开始录音（Start Recording）**。第一个音频 chunk 处理完成后，Clean Transcript 会开始更新。
 13. 课堂或录音结束时，点击**停止录音（Stop Recording）**。App 会停止继续采集，并完成已经提交处理的音频。
-14. 左侧的**定位 Clean（Reveal Clean）**和**复制 Clean 路径（Copy Clean Path）**可定位或复制当前 Session 的 Clean TXT 绝对路径。两者都会核对路径是否仍指向正在写入的文件；无法验证时不会打开访达或修改剪贴板。Clean 表格工具栏中的**重命名 Clean TXT（Rename Clean TXT）**仅修改文件名主体，`.txt` 后缀固定；录音中或停止后均可操作。如果完整检查确认正在写入的 Clean 文件在原 Session 目录内已没有 `.txt` 路径，重命名操作会询问是否用完整 Clean 历史创建指定文件名。选择“是”会无覆盖地创建恢复文件；若仍在录音，之后的追加只写入新文件。选择“否”不作任何变更，并可稍后重试。权限、检查 I/O 或不安全目录等不确定状态只显示错误，不提供恢复选项。**复制新增文本（Copy New Text）**首次复制当前显示的全部 Clean 行，之后只复制上次成功复制后新增的行，新 Session 会重置复制进度。Raw 和 Logs 没有这些工具栏按钮。
+14. 如果运行当前 feature branch，请使用下述 Clean 文件操作。可下载的 1.0.0 App 中还没有这些控件。
+
+### 当前 feature branch 的 Clean 文件操作
+
+- 左侧的**定位 Clean（Reveal Clean）**和**复制 Clean 路径（Copy Clean Path）**位于同一紧凑行。每次使用都会重新确认路径仍对应当前 Session 的 Clean writer；验证失败时，访达和剪贴板保持不变。
+- **重命名 Clean TXT（Rename Clean TXT）**位于 Clean 表格工具栏左侧。只输入文件名主体，`.txt` 后缀由 App 固定管理。普通重命名不会覆盖已有目标，会保留 writer inode，并且在录制中或 Stop 后都可使用。
+- 如果完整检查证明 writer 在经过验证的原 Session 中没有任何普通 `.txt` 路径，App 会询问是否用完整 Clean 历史创建指定文件。选择**是**会无覆盖地创建一个包含切换前全部 Clean 字节的文件；若仍在录制，之后的内容只追加到新文件。选择**否**或取消不会创建或切换文件。提示框会明确说明：仍可写入已打开的文件句柄，不等于关闭文件或退出 App 后仍有可持久访问的路径。
+- 权限错误、检查结果不确定或 Session 目录被不安全替换时，不会被当成“文件已消失”。操作会报错停止，不提供恢复选项。
+- **复制新增文本（Copy New Text）**位于**跳到最新（Jump to Live）**左侧。第一次成功使用时复制当前显示的全部 Clean 行，之后只复制上一次成功复制后新增的行。
+- 开启新 Session 会清空 Clean/Raw 显示并重置增量复制断点。此后所有 Clean 文件操作都归属于新 Session，之前已停止的 Session 不再是 UI 操作对象。
 
 如果屏幕高度不足以显示全部控件，可使用左侧控制/Session 栏的滚动条、鼠标滚轮、触控板或键盘焦点遍历继续访问。顶部状态栏保持在滚动区外；Clean Transcript、Raw Transcript 和 Logs 仍各自独立滚动。
 
@@ -142,13 +155,13 @@ Beam 控制转写时的搜索量。当前范围为 `3` 到 `8`，默认值为 `5
 ```text
 <chosen-root>/outputs/<timestamp>/
 ├── raw.txt
-├── clean.txt
+├── clean.txt                 # 当前 Clean 的初始文件名
 ├── session.log
 └── config.json
 ```
 
 - `raw.txt`——后端产生的原始 timestamp transcript evidence
-- `clean.txt`——经过保守边界去重和少量过滤后的可读版本；重命名后本 Session 可使用新文件名并继续追加；当原 Session 路径被完整检查确认为不可用时，也可把完整写入历史无覆盖地恢复到新的 `.txt`
+- `clean.txt` -- 当前 Clean transcript 的初始文件名。在 feature branch 中，重命名可将它改为用户指定的 `.txt`，同时保留已有内容和后续追加；当原 Session 路径确定不可用时，也可将完整 writer 历史无覆盖地恢复到新的 `.txt`。因此不能假设每个已完成的 feature-branch Session 都仍有一个字面名称为 `clean.txt` 的文件。
 - `session.log`——Session、chunk、backend、warning、error 和 stop 事件日志
 - `config.json`——本次 Session 使用的模型、语言、Beam、路径和音频配置
 
@@ -193,6 +206,18 @@ App 会在创建 Session 前检查实际的 `<chosen-root>/outputs` 目录；失
 
 Start 创建 Session 后，点击**打开输出目录（Open Output Folder）**。主窗口也会显示当前 Session 路径。默认位置为 `~/Documents/ClassroomTranscriber/outputs/<timestamp>/`。
 
+### 点击“定位 Clean”或“复制 Clean 路径”没有反应
+
+在 feature branch 中，如果 Store 无法证明哪个 Session 内的 `.txt` 才是当前 writer，这两个操作会主动保持访达或剪贴板不变。请等待外部文件操作停止后重试。如果路径已经被安全地确认不存在，可通过**重命名 Clean TXT**选择是否创建全文恢复文件。
+
+### Clean 重命名提示目标已存在
+
+普通重命名和恢复都不会覆盖已有文件、目录、symlink 或同名 decoy。请换一个文件名主体，或在确认冲突项内容后自行移动它。
+
+### Clean 重命名提示无法验证源文件
+
+权限、I/O、Session 目录身份或文件类型不确定时会 fail closed。App 不会把不确定状态解释成“文件已消失”，也不会在安全确认缺失之前提供“是”的恢复路径。
+
 ## 已知限制
 
 - 1.0.0 下载 asset 仅面向 macOS Apple Silicon，没有 Intel Mac 或 Windows Release。
@@ -202,6 +227,7 @@ Start 创建 Session 后，点击**打开输出目录（Open Output Folder）**�
 - Release 1.0.0 没有 LLM summary、云端翻译 sidecar、语义纠错或结构化课堂笔记。
 - 自动检测使用自动语言识别，效果取决于模型和音频。
 - Clean Transcript 只执行保守去重和有限的高置信过滤，不是语义改写。
+- Feature-branch Clean 路径验证面向本 App 的 single-writer 工作流。无锁的外部程序仍可能在最后一次检查之后立刻修改 Session；App 不提供跨程序文件系统锁。
 
 ## 开发者指南
 

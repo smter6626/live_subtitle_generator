@@ -21,6 +21,8 @@ The current transcription path does not depend on a cloud LLM. Release 1.0.0 doe
 - Configurable output location
 - Chinese and English interface languages
 - Main-window height bounded to the current screen, with an independently scrollable controls column
+- A Session-owned Clean toolbar for no-clobber rename, incremental text copy, Finder reveal, and absolute-path copy
+- Full-history Clean recovery when the current writer conclusively has no `.txt` path in its original Session
 - Separate Original Language selection for English, Chinese, Japanese, French, Spanish, German, Korean, or Auto Detect audio
 - Beam control from 3 to 8, with a default of 5
 - Persistent model, Beam, interface language, model location, and output settings
@@ -33,6 +35,8 @@ The current formal release is **1.0.0**:
 
 - [Classroom Transcriber 1.0.0 GitHub Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.0.0)
 - Release asset: `ClassroomTranscriber-1.0.0-macOS-AppleSilicon.zip`
+
+The Clean toolbar, bounded-window layout, Session reset/copy behavior, and full-history recovery documented below are implemented and Human-tested on the current `codex/clean-toolbar-rename-v1` feature branch. They have not been merged, tagged, or packaged into Release 1.0.0. The downloadable 1.0.0 app therefore does not yet contain those feature-branch changes.
 
 Ordinary users do **not** need to clone this repository, install Python, or compile `whisper.cpp`. Whisper models are not included in the ZIP; download or import one from Model Manager after opening the app.
 
@@ -63,7 +67,16 @@ No Terminal commands are required.
 11. If desired, use **Choose Output Location** to select where future sessions will be stored.
 12. Click **Start Recording**. The Clean Transcript view will update after the first audio chunk has been processed.
 13. Click **Stop Recording** when the class or recording is finished. The app stops capture and finishes audio already submitted for processing.
-14. Use **Reveal Clean** and **Copy Clean Path** in the left controls to locate or copy the current Session's absolute Clean TXT path. Both check that the path still identifies the file being written; if it cannot be verified, they leave Finder and the clipboard unchanged. In the Clean table toolbar, **Rename Clean TXT** changes only the filename stem (the `.txt` suffix is fixed), during recording or after Stop. If a complete check proves that the open Clean writer no longer has a `.txt` path in its original Session directory, Rename offers to create the requested name from the complete Clean history. Yes creates a no-clobber recovery file and sends later active-recording appends only to it; No changes nothing and the action remains retryable. Permission, inspection, or unsafe-directory uncertainty shows an error instead of this recovery choice. **Copy New Text** copies displayed Clean rows once, then only rows added since the last successful copy; starting a new Session resets that progress. These actions are absent from Raw and Logs.
+14. If you are running the current feature branch, use the Clean file actions below. These controls are not present in the downloadable 1.0.0 app.
+
+### Clean file actions on the current feature branch
+
+- **Reveal Clean** and **Copy Clean Path** share one compact row in the left controls. Each use rechecks that the path still identifies the current Session's Clean writer. If verification fails, Finder and the clipboard remain unchanged.
+- **Rename Clean TXT** is at the left of the Clean table toolbar. Enter only a filename stem; the app owns the fixed `.txt` suffix. A normal rename is no-clobber, preserves the writer inode, and works while recording or after Stop.
+- If a complete check proves that the writer has no regular `.txt` path in its verified original Session, the app asks whether to create the requested name from the complete Clean history. **Yes** creates a no-clobber file containing all Clean bytes up to the switch; during active recording, later appends go only to the new file. **No** or cancel creates and switches nothing. The prompt warns that an open file handle does not guarantee a durable path after close or app exit.
+- Permission errors, uncertain inspection, or an unsafe/replaced Session directory are not treated as a missing file. The action stops with an error and does not offer recovery.
+- **Copy New Text**, immediately left of **Jump to Live**, copies all displayed Clean rows on its first successful use. Later uses copy only rows added after the previous successful copy.
+- Starting a new Session clears the displayed Clean/Raw rows and resets the incremental-copy cursor. All Clean file actions then belong to the new Session; the stopped previous Session is no longer the UI target.
 
 If the screen is not tall enough to show every control, scroll the left controls/session column with its scrollbar, mouse wheel, trackpad, or keyboard focus traversal. The status strip stays visible above it, and Clean Transcript, Raw Transcript, and Logs keep their own independent scrolling.
 
@@ -148,13 +161,13 @@ Every session is stored under an `outputs` directory:
 ```text
 <chosen-root>/outputs/<timestamp>/
 ├── raw.txt
-├── clean.txt
+├── clean.txt                 # initial current Clean name
 ├── session.log
 └── config.json
 ```
 
 - `raw.txt` — original timestamped transcript evidence from the backend
-- `clean.txt` — a more readable transcript after conservative boundary deduplication and limited filtering; Rename Clean TXT may change this Session's filename while preserving its file contents and continued appends, or recover the complete writer history to a new no-clobber `.txt` when the original Session path is conclusively unavailable
+- `clean.txt` -- the initial name of the current Clean transcript. On the feature branch, Rename Clean TXT may change it to a user-named `.txt` while preserving contents and continued appends, or may recover the complete writer history into a new no-clobber `.txt` when the original Session path is conclusively unavailable. Do not assume that every completed feature-branch Session still has a file literally named `clean.txt`.
 - `session.log` — session, chunk, backend, warning, error, and stop events
 - `config.json` — the model, language, Beam, paths, and audio configuration for that session
 
@@ -199,6 +212,18 @@ Check the network connection, available disk space, and selected Download Locati
 
 After Start creates a session, click **Open Output Folder**. The main window also displays the active session path. By default it is under `~/Documents/ClassroomTranscriber/outputs/<timestamp>/`.
 
+### Reveal Clean or Copy Clean Path does nothing
+
+On the feature branch, these actions deliberately leave Finder or the clipboard unchanged when the Store cannot prove which Session-local `.txt` is the current writer. Retry after external file activity has stopped. If the path is conclusively absent, use **Rename Clean TXT** to choose whether to create a full-history recovery file.
+
+### Clean rename reports that the destination exists
+
+Rename and recovery never overwrite an existing file, directory, symlink, or same-name decoy. Choose a different filename stem or move the conflicting entry yourself after confirming what it contains.
+
+### Clean rename reports that the source cannot be verified
+
+Permission, I/O, Session-directory identity, or file-type uncertainty fails closed. The app does not reinterpret uncertainty as a missing file and does not offer the **Yes** recovery path until absence has been proven safely.
+
 ## Known Limitations
 
 - The downloadable 1.0.0 artifact is macOS Apple Silicon only. There is no Intel Mac or Windows release.
@@ -208,6 +233,7 @@ After Start creates a session, click **Open Output Folder**. The main window als
 - Release 1.0.0 has no LLM summary, cloud translation sidecar, semantic correction, or structured classroom notes.
 - Auto Detect uses automatic language detection, so results depend on the model and audio.
 - Clean Transcript applies conservative deduplication and limited high-confidence filtering; it is not a semantic rewrite.
+- Feature-branch Clean path verification is designed for this app's single-writer workflow. An uncooperative external process can still mutate the Session immediately after the final check; the app does not provide filesystem locking against other programs.
 
 ## For Developers
 
