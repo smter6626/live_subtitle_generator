@@ -203,10 +203,17 @@ def validate_formal_source_paths(
     *,
     repo_root: Path = REPO_ROOT,
 ) -> tuple[Path, Path]:
-    canonical_repo = repo_root.resolve()
-    canonical_app_path = canonical_repo / "dist" / "ClassroomTranscriber.app"
+    try:
+        canonical_repo = repo_root.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseError("canonical source repository must exist") from exc
+    if not canonical_repo.is_dir():
+        raise ReleaseError("canonical source repository must be a directory")
+
+    canonical_dist_path = canonical_repo / "dist"
+    canonical_app_path = canonical_dist_path / "ClassroomTranscriber.app"
     canonical_provenance_path = (
-        canonical_repo / "dist" / "ClassroomTranscriber.app.provenance.json"
+        canonical_dist_path / "ClassroomTranscriber.app.provenance.json"
     )
     app_candidate = Path(os.path.abspath(app_path))
     provenance_candidate = Path(os.path.abspath(build_provenance_path))
@@ -218,9 +225,39 @@ def validate_formal_source_paths(
         raise ReleaseError(
             "formal Release ZIP must consume the App-adjacent canonical provenance"
         )
-    if canonical_app_path.is_symlink() or canonical_provenance_path.is_symlink():
-        raise ReleaseError("canonical App and provenance must not be symbolic links")
-    return canonical_app_path.resolve(), canonical_provenance_path.resolve()
+    try:
+        dist_mode = canonical_dist_path.stat(follow_symlinks=False).st_mode
+        resolved_dist = canonical_dist_path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseError("canonical dist must already exist") from exc
+    if not stat.S_ISDIR(dist_mode) or resolved_dist != canonical_dist_path:
+        raise ReleaseError("canonical dist must be this clone's real directory")
+    try:
+        app_mode = canonical_app_path.stat(follow_symlinks=False).st_mode
+        provenance_mode = canonical_provenance_path.stat(follow_symlinks=False).st_mode
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseError("canonical App and provenance must already exist") from exc
+    if not stat.S_ISDIR(app_mode):
+        raise ReleaseError("canonical App must be a real directory, not a symbolic link")
+    if not stat.S_ISREG(provenance_mode):
+        raise ReleaseError(
+            "canonical provenance must be a real regular file, not a symbolic link"
+        )
+    try:
+        resolved_app = canonical_app_path.resolve(strict=True)
+        resolved_provenance = canonical_provenance_path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseError("canonical App and provenance must resolve strictly") from exc
+    if (
+        resolved_app != canonical_app_path
+        or resolved_provenance != canonical_provenance_path
+        or resolved_app.parent != resolved_dist
+        or resolved_provenance.parent != resolved_dist
+    ):
+        raise ReleaseError(
+            "canonical App and provenance must remain directly inside this clone's dist"
+        )
+    return resolved_app, resolved_provenance
 
 
 def validate_managed_output_paths(

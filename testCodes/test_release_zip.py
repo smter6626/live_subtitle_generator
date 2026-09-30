@@ -319,13 +319,19 @@ class ReleaseZipTests(unittest.TestCase):
                         downloads_root=downloads,
                     )
 
-            canonical_app = REPO_ROOT / "dist" / "ClassroomTranscriber.app"
-            canonical_provenance = canonical_app.with_name(
-                "ClassroomTranscriber.app.provenance.json"
-            )
+    def test_formal_source_paths_require_real_clone_local_dist_and_leaves(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            repo = root / "repo"
+            dist = repo / "dist"
+            canonical_app = dist / "ClassroomTranscriber.app"
+            canonical_provenance = dist / "ClassroomTranscriber.app.provenance.json"
+            canonical_app.mkdir(parents=True)
+            canonical_provenance.write_text("{}\n", encoding="utf-8")
+
             self.assertEqual(
                 release_zip.validate_formal_source_paths(
-                    canonical_app, canonical_provenance
+                    canonical_app, canonical_provenance, repo_root=repo
                 ),
                 (canonical_app.resolve(), canonical_provenance.resolve()),
             )
@@ -337,8 +343,80 @@ class ReleaseZipTests(unittest.TestCase):
                     app=bad_app, provenance=bad_provenance
                 ), self.assertRaises(release_zip.ReleaseError):
                     release_zip.validate_formal_source_paths(
-                        bad_app, bad_provenance
+                        bad_app, bad_provenance, repo_root=repo
                     )
+
+            canonical_app.rmdir()
+            external_app = root / "external.app"
+            external_app.mkdir()
+            canonical_app.symlink_to(external_app, target_is_directory=True)
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.validate_formal_source_paths(
+                    canonical_app, canonical_provenance, repo_root=repo
+                )
+
+            canonical_app.unlink()
+            canonical_app.mkdir()
+            canonical_provenance.unlink()
+            external_provenance = root / "external.provenance.json"
+            external_provenance.write_text("{}\n", encoding="utf-8")
+            canonical_provenance.symlink_to(external_provenance)
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.validate_formal_source_paths(
+                    canonical_app, canonical_provenance, repo_root=repo
+                )
+
+            canonical_provenance.unlink()
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.validate_formal_source_paths(
+                    canonical_app, canonical_provenance, repo_root=repo
+                )
+
+            canonical_provenance.write_text("{}\n", encoding="utf-8")
+            canonical_app.rmdir()
+            canonical_app.write_text("not an App directory\n", encoding="utf-8")
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.validate_formal_source_paths(
+                    canonical_app, canonical_provenance, repo_root=repo
+                )
+
+            canonical_app.unlink()
+            canonical_app.mkdir()
+            canonical_provenance.unlink()
+            canonical_provenance.mkdir()
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.validate_formal_source_paths(
+                    canonical_app, canonical_provenance, repo_root=repo
+                )
+
+    def test_formal_source_paths_reject_symlinked_dist_parent(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            repo = root / "repo"
+            external_dist = root / "external-dist"
+            external_app = external_dist / "ClassroomTranscriber.app"
+            external_provenance = (
+                external_dist / "ClassroomTranscriber.app.provenance.json"
+            )
+            repo.mkdir()
+            external_app.mkdir(parents=True)
+            external_provenance.write_text("{}\n", encoding="utf-8")
+            (repo / "dist").symlink_to(external_dist, target_is_directory=True)
+
+            with self.assertRaisesRegex(release_zip.ReleaseError, "canonical dist"):
+                release_zip.validate_formal_source_paths(
+                    repo / "dist" / "ClassroomTranscriber.app",
+                    repo / "dist" / "ClassroomTranscriber.app.provenance.json",
+                    repo_root=repo,
+                )
+
+            (repo / "dist").unlink()
+            with self.assertRaisesRegex(release_zip.ReleaseError, "canonical dist"):
+                release_zip.validate_formal_source_paths(
+                    repo / "dist" / "ClassroomTranscriber.app",
+                    repo / "dist" / "ClassroomTranscriber.app.provenance.json",
+                    repo_root=repo,
+                )
 
     def test_publication_race_is_true_no_clobber(self):
         source = (SCRIPTS_DIR / "build_release_zip.py").read_text(encoding="utf-8")
