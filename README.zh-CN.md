@@ -267,6 +267,28 @@ mkdir -p "$HOME/Downloads/classroom-transcriber-release/artifacts"
 
 本节只是快速入口，不能代替 packaging 和 deployment contracts。
 
+### REL1B 集成控制器候选
+
+REL1A 的版本、App/ZIP 身份基础层已局部接受。REL1B 候选在
+[`scripts/release_controller.py`](scripts/release_controller.py) 提供 `status`、
+`integrate` 和 `resume`，仍待独立审核。整个 Step 1、真实 main 集成、新的
+App/ZIP 和发布均未完成。控制器尚不提供 build、package、Human-pass、tag、
+draft、upload 或 publish。
+
+生产入口要求固定外部 trust root 中的独立批准及受保护入口；本轮**未部署**。
+当前运行仓库入口会以 `TRUST_UNAVAILABLE` 停止，不提供 signer、approval、
+fixture 或 trust-root CLI override。唯一位置参数接口是
+`release_controller.py status|integrate|resume`。`status` 只读本地提示，不 fetch、
+修复或启动测试；记录的状态不证明完成。
+
+gate 使用集成 clone 自身的原 pinned bootstrap 和完整 strict suite。任何既有
+ignored 环境都会在执行前被拒绝，随后 interpreter、uv、环境代码或源码被替换
+也会停止。resume 不从 journal 恢复环境证明。停止后保留 evidence 交审核；若 main
+已包含 merge，但缺少可信本地完成证明，返回 `MAIN_PRESENT_HUMAN_RECONCILIATION`，
+不 rollback、不重复 push。Disposable fixture 签名和 callback gate 只授权新建的
+本地测试仓库。部署待决方案、transport 限制、恢复及验证命令见
+[`PACKAGING.md`](PACKAGING.md#rel1b-approval-integration-and-recovery)。
+
 ## 架构
 
 ```text

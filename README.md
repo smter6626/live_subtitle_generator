@@ -273,6 +273,32 @@ mkdir -p "$HOME/Downloads/classroom-transcriber-release/artifacts"
 
 Do not treat this short section as a replacement for the packaging and deployment contracts.
 
+### REL1B integration controller candidate
+
+REL1A's version/App/ZIP identity foundation has been accepted locally. The REL1B
+candidate adds `status`, `integrate`, and `resume` to
+[`scripts/release_controller.py`](scripts/release_controller.py); independent
+review is still required. The whole Step 1, real main integration, a new App/ZIP,
+and publication are pending. Build, package, Human-pass, tag, draft, upload, and
+publish are unavailable in this controller.
+
+Production requires an independently controlled approval and a protected entry
+under the fixed external trust root. These have **not been deployed**; running
+the repository entry fails closed with `TRUST_UNAVAILABLE`. There are no CLI
+signer, approval, fixture, or trust-root overrides. The only positional interface
+is `release_controller.py status|integrate|resume`. `status` reads local hints
+without fetch or repair; a recorded state does not certify completion.
+
+The gate runs the integration clone's original pinned bootstrap and full strict
+suite. It stops before executing any preexisting ignored environment and detects
+later interpreter, uv, environment-code, or source replacement. A resume cannot
+reuse an environment proof from a journal. Preserve stopped evidence for review;
+when main already contains the merge but trusted local completion is unavailable,
+the result is `MAIN_PRESENT_HUMAN_RECONCILIATION`, without rollback or another push.
+Disposable fixture signatures and callback-gate tests authorize only new local
+test repositories. See [`PACKAGING.md`](PACKAGING.md#rel1b-approval-integration-and-recovery)
+for deployment proposals, transport limits, recovery, and validation commands.
+
 ## Architecture
 
 ```text

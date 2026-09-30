@@ -147,7 +147,131 @@ Models, `.venv`, `.tools`, `external`, source-tree files, build caches, and user
 
 ## Future 1.1.0 artifact work
 
-The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. A real 1.1.0 build, integration/approval flow, Human review, and publication remain REL1B/REL1C work.
+The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. REL1A's identity/provenance/ZIP foundation is locally accepted; REL1B's controller is a candidate awaiting independent review. A real 1.1.0 integration, fresh build, Human artifact review, and publication remain pending; REL1C is not implemented.
+
+## REL1B approval, integration, and recovery
+
+The candidate controller accepts exactly one positional command:
+
+```text
+release_controller.py status
+release_controller.py integrate
+release_controller.py resume
+```
+
+There are no repo, ref, path, signer, approval, fixture, or trust-root CLI options.
+`integrate` and `resume` enter the same revalidation/reconciliation pipeline.
+`status` validates approval, local source, journal and available local facts/logs;
+it never creates directories, fetches, bootstraps, repairs, or pushes. Its
+`*_RECORDED_UNVERIFIED` output is a recovery hint, not approval or proof of PASS.
+Terminal failures are fixed codes; raw command output stays in local evidence.
+The controller rejects build/package/human-pass/tag/draft/upload/publish.
+REL1C must supply fresh artifact binding, genuine Human artifact PASS and
+publication gates before any of those operations can become available.
+
+Production is disabled without independent trust configuration. The proposed
+fixed root is `/Library/Application Support/ClassroomTranscriberRelease/1.1.0`.
+The root and `entry/scripts/` controller modules must be root-owned and unwritable
+by the executing identity; directory/file modes are 0755/0644. Deployment and
+production signing keys/approval creation require a separate Human decision and
+were not performed in this implementation. Running the candidate repository
+entry cannot authorize itself, even if a caller installs matching journal hashes.
+The eventual protected entry must match `config.json` and the independently
+approved implementation byte for byte.
+
+`release_approval.py` uses OpenSSH detached signatures with a fixed signer and
+production namespace. The protected root holds `config.json`, `allowed_signers`,
+`approval.json`, `approval.json.sig`, `review.json`, `human.json`, and
+`revoked.json`. Config binds an epoch, entry module hashes and review/owner
+evidence hashes. Approval binds that config, signer bytes, full implementation
+SHA, the code-defined complete tool set, parent/REL1B contract hashes, evidence
+locators, exact repository/origin/main/feature/baseline/prior-feature values,
+implementation/managed absolute paths and uid. Review and owner evidence must
+refer to final Step 1 review/integration authorization; a REL1B local test PASS
+cannot supply those future facts. Every stage rechecks signature, revocation,
+source/tool bytes, configuration, paths and actual refs.
+
+The production repository is `smter6626/live_subtitle_generator`; main is
+`refs/heads/main` and feature is `refs/heads/codex/release-1-1-0-automation`.
+The origin must be one of the fixed canonical SSH/HTTPS URLs and must be identical
+for fetch and push. A small Git-config allowlist rejects extra remotes, hooks,
+includes, URL rewrites, filters, custom SSH commands, alternates, replacement
+objects and unsafe attributes. Transport uses no global/system Git config,
+credential helper, SSH agent, SSH identity file or interactive prompt; HTTPS
+redirects are disabled. Authenticated production transport is consequently not
+established by these local tests. Do not loosen that isolation to work around a
+transport failure; a future deployment decision must resolve the limitation.
+
+Within one Downloads managed root, `journal.json` is 0600 and the root,
+`evidence/`, `tmp/` and integration `clone/` are 0700. Writes use a same-directory
+exclusive temporary file, file fsync, atomic replace and directory fsync. Unknown
+or duplicate fields, symlinks, hard links, wrong modes and incomplete writes stop
+execution. Checksums/log hashes/push receipts grant no authority. The actual
+two-parent merge, tree, ancestry, tool bytes and live refs are independently
+checked; content conflicts and drift stop rather than discard history.
+
+Before the first environment executable or import, the gate requires absent
+`.tools` and `.venv` and no ignored worktree inputs. It runs the accepted original
+`bootstrap_python_env.sh`: pinned SHA-verified uv archive 0.12.5, newly installed
+managed Python 3.12.14, clone-local cache and `uv sync --frozen`, then the original
+environment smoke. A successful bootstrap establishes an **invocation-local
+memory proof**, never a journal environment hash. The proof covers bytes,
+identities/modes, link targets, Python stdlib, site packages including .pth/pyc
+and native libraries, uv, venv config and all worktree inputs. Cache is excluded
+after bootstrap and no sync/install follows. Probes run only after proof checks.
+The gate checks it before/after full strict tests and before main push; replaced
+environment or source makes it invalid. The strict command is:
+
+```bash
+.venv/bin/python -B -W error::ResourceWarning -m unittest discover -s testCodes -v
+```
+
+Execution sets Qt offscreen, disables bytecode writes, removes inherited
+Python/uv/Git/dyld overrides and uses the managed Downloads temporary directory.
+Only the current invocation's gate can precede ordinary non-force main push.
+
+Recovery is deliberately conservative. Before environment creation, verified
+feature push and merge facts can be reconciled from exact Git objects/refs.
+An existing environment on resume yields `ENVIRONMENT_UNTRUSTED` before execution;
+this controller does not delete/rebuild it or reuse a persisted PASS. Preserve
+the stopped managed root and request bounded independent reconciliation and a
+new approved isolated attempt when necessary. Do not edit journal state to
+force progress. Bootstrap/strict failures and environment changes leave main
+unchanged. An exact feature ref prevents duplicate feature push even if its
+receipt was lost or transport reported failure after the update. If main already
+contains the expected merge, missing trusted local completion requires
+`MAIN_PRESENT_HUMAN_RECONCILIATION`; no automatic COMPLETE, rollback or repeat
+main push occurs. A missing/partial journal stops instead of being synthesized.
+
+Tests use a Python-only `Policy` seam restricted to new `case-*` directories in
+0700 `Downloads/rel1b-fixtures.*` roots and the exact local `remote.git`; fixtures
+cannot use a production namespace or network origin. Fixture keys are new and
+independent, and cannot be passed through production argparse. Fast state-machine
+tests use a labelled callback gate or synthetic fault injection, which does not
+prove pinned bootstrap/full-suite success. Independent real-gate smoke launchers
+stay outside test discovery to avoid recursive integration tests; they must copy
+the entire current source/testCodes, set `fixture_gate=None`, and retain bootstrap,
+strict, operation-count and merge/ref evidence. No fixture is a real main merge.
+The unchanged REL1A suite asserts canonical repository identity. Fixture gate
+subprocesses therefore receive a canonical origin **reader view** via command
+environment config, with network Git transports denied and the push URL fixed
+to the local bare remote. The controller separately sanitizes its Git environment
+and audits the actual local URLs/refs throughout. This test-only view does not
+change `.git/config`, skip tests, substitute a gate, or enable production access.
+uv configuration discovery is disabled so user uv settings cannot become gate
+inputs; dependency metadata and frozen lock remain the approved project files.
+
+For focused/full candidate checks, use this clone's already prepared Python,
+set `QT_QPA_PLATFORM=offscreen` and `TMPDIR` to a newly recorded 0700 Downloads
+fixture root, and run sequentially:
+
+```bash
+.venv/bin/python -B -W error::ResourceWarning -m unittest testCodes.test_release_approval testCodes.test_release_journal testCodes.test_release_controller -v
+.venv/bin/python -B -W error::ResourceWarning -m unittest discover -s testCodes -v
+```
+
+Keep logs and hashes for independent review. Offscreen/source/fixture checks do
+not accept a packaged App, microphone behavior, Human gate or publication.
 
 ## Clean-machine validation
 

@@ -5,9 +5,9 @@
 | Field | Value |
 | --- | --- |
 | Repository | `smter6626/live_subtitle_generator` (Classroom Live Transcriber) |
-| Branch | `main` baseline plus current `codex/clean-toolbar-rename-v1` feature delta; feature integration remains pending |
+| Branch | Historical `main`/`codex/clean-toolbar-rename-v1` baseline plus `codex/release-1-1-0-automation`; real feature/main integration remains pending |
 | Structural baseline | Original full scan at `4d2059d273d0ba94373b1969b8236ef462b6acae`; affected architecture ownership/flows updated through Product Polish Step 1F, session clipboard UI commit `cb4261825b7d51d3ec33a97e083683c50e6b9e82`, window-layout commit `569e5c551c101811ed80fca23bd5708d6ac880cf`, and final Clean full-text recovery R2 commit `fb317ea4a2b1db557133e91590e852c0241a3cd8`. |
-| Updated | 2026-09-25 |
+| Updated | 2026-09-30; REL1B candidate architecture, awaiting independent review |
 | Scan scope | 65 Git-tracked files at the original map baseline; later structural syncs update affected ownership/flows without re-running a full-file recount |
 | Document role | A derived architecture and change-navigation aid, not a product contract or API reference |
 
@@ -52,6 +52,7 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | Downloadable-model integrity transaction | `model_integrity.py`, `packaging/model_manifest.json` |
 | Reproducible source runtime and App packaging | `scripts/`, `packaging/runtime_manifest.json`, `packaging/icons/`, PyInstaller specs |
 | Release identity, App provenance, artifact creation and validation | `packaging/release_contract.json`, `scripts/release_identity.py`, `scripts/build_release_zip.py` |
+| Independent integration approval, recovery hints and live Git/test gate | `scripts/release_approval.py`, `scripts/release_journal.py`, `scripts/release_integration.py`, `scripts/release_controller.py` |
 | Contract and regression coverage | `testCodes/` |
 | Governance, current state, user/build documentation | `README.md`, `README.zh-CN.md`, `PACKAGING.md`, `docs/` |
 
@@ -88,6 +89,10 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | `scripts/package_runtime.py` | Manifest-driven source preflight and post-PyInstaller App Runtime normalizer; subcommands `validate-sources` and `normalize-app`. | Reads manifest and model contract; modifies copied App binaries with `install_name_tool`, permissions, and resource checks. | High-risk package closure boundary; `test_packaged_runtime.py`. |
 | `scripts/verify_packaged_runtime.py` | Read-only packaged-App verifier. | Checks both App plist versions equal 1.1.0, the icon resource/ICNS/`CFBundleIconFile`, required Runtime files, arm64, RPaths/dependency closure, downloader/model manifest, codesign, bundled CLI smoke, and isolated Runtime smoke. | Formal build and Release ZIP trust boundary; `test_packaged_runtime.py` and `test_release_zip.py`. |
 | `scripts/release_identity.py` | Fixed REL1A identity and canonical build-provenance helper. | Validates project/lock/App/notes/contract identity and repository origin; hashes the complete App tree, release contract, and a code-defined complete REL1A tool set; writes and validates exact canonical provenance. | Does not integrate, approve, tag, upload, publish, or control a release. `test_release_identity.py`. |
+| `scripts/release_controller.py` | Closed `status` / `integrate` / `resume` argparse and fixed-code reporting. | Uses approval, journal and integration helpers; production has no input/trust/fixture overrides. | Status is local read-only; missing independent production trust disables execution. Build/package/Human-pass/tag/draft/upload/publish remain REL1C and unavailable. |
+| `scripts/release_approval.py` | Fixed protected external trust root, code-defined tool set, detached OpenSSH signature, exact schema and no-follow path checks. | Binds implementation SHA, all tools, contracts, independent review/owner evidence, exact Git refs/origin and managed paths; validates config and revocation each stage. | Root-owned protected entry deployment and production keys/approval are pending Human decisions, not installed by this candidate. `test_release_approval.py`. |
+| `scripts/release_journal.py` | Atomic 0600 journal in a 0700 Downloads managed root, closed stages/intents and evidence validation. | fsync file, atomic replace, fsync directory; approval-bound recovery hints only. | A checksum, PASS log or push receipt is not authority. Partial/unsafe persistence stops; no automatic repair. `test_release_journal.py`. |
+| `scripts/release_integration.py` | Audited isolated clone, exact object acquisition, divergent two-parent merge, feature/main ordinary pushes and live environment/full strict gate. | Revalidates approval/source/Git config/refs at stage boundaries; uses original pinned bootstrap from absent environment and invocation-local byte/identity snapshots of uv, Python, environment code and worktree. | Existing environments stop before execution, including resume. Replacements invalidate the gate; exact feature ref avoids repeated pushes; already-updated main requires read-only Human reconciliation. Transport isolation does not establish production authentication. `test_release_controller.py`. |
 | `scripts/build_release_zip.py` | Formal fixed-1.1.0 Release ZIP entry. | Requires formal Python, macOS arm64, clean HEAD equal to an explicit commit, this clone's canonical Runtime Manifest/App/provenance, and absent artifact/extraction paths beneath one explicit Downloads task root; stages, verifies, retains extraction, and publishes with atomic no-clobber semantics. | Release payload boundary only. `test_release_zip.py`. |
 | `scripts/clean_build.sh` | Developer cleanup tool. | Deletes generated `build/`, `dist/`, and selected caches while preserving models, outputs, external Runtime, and historical `venv/`. | Destructive only for generated locations; not called by formal build. |
 | `run_long_test.sh` | Legacy long-running console transcription and system-monitoring helper. | Starts the legacy stream runner, writes ignored test-run logs, samples macOS system tools, and contains a machine-specific developer path. | It is not portable and not part of the formal build/release path; its current maintenance status is not established by source. |
@@ -129,6 +134,9 @@ Tests are a mix of `unittest` contract suites and directly executable regression
 | `test_build_orchestration.py` | `.command`, orchestrator, formal build metadata | Executable/syntax requirements, thin wrapper, formal stage order, formal Python injection, expected App checks, and portability. |
 | `test_packaged_runtime.py` | specs, `build_macos.sh`, package normalizer, packaged verifier | Manifest-driven collection/icon wiring; order of icon generation/preflight/normalize/sign/verify; missing component/dependency/downloader/manifest/icon failures; architecture and smoke gates. |
 | `test_release_identity.py` | Fixed project/release identity and App build provenance | Project/lock/spec/notes/asset agreement, unchanged schema/dependency pins, wrong identity/App versions/notes, non-clobber provenance, and stale App/source/contract/required-tool bindings. |
+| `test_release_approval.py` | Independent fixture signature/protected production entry | Complete tool binding, signer/namespace, contract/config/evidence/revocation/schema/path tampering; no production fixture authority. |
+| `test_release_journal.py` | Durable recovery hints | Permissions, no-follow/hard-link/schema/checksum rejection, rehashed authority changes, atomic write/fsync failures and incomplete persistence. |
+| `test_release_controller.py` | Actual argparse/Integration/local Git pipeline | True divergent merge and docs/ancestry/tree, callback-gate state-machine/crash tests, counterfeit environment rejection without execution, synthetic environment replacement faults, content conflict, URL/hook/config/ref drift, read-only status, actual ref plus operation-count reconciliation. Callback/synthetic gates do not prove production bootstrap/full-suite success; an independent full-source real-gate launcher belongs outside discovery. |
 | `test_release_zip.py` | `build_release_zip.py` and packaged verifier handoff | Fixed identity/locked Python/clean expected source/canonical manifest-App-provenance inputs, Downloads task-root and no-clobber targets, durable extraction, deterministic ZIP round-trip, exclusions, path/symlink safety, verifier failure handling, and exact digest. |
 
 ### Documentation and historical material
@@ -252,6 +260,29 @@ The Store owns directory creation, open handles, append counters, flushes, curre
 
 ### F. Build, package, and Release path
 
+The REL1B candidate precedes future real packaging with this separate flow:
+
+```text
+protected release_controller status|integrate|resume
+-> release_approval: independent signature/config/contracts/review/owner/ref/path binding
+-> release_journal: durable intent (never execution authority)
+-> release_integration: audited isolated clone -> exact fetch -> feature push -> divergent merge
+-> absent ignored environment -> original pinned bootstrap -> memory-only environment/source proof
+-> clone-local Python 3.12.14 + full strict tests -> proof/approval/clean/refs recheck
+-> ordinary main push -> exact remote ref reconciliation
+```
+
+Production trust/entry deployment is only a proposed fixed-root scheme awaiting
+Human decision. The repository entry fails closed without it. Tests restrict a
+Python-only fixture policy to newly created Downloads repositories/local bare
+remotes and an independent fixture namespace; no production CLI switch enables
+it. Resume after environment creation stops because no journal establishes its
+trusted origin. Main already present without trusted completion enters Human
+reconciliation without repeat push or rollback. See `PACKAGING.md` for precise
+interfaces and current SSH/HTTPS authentication isolation limits. This candidate
+does not accept the entire Step 1, perform real main integration, or implement
+REL1C build/artifact/Human/tag/draft/upload/publication gates.
+
 ```text
 Build ClassroomTranscriber.command
 -> scripts/bootstrap_and_build.sh
@@ -294,6 +325,7 @@ The ignored `external/whisper.cpp` is a build input reconstructed by bootstrap, 
 | Packaged Runtime closure | Manifest-driven resource collection, dylib/RPath normalization, signing, and bundled/isolated smoke form a fail-fast chain. A valid UI alone is insufficient. | runtime manifest, specs, bootstrap/helper/build/package/verifier scripts | `test_runtime_manifest.py`, `test_whisper_runtime_bootstrap.py`, `test_build_orchestration.py`, `test_packaged_runtime.py`; formal build/verifier for implementation changes. |
 | Packaged App icon | A tracked approved source must produce the ICNS referenced by `Info.plist`, survive signing and ZIP round-trip, and never depend on an external developer path. | `packaging/icons/ClassroomTranscriber.png`, runtime manifest, icon generator, Release spec/build/verifier | `test_app_icon.py`, `test_runtime_manifest.py`, `test_packaged_runtime.py`, `test_release_zip.py`; formal App/ZIP verification. |
 | Release ZIP closure | Release script rejects wrong/dirty source, noncanonical or stale manifest/App/provenance inputs, unsafe contents, targets outside the explicit Downloads task root, and existing targets; it then validates a complete round trip and retains the verified App extraction before atomic no-clobber ZIP publication. | `release_identity.py`, `build_release_zip.py`, runtime verifier, release contract/manifest fields | `test_release_identity.py`, `test_release_zip.py`, plus a future real formal 1.1.0 App/ZIP flow. |
+| Integration authorization and environment provenance | External approval and actual Git facts must precede each mutation. Version reports and journal hashes cannot trust ignored code; only this invocation's fresh pinned bootstrap/full suite can gate main. | Four `release_*` control modules; independent external trust and managed Downloads paths | Three `test_release_*` control suites plus a separate full-source real-gate smoke; no production trust installation or real remote mutation. |
 
 ## Product Polish architecture impact index
 
