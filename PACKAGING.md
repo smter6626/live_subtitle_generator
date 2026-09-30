@@ -258,6 +258,8 @@ environment config, with network Git transports denied and the push URL fixed
 to the local bare remote. The controller separately sanitizes its Git environment
 and audits the actual local URLs/refs throughout. This test-only view does not
 change `.git/config`, skip tests, substitute a gate, or enable production access.
+Its isolated 0600 `git-reader.config` is created inside the new fixture root and
+checked against code-defined bytes before use; it never reads user Git config.
 uv configuration discovery is disabled so user uv settings cannot become gate
 inputs; dependency metadata and frozen lock remain the approved project files.
 

@@ -40,6 +40,14 @@ def environment():
     }
 
 
+def fixture_reader_config(origin):
+    # Git remote URLs are multi-valued: the isolated global reader view must
+    # precede the real local URL. No user config, credentials or network access.
+    require(not any(char in origin for char in ('"', '\\', '\n', '\r')), 'FIXTURE_BOUNDARY')
+    return ('[remote "origin"]\n\turl = ' + ORIGINS[1] +
+            '\n\tpushurl = "' + origin + '"\n').encode()
+
+
 def run_git(repo: Path | None, *args: str, env=None, allow_failure=False):
     command = [GIT, '-c', 'core.hooksPath=/dev/null', '-c', 'core.attributesFile=/dev/null',
                '-c', 'credential.helper=', '-c', 'commit.gpgsign=false',
@@ -308,9 +316,11 @@ class Integration:
             # every network transport and keeping any push URL local. Controller
             # Git commands use their own sanitized environment and still audit
             # the real local fetch/push URLs. Never used by production Policy.
-            config = (('remote.origin.url', ORIGINS[1]),
-                      ('remote.origin.pushurl', self.auth.payload['origin']),
-                      ('protocol.allow', 'never'), ('protocol.file.allow', 'always'),
+            reader = self.policy.fixture_root / 'git-reader.config'
+            require(read_file(reader, owner=os.getuid(), mode=0o600) ==
+                    fixture_reader_config(self.auth.payload['origin']), 'FIXTURE_BOUNDARY')
+            env['GIT_CONFIG_GLOBAL'] = str(reader)
+            config = (('protocol.allow', 'never'), ('protocol.file.allow', 'always'),
                       ('core.hooksPath', '/dev/null'))
             env['GIT_CONFIG_COUNT'] = str(len(config))
             for index, (key, value) in enumerate(config):

@@ -54,6 +54,9 @@ class Fixture:
         self.policy = approval.Policy(self.root)
         self.source = self.root / 'source'
         self.remote = self.root / 'remote.git'
+        reader = self.root / 'git-reader.config'
+        reader.write_bytes(integration.fixture_reader_config(str(self.remote)))
+        reader.chmod(0o600)
         self.source.mkdir(mode=0o700)
         self.calls = []
         self.operations = []
