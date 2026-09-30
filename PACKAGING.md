@@ -126,40 +126,29 @@ The `.command` file only resolves the repository and transfers control. The orch
 
 ## Formal Release ZIP
 
-The fixed product identity is `1.1.0`, tag `1.1.0`, title `Classroom Transcriber 1.1.0`, App `ClassroomTranscriber.app`, and asset `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip`. This is an unbuilt, unpublished candidate; REL1A does not tag, upload, publish, or approve it. After a future real formal build passes, choose new artifact and Human-review extraction targets outside the source tree:
+The fixed product identity is `1.1.0`, tag `1.1.0`, title `Classroom Transcriber 1.1.0`, App `ClassroomTranscriber.app`, and asset `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip`. This is an unbuilt, unpublished candidate; REL1A does not tag, upload, publish, or approve it. After a future real formal build passes, create one task-managed root under the current user's Downloads directory. The artifact and retained Human-review extraction must both be descendants of that root:
 
 ```bash
 ./Build\ ClassroomTranscriber.command
-mkdir -p /tmp/classroom-transcriber-release
+mkdir -p "$HOME/Downloads/classroom-transcriber-release/artifacts"
 .venv/bin/python scripts/build_release_zip.py \
   --version 1.1.0 \
   --expected-source-commit "$(git rev-parse HEAD)" \
-  --build-provenance dist/ClassroomTranscriber.app.provenance.json \
-  --artifact /tmp/classroom-transcriber-release/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip \
-  --human-review-extraction /tmp/classroom-transcriber-release/human-review
+  --task-root "$HOME/Downloads/classroom-transcriber-release" \
+  --artifact "$HOME/Downloads/classroom-transcriber-release/artifacts/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip" \
+  --human-review-extraction "$HOME/Downloads/classroom-transcriber-release/human-review"
 ```
 
-The source worktree must be clean and HEAD must equal `--expected-source-commit`. The project, lock, Release spec, bilingual notes, Runtime Manifest asset/App naming, App plist, and build provenance must all match the fixed contract in `packaging/release_contract.json`. Both caller-selected targets must be absent and outside the repository; their parent directories must already exist. The entry never changes versions, creates a Git tag or GitHub Release, or uploads an asset.
+The source worktree must be clean and HEAD must equal `--expected-source-commit`. The CLI always consumes this clone's tracked `packaging/runtime_manifest.json`, canonical `dist/ClassroomTranscriber.app`, and adjacent `dist/ClassroomTranscriber.app.provenance.json`; it does not accept alternate paths for those inputs. The project, lock, Release spec, bilingual notes, Runtime Manifest, App plist, and build provenance must all match the fixed release contract and provenance. The explicit task root must already exist beneath the current user's Downloads directory. Both caller-selected targets must be absent descendants of that root, and their parent directories must already exist. The entry never changes versions, creates a Git tag or GitHub Release, or uploads an asset.
 
 Before exposing the ZIP, the entry re-runs the existing packaged Runtime verifier on `dist/ClassroomTranscriber.app`. It archives only `ClassroomTranscriber.app` with macOS `/usr/bin/zip -r -y -X`: `-y` preserves symlinks and `-X` excludes volatile extra fields such as access times, so repeated packaging of the same App produces identical archive bytes. It extracts with macOS `ditto` into the explicit retained Human-review directory, checks archive boundaries and CRC, compares the complete bundle structure, file bytes, permission modes, and symlink targets, and then runs the same packaged Runtime verifier against the extracted App. A verification failure removes the extraction and does not expose a final ZIP. Successful publication uses an atomic hard link that fails if a target appears, then prints the version, source commit, exact artifact path/byte size/SHA-256, and surviving Human-review extraction locator.
 
 Models, `.venv`, `.tools`, `external`, source-tree files, build caches, and user settings are not Release payloads. Models remain an external Model Manager responsibility.
 
-## Work still pending
+## Future 1.1.0 artifact work
 
 The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. A real 1.1.0 build, integration/approval flow, Human review, and publication remain REL1B/REL1C work.
 
-The remaining implementation sequence is:
-
-```text
-Step 3  Rebuildable locked Python environment (implemented; audit status is tracked separately)
-Step 4  Pinned whisper.cpp Runtime bootstrap (implementation supplied; audit status is tracked separately)
-Step 5  Double-click build entry and orchestration (implemented; audit status is tracked separately)
-Step 6  Strict packaging gates and post-build Runtime smoke (implemented; audit status is tracked separately)
-Step 7  Model download integrity, recovery, and retry (implemented; audit status is tracked separately)
-Step 8  Fresh Clone -> App -> real transcription acceptance
-```
-
 ## Clean-machine validation
 
-Clean-machine acceptance starts from a fresh `main` clone and the formal build entry. No copied `external/`, old virtual environment, manually compiled CLI, copied dynamic library or model, temporary `PATH` edit, or one-off repair command counts as a pass. Step 8 must exercise model download, microphone permission, real recording/transcription, Stop and microphone release, and verify `raw.txt`, `clean.txt`, `session.log`, and `config.json`.
+The completed Release 1.0.0 clean-machine acceptance remains historical evidence only. Future acceptance of exact 1.1.0 artifact bytes must start from a fresh canonical clone and the formal build entry. No copied `external/`, old virtual environment, manually compiled CLI, copied dynamic library or model, temporary `PATH` edit, or one-off repair command counts as a pass. That future 1.1.0 gate must exercise model download, microphone permission, real recording/transcription, Stop and microphone release, and verify `raw.txt`, `clean.txt`, `session.log`, and `config.json`.

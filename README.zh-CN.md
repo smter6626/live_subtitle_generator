@@ -253,16 +253,16 @@ cd live_subtitle_generator
 .venv/bin/python -m unittest discover -s testCodes -p 'test_*.py' -v
 ```
 
-Release packaging 详见 [`PACKAGING.md`](PACKAGING.md)。REL1A ZIP 入口要求固定 1.1.0 identity、与 clean HEAD 一致的预期 source commit、build provenance，以及仓库外显式指定的 artifact 和保留供人工检查的解压路径：
+Release packaging 详见 [`PACKAGING.md`](PACKAGING.md)。REL1A ZIP 入口要求固定 1.1.0 identity、与 clean HEAD 一致的预期 source commit、本 clone 的 canonical App/provenance/Runtime Manifest，以及同一个 Downloads task-managed root 下显式指定的 artifact 和保留供人工检查的解压路径：
 
 ```bash
-mkdir -p /tmp/classroom-transcriber-release
+mkdir -p "$HOME/Downloads/classroom-transcriber-release/artifacts"
 .venv/bin/python scripts/build_release_zip.py \
   --version 1.1.0 \
   --expected-source-commit "$(git rev-parse HEAD)" \
-  --build-provenance dist/ClassroomTranscriber.app.provenance.json \
-  --artifact /tmp/classroom-transcriber-release/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip \
-  --human-review-extraction /tmp/classroom-transcriber-release/human-review
+  --task-root "$HOME/Downloads/classroom-transcriber-release" \
+  --artifact "$HOME/Downloads/classroom-transcriber-release/artifacts/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip" \
+  --human-review-extraction "$HOME/Downloads/classroom-transcriber-release/human-review"
 ```
 
 本节只是快速入口，不能代替 packaging 和 deployment contracts。

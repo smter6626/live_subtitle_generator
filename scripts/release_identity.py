@@ -23,6 +23,7 @@ COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 PRODUCT_VERSION = "1.1.0"
 REQUIRED_TOOL_PATHS = (
     "packaging/ClassroomTranscriber.spec",
+    "packaging/runtime_manifest.json",
     "scripts/build_app_icon.py",
     "scripts/build_macos.sh",
     "scripts/build_release_zip.py",
@@ -76,6 +77,21 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
     if value != EXPECTED_CONTRACT:
         raise IdentityError("release contract is missing, extra, or differs from fixed 1.1.0 identity")
     return value
+
+
+def validate_runtime_manifest(
+    manifest: dict[str, Any], repo_root: Path = REPO_ROOT
+) -> dict[str, Any]:
+    path = repo_root / "packaging" / "runtime_manifest.json"
+    try:
+        canonical = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise IdentityError("canonical Runtime Manifest is missing or invalid JSON") from exc
+    if manifest != canonical:
+        raise IdentityError(
+            "Runtime Manifest object differs from the tracked canonical input"
+        )
+    return canonical
 
 
 def release_contract_sha256(repo_root: Path = REPO_ROOT) -> str:
@@ -162,6 +178,7 @@ def validate_release_identity(
     contract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     contract = contract or load_contract(repo_root / "packaging" / "release_contract.json")
+    validate_runtime_manifest(manifest, repo_root)
     supplied = {
         "product_version": version,
         "tag": tag,

@@ -1,4 +1,5 @@
 import contextlib
+import copy
 import hashlib
 import io
 import os
@@ -66,10 +67,13 @@ class ReleaseZipTests(unittest.TestCase):
             "artifact_path": artifact_dir
             / "ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip",
             "extraction_dir": root / "human-review",
+            "task_root": root,
             "build_provenance_path": provenance,
             "manifest": self.manifest,
             "verifier": lambda _app_path, _manifest: None,
             "commit": "a" * 40,
+            "downloads_root": root.parent,
+            "enforce_formal_source_paths": False,
         }
         arguments.update(overrides)
         return arguments
@@ -86,6 +90,42 @@ class ReleaseZipTests(unittest.TestCase):
                 release_zip.artifact_filename(invalid, self.manifest)
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             release_zip.build_parser().parse_args([])
+
+    def test_formal_cli_rejects_alternate_manifest_app_and_provenance(self):
+        base = [
+            "--version",
+            "1.1.0",
+            "--task-root",
+            str(Path.home() / "Downloads" / "managed-release"),
+            "--artifact",
+            str(Path.home() / "Downloads" / "managed-release" / "release.zip"),
+            "--human-review-extraction",
+            str(Path.home() / "Downloads" / "managed-release" / "human-review"),
+            "--expected-source-commit",
+            "a" * 40,
+        ]
+        for option, value in (
+            ("--manifest", "/tmp/weakened.json"),
+            ("--app-path", "/tmp/old.app"),
+            ("--build-provenance", "/tmp/old.provenance.json"),
+        ):
+            with self.subTest(option=option), contextlib.redirect_stderr(
+                io.StringIO()
+            ), self.assertRaises(SystemExit):
+                release_zip.build_parser().parse_args([*base, option, value])
+
+    def test_altered_manifest_object_is_rejected(self):
+        weakened = copy.deepcopy(self.manifest)
+        weakened["frozen"]["packaged_runtime"][
+            "allowed_system_dependency_prefixes"
+        ] = ["/"]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = self.make_app(root / "source")
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.create_release_zip(
+                    **self.release_arguments(root, app, manifest=weakened)
+                )
 
     def test_formal_entry_uses_locked_project_python(self):
         release_zip.validate_formal_python(self.manifest)
@@ -238,6 +278,67 @@ class ReleaseZipTests(unittest.TestCase):
             in_repo["extraction_dir"] = REPO_ROOT / "human-review"
             with self.assertRaises(release_zip.ReleaseError):
                 release_zip.create_release_zip(**in_repo)
+
+    def test_formal_source_and_managed_download_paths_are_enforced(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            downloads = root / "Downloads"
+            task_root = downloads / "managed-release"
+            artifact_parent = task_root / "artifacts"
+            downloads.mkdir()
+            task_root.mkdir()
+            artifact_parent.mkdir()
+            artifact = artifact_parent / "ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip"
+            extraction = task_root / "human-review"
+
+            self.assertEqual(
+                release_zip.validate_managed_output_paths(
+                    task_root,
+                    artifact,
+                    extraction,
+                    downloads_root=downloads,
+                ),
+                (task_root.resolve(), artifact.resolve(), extraction.resolve()),
+            )
+            for bad_root, bad_artifact, bad_extraction in (
+                (root / "outside", artifact, extraction),
+                (task_root, root / "outside.zip", extraction),
+                (task_root, artifact, downloads / "outside-review"),
+            ):
+                if bad_root == root / "outside":
+                    bad_root.mkdir()
+                with self.subTest(
+                    task_root=bad_root,
+                    artifact=bad_artifact,
+                    extraction=bad_extraction,
+                ), self.assertRaises(release_zip.ReleaseError):
+                    release_zip.validate_managed_output_paths(
+                        bad_root,
+                        bad_artifact,
+                        bad_extraction,
+                        downloads_root=downloads,
+                    )
+
+            canonical_app = REPO_ROOT / "dist" / "ClassroomTranscriber.app"
+            canonical_provenance = canonical_app.with_name(
+                "ClassroomTranscriber.app.provenance.json"
+            )
+            self.assertEqual(
+                release_zip.validate_formal_source_paths(
+                    canonical_app, canonical_provenance
+                ),
+                (canonical_app.resolve(), canonical_provenance.resolve()),
+            )
+            for bad_app, bad_provenance in (
+                (root / "old/ClassroomTranscriber.app", canonical_provenance),
+                (canonical_app, root / "old.provenance.json"),
+            ):
+                with self.subTest(
+                    app=bad_app, provenance=bad_provenance
+                ), self.assertRaises(release_zip.ReleaseError):
+                    release_zip.validate_formal_source_paths(
+                        bad_app, bad_provenance
+                    )
 
     def test_publication_race_is_true_no_clobber(self):
         source = (SCRIPTS_DIR / "build_release_zip.py").read_text(encoding="utf-8")

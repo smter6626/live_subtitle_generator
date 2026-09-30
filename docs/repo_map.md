@@ -88,7 +88,7 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | `scripts/package_runtime.py` | Manifest-driven source preflight and post-PyInstaller App Runtime normalizer; subcommands `validate-sources` and `normalize-app`. | Reads manifest and model contract; modifies copied App binaries with `install_name_tool`, permissions, and resource checks. | High-risk package closure boundary; `test_packaged_runtime.py`. |
 | `scripts/verify_packaged_runtime.py` | Read-only packaged-App verifier. | Checks both App plist versions equal 1.1.0, the icon resource/ICNS/`CFBundleIconFile`, required Runtime files, arm64, RPaths/dependency closure, downloader/model manifest, codesign, bundled CLI smoke, and isolated Runtime smoke. | Formal build and Release ZIP trust boundary; `test_packaged_runtime.py` and `test_release_zip.py`. |
 | `scripts/release_identity.py` | Fixed REL1A identity and canonical build-provenance helper. | Validates project/lock/App/notes/contract identity and repository origin; hashes the complete App tree, release contract, and a code-defined complete REL1A tool set; writes and validates exact canonical provenance. | Does not integrate, approve, tag, upload, publish, or control a release. `test_release_identity.py`. |
-| `scripts/build_release_zip.py` | Formal fixed-1.1.0 Release ZIP entry. | Requires formal Python, macOS arm64, clean HEAD equal to an explicit commit, valid identity/provenance, and explicit absent artifact/extraction paths outside the repo; stages, verifies, retains extraction, and publishes with atomic no-clobber semantics. | Release payload boundary only. `test_release_zip.py`. |
+| `scripts/build_release_zip.py` | Formal fixed-1.1.0 Release ZIP entry. | Requires formal Python, macOS arm64, clean HEAD equal to an explicit commit, this clone's canonical Runtime Manifest/App/provenance, and absent artifact/extraction paths beneath one explicit Downloads task root; stages, verifies, retains extraction, and publishes with atomic no-clobber semantics. | Release payload boundary only. `test_release_zip.py`. |
 | `scripts/clean_build.sh` | Developer cleanup tool. | Deletes generated `build/`, `dist/`, and selected caches while preserving models, outputs, external Runtime, and historical `venv/`. | Destructive only for generated locations; not called by formal build. |
 | `run_long_test.sh` | Legacy long-running console transcription and system-monitoring helper. | Starts the legacy stream runner, writes ignored test-run logs, samples macOS system tools, and contains a machine-specific developer path. | It is not portable and not part of the formal build/release path; its current maintenance status is not established by source. |
 
@@ -129,7 +129,7 @@ Tests are a mix of `unittest` contract suites and directly executable regression
 | `test_build_orchestration.py` | `.command`, orchestrator, formal build metadata | Executable/syntax requirements, thin wrapper, formal stage order, formal Python injection, expected App checks, and portability. |
 | `test_packaged_runtime.py` | specs, `build_macos.sh`, package normalizer, packaged verifier | Manifest-driven collection/icon wiring; order of icon generation/preflight/normalize/sign/verify; missing component/dependency/downloader/manifest/icon failures; architecture and smoke gates. |
 | `test_release_identity.py` | Fixed project/release identity and App build provenance | Project/lock/spec/notes/asset agreement, unchanged schema/dependency pins, wrong identity/App versions/notes, non-clobber provenance, and stale App/source/contract/required-tool bindings. |
-| `test_release_zip.py` | `build_release_zip.py` and packaged verifier handoff | Fixed identity/locked Python/clean expected source/provenance, outside-tree and no-clobber targets, durable extraction, deterministic ZIP round-trip, exclusions, path/symlink safety, verifier failure handling, and exact digest. |
+| `test_release_zip.py` | `build_release_zip.py` and packaged verifier handoff | Fixed identity/locked Python/clean expected source/canonical manifest-App-provenance inputs, Downloads task-root and no-clobber targets, durable extraction, deterministic ZIP round-trip, exclusions, path/symlink safety, verifier failure handling, and exact digest. |
 
 ### Documentation and historical material
 
@@ -270,10 +270,11 @@ Build ClassroomTranscriber.command
       -> dist/ClassroomTranscriber.app
 
 .venv/bin/python scripts/build_release_zip.py --version 1.1.0 \
-  --expected-source-commit <commit> --build-provenance <path> \
-  --artifact <outside-repo-zip> --human-review-extraction <outside-repo-directory>
--> clean expected source + formal-Python + fixed identity/provenance checks
--> verify source App -> archive only App -> extract outside repo
+  --expected-source-commit <commit> --task-root <Downloads-managed-root> \
+  --artifact <task-root/artifacts/release.zip> \
+  --human-review-extraction <task-root/human-review>
+-> clean expected source + formal-Python + canonical manifest/App/provenance checks
+-> verify source App -> archive only App -> extract under the managed task root
 -> compare bundle structure/bytes/modes/symlinks -> verify extracted App
 -> atomically publish the no-clobber ZIP and retain the verified extraction
 ```
@@ -292,7 +293,7 @@ The ignored `external/whisper.cpp` is a build input reconstructed by bootstrap, 
 | Settings/resource split | Source versus frozen mode resolves different resource and writable paths; app settings and session config have distinct scopes. | `resource_paths.py`, `settings.py`, `model_manager.py`, controller | `test_ui_support.py`, `test_model_download_resources.py`; packaging tests if a bundled resource changes. |
 | Packaged Runtime closure | Manifest-driven resource collection, dylib/RPath normalization, signing, and bundled/isolated smoke form a fail-fast chain. A valid UI alone is insufficient. | runtime manifest, specs, bootstrap/helper/build/package/verifier scripts | `test_runtime_manifest.py`, `test_whisper_runtime_bootstrap.py`, `test_build_orchestration.py`, `test_packaged_runtime.py`; formal build/verifier for implementation changes. |
 | Packaged App icon | A tracked approved source must produce the ICNS referenced by `Info.plist`, survive signing and ZIP round-trip, and never depend on an external developer path. | `packaging/icons/ClassroomTranscriber.png`, runtime manifest, icon generator, Release spec/build/verifier | `test_app_icon.py`, `test_runtime_manifest.py`, `test_packaged_runtime.py`, `test_release_zip.py`; formal App/ZIP verification. |
-| Release ZIP closure | Release script rejects wrong/dirty source, stale identity/provenance, unsafe contents, in-repo or existing targets, then validates a complete round trip and retains the verified App extraction before atomic no-clobber ZIP publication. | `release_identity.py`, `build_release_zip.py`, runtime verifier, release contract/manifest fields | `test_release_identity.py`, `test_release_zip.py`, plus a future real formal 1.1.0 App/ZIP flow. |
+| Release ZIP closure | Release script rejects wrong/dirty source, noncanonical or stale manifest/App/provenance inputs, unsafe contents, targets outside the explicit Downloads task root, and existing targets; it then validates a complete round trip and retains the verified App extraction before atomic no-clobber ZIP publication. | `release_identity.py`, `build_release_zip.py`, runtime verifier, release contract/manifest fields | `test_release_identity.py`, `test_release_zip.py`, plus a future real formal 1.1.0 App/ZIP flow. |
 
 ## Product Polish architecture impact index
 
@@ -315,7 +316,7 @@ After Step 1A, the model-presentation boundary is explicitly split: concise curr
 These notes are observations from the baseline, not requests to change unrelated tracked files during Repo Map work.
 
 1. `packaging/runtime_manifest.json` still records several observed compatibility statuses as pending clean-machine E2E, while `docs/deployment_runtime.md` records Deployment Steps 8/9 and M4 Max/M5 ordinary-user acceptance as PASS. The manifest's frozen build/component data is actively consumed by code; its observed acceptance-status metadata appears historically lagged relative to the deployment runtime.
-2. `PACKAGING.md` retains a “Work still pending” paragraph saying clean-machine acceptance/real transcription E2E has not yet occurred, while `docs/deployment_runtime.md` records those acceptances as complete. This is documentation-state drift, not a source implementation discrepancy.
+2. `PACKAGING.md` now distinguishes completed historical 1.0.0 clean-machine acceptance from the still-future gate for exact 1.1.0 App/ZIP bytes; it does not treat the historical result as acceptance of the unbuilt, unpublished 1.1.0 candidate.
 3. The historical Deployment UX backlog says the current-model path cannot be accessed in full. Current `ui_app.py` sets full-path tooltips on both current-model summaries; the Model Manager table independently exposes Path. The Product Polish runtime's more precise description matches current source better.
 4. The legacy `run_long_test.sh` contains a machine-specific path, unlike the formal build scripts' repo-relative design. It is not part of the formal developer-build or Release path.
 

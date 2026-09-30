@@ -1,3 +1,4 @@
+import copy
 import json
 import plistlib
 import shutil
@@ -149,6 +150,17 @@ class ReleaseIdentityTests(unittest.TestCase):
                     }
                 )
 
+    def test_runtime_manifest_must_equal_tracked_canonical_object(self):
+        weakened = copy.deepcopy(self.manifest)
+        weakened["frozen"]["packaged_runtime"][
+            "allowed_system_dependency_prefixes"
+        ] = ["/"]
+        with self.assertRaises(release_identity.IdentityError):
+            release_identity.validate_runtime_manifest(weakened)
+        self.assertEqual(
+            release_identity.validate_runtime_manifest(self.manifest), self.manifest
+        )
+
     def test_provenance_binds_complete_app_contract_source_and_required_tools(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -160,6 +172,9 @@ class ReleaseIdentityTests(unittest.TestCase):
             self.assertEqual(
                 set(value["required_tool_sha256"]),
                 set(release_identity.REQUIRED_TOOL_PATHS),
+            )
+            self.assertIn(
+                "packaging/runtime_manifest.json", value["required_tool_sha256"]
             )
             self.assertEqual(
                 release_identity.validate_build_provenance(

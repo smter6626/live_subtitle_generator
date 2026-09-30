@@ -259,16 +259,16 @@ Run the unit/contract test suite with:
 .venv/bin/python -m unittest discover -s testCodes -p 'test_*.py' -v
 ```
 
-Release packaging is documented in [`PACKAGING.md`](PACKAGING.md). The REL1A ZIP entry requires the fixed 1.1.0 identity, the clean expected source commit, build provenance, and explicit artifact and retained Human-review extraction paths outside the repository:
+Release packaging is documented in [`PACKAGING.md`](PACKAGING.md). The REL1A ZIP entry requires the fixed 1.1.0 identity, the clean expected source commit, this clone's canonical App/provenance/Runtime Manifest, and explicit artifact and retained Human-review extraction paths beneath one task-managed Downloads root:
 
 ```bash
-mkdir -p /tmp/classroom-transcriber-release
+mkdir -p "$HOME/Downloads/classroom-transcriber-release/artifacts"
 .venv/bin/python scripts/build_release_zip.py \
   --version 1.1.0 \
   --expected-source-commit "$(git rev-parse HEAD)" \
-  --build-provenance dist/ClassroomTranscriber.app.provenance.json \
-  --artifact /tmp/classroom-transcriber-release/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip \
-  --human-review-extraction /tmp/classroom-transcriber-release/human-review
+  --task-root "$HOME/Downloads/classroom-transcriber-release" \
+  --artifact "$HOME/Downloads/classroom-transcriber-release/artifacts/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip" \
+  --human-review-extraction "$HOME/Downloads/classroom-transcriber-release/human-review"
 ```
 
 Do not treat this short section as a replacement for the packaging and deployment contracts.

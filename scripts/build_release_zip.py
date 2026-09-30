@@ -19,7 +19,6 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from verify_packaged_runtime import (
-    DEFAULT_MANIFEST_PATH,
     VerificationError,
     load_manifest,
     verify_packaged_runtime,
@@ -35,6 +34,10 @@ from release_identity import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_APP_PATH = REPO_ROOT / "dist" / "ClassroomTranscriber.app"
+CANONICAL_PROVENANCE_PATH = REPO_ROOT / "dist" / "ClassroomTranscriber.app.provenance.json"
+CANONICAL_MANIFEST_PATH = REPO_ROOT / "packaging" / "runtime_manifest.json"
+DOWNLOADS_ROOT = Path.home() / "Downloads"
 ZIP_TOOL = Path("/usr/bin/zip")
 DITTO_TOOL = Path("/usr/bin/ditto")
 VERSION_PATTERN = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._+-]*$")
@@ -194,6 +197,67 @@ def validate_expected_source_commit(actual: str, expected: str) -> str:
     return actual
 
 
+def validate_formal_source_paths(
+    app_path: Path,
+    build_provenance_path: Path,
+    *,
+    repo_root: Path = REPO_ROOT,
+) -> tuple[Path, Path]:
+    canonical_repo = repo_root.resolve()
+    canonical_app_path = canonical_repo / "dist" / "ClassroomTranscriber.app"
+    canonical_provenance_path = (
+        canonical_repo / "dist" / "ClassroomTranscriber.app.provenance.json"
+    )
+    app_candidate = Path(os.path.abspath(app_path))
+    provenance_candidate = Path(os.path.abspath(build_provenance_path))
+    if app_candidate != canonical_app_path:
+        raise ReleaseError(
+            "formal Release ZIP must consume this clone's dist/ClassroomTranscriber.app"
+        )
+    if provenance_candidate != canonical_provenance_path:
+        raise ReleaseError(
+            "formal Release ZIP must consume the App-adjacent canonical provenance"
+        )
+    if canonical_app_path.is_symlink() or canonical_provenance_path.is_symlink():
+        raise ReleaseError("canonical App and provenance must not be symbolic links")
+    return canonical_app_path.resolve(), canonical_provenance_path.resolve()
+
+
+def validate_managed_output_paths(
+    task_root: Path,
+    artifact_path: Path,
+    extraction_dir: Path,
+    *,
+    downloads_root: Path = DOWNLOADS_ROOT,
+) -> tuple[Path, Path, Path]:
+    try:
+        downloads = downloads_root.resolve(strict=True)
+        managed_root = task_root.resolve(strict=True)
+        artifact_parent = artifact_path.parent.resolve(strict=True)
+        extraction_parent = extraction_dir.parent.resolve(strict=True)
+    except OSError as exc:
+        raise ReleaseError(
+            "Downloads, task root, and output parent directories must already exist"
+        ) from exc
+    if not downloads.is_dir():
+        raise ReleaseError("current user's Downloads path is not a directory")
+    if (
+        not managed_root.is_dir()
+        or managed_root == downloads
+        or not managed_root.is_relative_to(downloads)
+    ):
+        raise ReleaseError(
+            "task root must be an explicit managed directory under the current user's Downloads"
+        )
+    final_artifact = artifact_parent / artifact_path.name
+    extract_root = extraction_parent / extraction_dir.name
+    if final_artifact == managed_root or not final_artifact.is_relative_to(managed_root):
+        raise ReleaseError("Release artifact must be a descendant of the task root")
+    if extract_root == managed_root or not extract_root.is_relative_to(managed_root):
+        raise ReleaseError("Human-review extraction must be a descendant of the task root")
+    return managed_root, final_artifact, extract_root
+
+
 def validate_payload_path(relative: PurePosixPath) -> None:
     if relative.is_absolute() or ".." in relative.parts:
         raise ReleaseError(f"unsafe Release payload path: {relative}")
@@ -322,6 +386,7 @@ def create_release_zip(
     app_path: Path,
     artifact_path: Path,
     extraction_dir: Path,
+    task_root: Path,
     build_provenance_path: Path,
     manifest: dict[str, Any],
     verifier: ReleaseVerifier = verify_packaged_runtime,
@@ -330,6 +395,8 @@ def create_release_zip(
     title: str | None = None,
     notes_path: Path | None = None,
     repo_root: Path = REPO_ROOT,
+    downloads_root: Path = DOWNLOADS_ROOT,
+    enforce_formal_source_paths: bool = True,
 ) -> ReleaseMetadata:
     validate_host()
     product_contract = load_product_contract(
@@ -337,10 +404,19 @@ def create_release_zip(
     )
     template, payload_name = release_contract(manifest)
     version = validate_version(version)
-    app_path = app_path.resolve()
-    final_artifact = artifact_path.parent.resolve() / artifact_path.name
-    extract_root = extraction_dir.parent.resolve() / extraction_dir.name
     repo_root = repo_root.resolve()
+    if enforce_formal_source_paths:
+        app_path, build_provenance_path = validate_formal_source_paths(
+            app_path, build_provenance_path, repo_root=repo_root
+        )
+    else:
+        app_path = app_path.resolve()
+    _managed_root, final_artifact, extract_root = validate_managed_output_paths(
+        task_root,
+        artifact_path,
+        extraction_dir,
+        downloads_root=downloads_root,
+    )
     if app_path.name != payload_name:
         raise ReleaseError(
             f"Release App must be named {payload_name}, got {app_path.name}"
@@ -351,10 +427,6 @@ def create_release_zip(
         raise ReleaseError("Human-review extraction path must be outside the source tree")
     if extraction_dir.name in {"", ".", ".."}:
         raise ReleaseError("Human-review extraction must name a new directory")
-    if not final_artifact.parent.is_dir():
-        raise ReleaseError("Release artifact parent directory must already exist")
-    if not extract_root.parent.is_dir():
-        raise ReleaseError("Human-review extraction parent directory must already exist")
     if os.path.lexists(final_artifact):
         raise ReleaseError("Release artifact target already exists; clobber is forbidden")
     if os.path.lexists(extract_root):
@@ -468,26 +540,14 @@ def create_release_zip(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True, help="explicit Release version")
-    parser.add_argument(
-        "--app-path",
-        type=Path,
-        default=REPO_ROOT / "dist" / "ClassroomTranscriber.app",
-        help="already-built App that passed the packaged Runtime gate",
-    )
+    parser.add_argument("--task-root", type=Path, required=True)
     parser.add_argument("--artifact", type=Path, required=True)
     parser.add_argument("--human-review-extraction", type=Path, required=True)
-    parser.add_argument("--build-provenance", type=Path, required=True)
     parser.add_argument("--expected-source-commit", required=True)
     parser.add_argument("--tag", default=PRODUCT_VERSION)
     parser.add_argument("--title", default="Classroom Transcriber 1.1.0")
     parser.add_argument(
         "--notes", type=Path, default=REPO_ROOT / "RELEASE_NOTES_1.1.0.md"
-    )
-    parser.add_argument(
-        "--manifest",
-        type=Path,
-        default=DEFAULT_MANIFEST_PATH,
-        help="Runtime Manifest path",
     )
     return parser
 
@@ -495,16 +555,17 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     try:
-        manifest = load_manifest(arguments.manifest)
+        manifest = load_manifest(CANONICAL_MANIFEST_PATH)
         validate_formal_python(manifest)
         commit = validate_clean_source()
         validate_expected_source_commit(commit, arguments.expected_source_commit)
         metadata = create_release_zip(
             version=arguments.version,
-            app_path=arguments.app_path,
+            app_path=CANONICAL_APP_PATH,
             artifact_path=arguments.artifact,
             extraction_dir=arguments.human_review_extraction,
-            build_provenance_path=arguments.build_provenance,
+            task_root=arguments.task_root,
+            build_provenance_path=CANONICAL_PROVENANCE_PATH,
             manifest=manifest,
             commit=commit,
             tag=arguments.tag,
