@@ -23,6 +23,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from model_integrity import load_model_contract  # noqa: E402
+from release_identity import PRODUCT_VERSION  # noqa: E402
 
 
 class VerificationError(RuntimeError):
@@ -329,7 +330,12 @@ def verify_app_icon(app_path: Path, manifest: dict[str, Any]) -> None:
             "CFBundleIconFile does not reference the Manifest App icon: "
             f"{info_plist.get('CFBundleIconFile')!r}"
         )
-    print("[packaged-runtime] App icon resource and Info.plist PASS")
+    for key in ("CFBundleShortVersionString", "CFBundleVersion"):
+        if info_plist.get(key) != PRODUCT_VERSION:
+            raise VerificationError(
+                f"{key} is {info_plist.get(key)!r}; expected {PRODUCT_VERSION!r}"
+            )
+    print("[packaged-runtime] App icon, product version, and Info.plist PASS")
 
 
 def smoke_environment() -> dict[str, str]:

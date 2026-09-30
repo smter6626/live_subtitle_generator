@@ -10,47 +10,23 @@ DOWNLOAD_SCRIPT="vendor/whisper.cpp/download-ggml-model.sh"
 PACKAGE_RUNTIME_HELPER="scripts/package_runtime.py"
 PACKAGED_RUNTIME_VERIFIER="scripts/verify_packaged_runtime.py"
 APP_ICON_BUILDER="scripts/build_app_icon.py"
+RELEASE_IDENTITY_HELPER="scripts/release_identity.py"
+BUILD_PROVENANCE_PATH="dist/ClassroomTranscriber.app.provenance.json"
+FORMAL_PYTHON="$ROOT_DIR/.venv/bin/python"
 
-python_exists() {
-  [[ -x "$1" ]] || command -v "$1" >/dev/null 2>&1
-}
-
-candidate_has_build_deps() {
-  "$1" -c "import PyInstaller; import PySide6" >/dev/null 2>&1
-}
-
-PYTHON_CANDIDATES=()
-if [[ -n "${PYTHON:-}" ]]; then
-  PYTHON_CANDIDATES+=("$PYTHON")
-else
-  if [[ -n "${VIRTUAL_ENV:-}" && -x "$VIRTUAL_ENV/bin/python" ]]; then
-    PYTHON_CANDIDATES+=("$VIRTUAL_ENV/bin/python")
-  fi
-  if [[ -x "$ROOT_DIR/venv/bin/python" ]]; then
-    PYTHON_CANDIDATES+=("$ROOT_DIR/venv/bin/python")
-  fi
-  PYTHON_CANDIDATES+=("python3")
+if [[ ! -x "$FORMAL_PYTHON" ]]; then
+  echo "Formal project Python is missing: .venv/bin/python"
+  exit 1
 fi
-
-PYTHON_BIN=""
-for candidate in "${PYTHON_CANDIDATES[@]}"; do
-  if python_exists "$candidate" && candidate_has_build_deps "$candidate"; then
-    PYTHON_BIN="$candidate"
-    break
-  fi
-done
-
-if [[ -z "$PYTHON_BIN" ]]; then
-  for candidate in "${PYTHON_CANDIDATES[@]}"; do
-    if python_exists "$candidate"; then
-      PYTHON_BIN="$candidate"
-      break
-    fi
-  done
+if [[ -n "${PYTHON:-}" ]] && ! "$FORMAL_PYTHON" -c \
+  'import os, sys; raise SystemExit(0 if os.path.samefile(sys.argv[1], sys.argv[2]) else 1)' \
+  "$PYTHON" "$FORMAL_PYTHON"; then
+  echo "Formal Release build rejects non-project PYTHON: $PYTHON"
+  exit 1
 fi
-
-if [[ -z "$PYTHON_BIN" ]]; then
-  echo "No usable Python interpreter found."
+PYTHON_BIN="$FORMAL_PYTHON"
+if [[ "$("$PYTHON_BIN" -c 'import platform; print(platform.python_version())')" != "3.12.14" ]]; then
+  echo "Formal Release build requires Python 3.12.14 from .venv/bin/python"
   exit 1
 fi
 
@@ -101,12 +77,19 @@ fi
   echo "App icon builder not found: $APP_ICON_BUILDER"
   exit 1
 }
+[[ -f "$RELEASE_IDENTITY_HELPER" ]] || {
+  echo "Release identity helper not found: $RELEASE_IDENTITY_HELPER"
+  exit 1
+}
 for required_tool in file otool install_name_tool codesign iconutil; do
   command -v "$required_tool" >/dev/null 2>&1 || {
     echo "Required macOS packaging tool not found: $required_tool"
     exit 1
   }
 done
+
+echo "Validating clean canonical source identity..."
+SOURCE_COMMIT="$("$PYTHON_BIN" "$RELEASE_IDENTITY_HELPER" check-clean-source)"
 
 echo "Validating required Manifest Runtime sources..."
 "$PYTHON_BIN" "$PACKAGE_RUNTIME_HELPER" validate-sources
@@ -129,6 +112,13 @@ codesign --force --deep --sign - "$APP_PATH"
 
 echo "Verifying final packaged Runtime..."
 "$PYTHON_BIN" "$PACKAGED_RUNTIME_VERIFIER" "$APP_PATH"
+
+echo "Writing canonical non-clobbering build provenance..."
+"$PYTHON_BIN" "$RELEASE_IDENTITY_HELPER" write-build-provenance \
+  --app "$APP_PATH" \
+  --output "$BUILD_PROVENANCE_PATH" \
+  --source-commit "$SOURCE_COMMIT"
+echo "Build provenance: $BUILD_PROVENANCE_PATH"
 
 echo
 echo "Build complete:"

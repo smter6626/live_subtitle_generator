@@ -118,29 +118,36 @@ Build ClassroomTranscriber.command
 -> Manifest-driven App icon generation
 -> Manifest source preflight / packaged-copy normalization / ad-hoc signing
 -> scripts/verify_packaged_runtime.py
+-> scripts/release_identity.py -> dist/ClassroomTranscriber.app.provenance.json
 -> dist/ClassroomTranscriber.app
 ```
 
-The `.command` file only resolves the repository and transfers control. The orchestrator propagates failures and performs a basic App/bundle structure check. The Release build itself owns the strict packaged Runtime gate, so the formal one-entry flow cannot report success before verification passes. Ad-hoc signing is only the current development-bundle integrity step; Developer ID and notarization remain pending release work.
+The `.command` file only resolves the repository and transfers control. The orchestrator propagates failures and performs a basic App/bundle structure check. The Release build accepts only this clone's `.venv/bin/python` at Python 3.12.14 and a clean canonical source checkout. It cannot report success before Runtime verification and non-clobbering provenance generation pass. The provenance binds the source commit, exact release-contract bytes, complete App tree, and the code-defined REL1A build/verification tool set. The candidate uses ad-hoc signing and is not notarized.
 
 ## Formal Release ZIP
 
-After the formal build passes, create the ordinary-user artifact with an explicit version:
+The fixed product identity is `1.1.0`, tag `1.1.0`, title `Classroom Transcriber 1.1.0`, App `ClassroomTranscriber.app`, and asset `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip`. This is an unbuilt, unpublished candidate; REL1A does not tag, upload, publish, or approve it. After a future real formal build passes, choose new artifact and Human-review extraction targets outside the source tree:
 
 ```bash
 ./Build\ ClassroomTranscriber.command
-.venv/bin/python scripts/build_release_zip.py --version <version>
+mkdir -p /tmp/classroom-transcriber-release
+.venv/bin/python scripts/build_release_zip.py \
+  --version 1.1.0 \
+  --expected-source-commit "$(git rev-parse HEAD)" \
+  --build-provenance dist/ClassroomTranscriber.app.provenance.json \
+  --artifact /tmp/classroom-transcriber-release/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip \
+  --human-review-extraction /tmp/classroom-transcriber-release/human-review
 ```
 
-The source worktree must be clean so the recorded 40-character source commit identifies the packaged source. The artifact is `dist/ClassroomTranscriber-<version>-macOS-AppleSilicon.zip`. The Release entry reads the filename and payload contract from `packaging/runtime_manifest.json`; it never infers a version, changes the project version, creates a Git tag or GitHub Release, or uploads an asset.
+The source worktree must be clean and HEAD must equal `--expected-source-commit`. The project, lock, Release spec, bilingual notes, Runtime Manifest asset/App naming, App plist, and build provenance must all match the fixed contract in `packaging/release_contract.json`. Both caller-selected targets must be absent and outside the repository; their parent directories must already exist. The entry never changes versions, creates a Git tag or GitHub Release, or uploads an asset.
 
-Before publishing the ZIP, the entry re-runs the existing packaged Runtime verifier on `dist/ClassroomTranscriber.app`. It archives only `ClassroomTranscriber.app` with macOS `/usr/bin/zip -r -y -X`: `-y` preserves symlinks and `-X` excludes volatile extra fields such as access times, so repeated packaging of the same App produces identical archive bytes. It extracts with macOS `ditto` into a new temporary directory outside the source tree, checks archive boundaries and CRC, compares the complete bundle structure, file bytes, permission modes, and symlink targets, and then runs the same packaged Runtime verifier against the extracted App. A verification failure does not publish the staged ZIP. A successful run prints the version, source commit, artifact filename/path, exact byte size, SHA-256, and extracted-App verification result.
+Before exposing the ZIP, the entry re-runs the existing packaged Runtime verifier on `dist/ClassroomTranscriber.app`. It archives only `ClassroomTranscriber.app` with macOS `/usr/bin/zip -r -y -X`: `-y` preserves symlinks and `-X` excludes volatile extra fields such as access times, so repeated packaging of the same App produces identical archive bytes. It extracts with macOS `ditto` into the explicit retained Human-review directory, checks archive boundaries and CRC, compares the complete bundle structure, file bytes, permission modes, and symlink targets, and then runs the same packaged Runtime verifier against the extracted App. A verification failure removes the extraction and does not expose a final ZIP. Successful publication uses an atomic hard link that fails if a target appears, then prints the version, source commit, exact artifact path/byte size/SHA-256, and surviving Human-review extraction locator.
 
 Models, `.venv`, `.tools`, `external`, source-tree files, build caches, and user settings are not Release payloads. Models remain an external Model Manager responsibility.
 
 ## Work still pending
 
-The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Their audit state is tracked separately. The project has not yet performed clean-machine acceptance and real transcription E2E.
+The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. A real 1.1.0 build, integration/approval flow, Human review, and publication remain REL1B/REL1C work.
 
 The remaining implementation sequence is:
 

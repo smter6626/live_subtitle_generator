@@ -16,6 +16,7 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import build_release_zip as release_zip  # noqa: E402
+import release_identity  # noqa: E402
 
 
 MANIFEST_PATH = REPO_ROOT / "packaging" / "runtime_manifest.json"
@@ -43,15 +44,42 @@ class ReleaseZipTests(unittest.TestCase):
         icon = app.joinpath(*Path(app_icon["bundle_target"]).parts)
         icon.write_bytes(b"icns" + (12).to_bytes(4, "big") + b"TEST")
         with (app / "Contents" / "Info.plist").open("wb") as handle:
-            plistlib.dump({"CFBundleIconFile": app_icon["bundle_filename"]}, handle)
+            plistlib.dump(
+                {
+                    "CFBundleIconFile": app_icon["bundle_filename"],
+                    "CFBundleShortVersionString": "1.1.0",
+                    "CFBundleVersion": "1.1.0",
+                },
+                handle,
+            )
         return app
+
+    def release_arguments(self, root: Path, app: Path, **overrides):
+        root.mkdir(parents=True, exist_ok=True)
+        artifact_dir = root / "artifacts"
+        artifact_dir.mkdir()
+        provenance = root / "build-provenance.json"
+        release_identity.write_build_provenance(provenance, app, "a" * 40)
+        arguments = {
+            "version": "1.1.0",
+            "app_path": app,
+            "artifact_path": artifact_dir
+            / "ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip",
+            "extraction_dir": root / "human-review",
+            "build_provenance_path": provenance,
+            "manifest": self.manifest,
+            "verifier": lambda _app_path, _manifest: None,
+            "commit": "a" * 40,
+        }
+        arguments.update(overrides)
+        return arguments
 
     def test_version_is_explicit_and_filename_safe(self):
         self.assertEqual(
-            release_zip.artifact_filename("0.0.0-step9a", self.manifest),
-            "ClassroomTranscriber-0.0.0-step9a-macOS-AppleSilicon.zip",
+            release_zip.artifact_filename("1.1.0", self.manifest),
+            "ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip",
         )
-        for invalid in ("", "../1.0", "1.0 beta", "/tmp/release"):
+        for invalid in ("", "../1.0", "1.0 beta", "/tmp/release", "1.0.0"):
             with self.subTest(version=invalid), self.assertRaises(
                 release_zip.ReleaseError
             ):
@@ -70,6 +98,12 @@ class ReleaseZipTests(unittest.TestCase):
             with self.assertRaises(release_zip.ReleaseError):
                 release_zip.validate_clean_source(REPO_ROOT)
 
+    def test_formal_entry_rejects_wrong_expected_source_commit(self):
+        with self.assertRaises(release_zip.ReleaseError):
+            release_zip.validate_expected_source_commit("a" * 40, "b" * 40)
+        with self.assertRaises(release_zip.ReleaseError):
+            release_zip.validate_expected_source_commit("a" * 40, "not-a-sha")
+
     def test_round_trip_preserves_bytes_modes_and_symlinks(self):
         verifier_calls = []
 
@@ -79,21 +113,15 @@ class ReleaseZipTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             app = self.make_app(root / "source")
-            output = root / "artifacts"
             metadata = release_zip.create_release_zip(
-                version="0.0.0-step9a",
-                app_path=app,
-                output_dir=output,
-                manifest=self.manifest,
-                verifier=fake_verifier,
-                commit="a" * 40,
+                **self.release_arguments(root, app, verifier=fake_verifier)
             )
             self.assertEqual(len(verifier_calls), 2)
             self.assertEqual(verifier_calls[0], app.resolve())
             self.assertFalse(verifier_calls[1].is_relative_to(REPO_ROOT.resolve()))
             self.assertEqual(
                 metadata.artifact_path.name,
-                "ClassroomTranscriber-0.0.0-step9a-macOS-AppleSilicon.zip",
+                "ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip",
             )
             self.assertEqual(metadata.artifact_bytes, metadata.artifact_path.stat().st_size)
             self.assertEqual(metadata.sha256, release_zip.sha256_file(metadata.artifact_path))
@@ -122,22 +150,19 @@ class ReleaseZipTests(unittest.TestCase):
             self.assertEqual(
                 icon.read_bytes(), b"icns" + (12).to_bytes(4, "big") + b"TEST"
             )
+            self.assertEqual(
+                metadata.extracted_app_path.parent, (root / "human-review").resolve()
+            )
+            self.assertTrue(metadata.extracted_app_path.is_dir())
 
     def test_same_app_produces_byte_identical_zip(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             app = self.make_app(root / "source")
-            output = root / "artifacts"
-            arguments = {
-                "version": "0.0.0-step9a",
-                "app_path": app,
-                "output_dir": output,
-                "manifest": self.manifest,
-                "verifier": lambda _app_path, _manifest: None,
-                "commit": "c" * 40,
-            }
+            arguments = self.release_arguments(root / "first", app)
             first = release_zip.create_release_zip(**arguments)
             first_bytes = first.artifact_path.read_bytes()
+            arguments = self.release_arguments(root / "second", app)
             second = release_zip.create_release_zip(**arguments)
             self.assertEqual(first.sha256, second.sha256)
             self.assertEqual(first_bytes, second.artifact_path.read_bytes())
@@ -154,19 +179,79 @@ class ReleaseZipTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             app = self.make_app(root / "source")
-            output = root / "artifacts"
-            with self.assertRaises(release_zip.VerificationError):
-                release_zip.create_release_zip(
-                    version="0.0.0-step9a",
-                    app_path=app,
-                    output_dir=output,
-                    manifest=self.manifest,
-                    verifier=failing_extracted_verifier,
-                    commit="b" * 40,
-                )
-            self.assertFalse(
-                (output / release_zip.artifact_filename("0.0.0-step9a", self.manifest)).exists()
+            arguments = self.release_arguments(
+                root, app, verifier=failing_extracted_verifier
             )
+            with self.assertRaises(release_zip.VerificationError):
+                release_zip.create_release_zip(**arguments)
+            self.assertFalse(arguments["artifact_path"].exists())
+            self.assertFalse(arguments["extraction_dir"].exists())
+
+    def test_identity_provenance_locations_and_no_clobber_are_enforced(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = self.make_app(root / "source")
+            for index, override in enumerate(
+                (
+                    {"version": "1.0.0"},
+                    {"tag": "v1.1.0"},
+                    {"title": "wrong"},
+                    {
+                        "artifact_path": root
+                        / "wrong"
+                        / "ClassroomTranscriber-wrong.zip"
+                    },
+                    {"notes_path": root / "wrong.md"},
+                )
+            ):
+                case_root = root / f"case-{index}"
+                arguments = self.release_arguments(case_root, app)
+                if "artifact_path" in override:
+                    override["artifact_path"].parent.mkdir()
+                with self.subTest(override=override), self.assertRaises(
+                    release_zip.ReleaseError
+                ):
+                    release_zip.create_release_zip(**{**arguments, **override})
+
+            stale = self.release_arguments(root / "stale", app)
+            app.joinpath("Contents/MacOS/ClassroomTranscriber").write_bytes(b"changed")
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.create_release_zip(**stale)
+
+            app = self.make_app(root / "source-second")
+            arguments = self.release_arguments(root / "no-clobber", app)
+            first = release_zip.create_release_zip(**arguments)
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.create_release_zip(**arguments)
+            self.assertTrue(first.artifact_path.is_file())
+
+            preexisting = self.release_arguments(root / "preexisting-extract", app)
+            preexisting["extraction_dir"].mkdir()
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.create_release_zip(**preexisting)
+
+            in_repo = self.release_arguments(root / "in-repo", app)
+            in_repo["artifact_path"] = REPO_ROOT / first.artifact_path.name
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.create_release_zip(**in_repo)
+            in_repo["artifact_path"] = root / "in-repo/artifacts" / first.artifact_path.name
+            in_repo["extraction_dir"] = REPO_ROOT / "human-review"
+            with self.assertRaises(release_zip.ReleaseError):
+                release_zip.create_release_zip(**in_repo)
+
+    def test_publication_race_is_true_no_clobber(self):
+        source = (SCRIPTS_DIR / "build_release_zip.py").read_text(encoding="utf-8")
+        self.assertNotIn("os.replace", source)
+        self.assertIn("os.link", source)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = self.make_app(root / "source")
+            arguments = self.release_arguments(root, app)
+            with mock.patch.object(release_zip.os, "link", side_effect=FileExistsError):
+                with self.assertRaises(release_zip.ReleaseError):
+                    release_zip.create_release_zip(**arguments)
+            self.assertFalse(arguments["artifact_path"].exists())
+            self.assertFalse(arguments["extraction_dir"].exists())
 
     def test_model_and_development_files_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

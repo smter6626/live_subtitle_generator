@@ -9,6 +9,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WRAPPER_PATH = REPO_ROOT / "Build ClassroomTranscriber.command"
 ORCHESTRATOR_PATH = REPO_ROOT / "scripts" / "bootstrap_and_build.sh"
+RELEASE_BUILD_PATH = REPO_ROOT / "scripts" / "build_macos.sh"
 MANIFEST_PATH = REPO_ROOT / "packaging" / "runtime_manifest.json"
 
 
@@ -73,6 +74,21 @@ class BuildOrchestrationContractTests(unittest.TestCase):
         )
         self.assertNotIn("CONDA_PREFIX", self.orchestrator_text)
         self.assertNotIn("brew", self.orchestrator_text.lower())
+
+    def test_release_build_rejects_a_non_project_python_without_fallback(self):
+        text = RELEASE_BUILD_PATH.read_text(encoding="utf-8")
+        self.assertIn('FORMAL_PYTHON="$ROOT_DIR/.venv/bin/python"', text)
+        self.assertNotIn("PYTHON_CANDIDATES", text)
+        self.assertNotIn('PYTHON_BIN="python3"', text)
+        result = subprocess.run(
+            ["bash", str(RELEASE_BUILD_PATH)],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PYTHON": "/usr/bin/python3"},
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("rejects non-project PYTHON", result.stderr + result.stdout)
 
     def test_orchestrator_checks_the_expected_app_without_step_6_gates(self):
         self.assertIn(

@@ -36,7 +36,7 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 - [Classroom Transcriber 1.0.0 GitHub Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.0.0)
 - 正式 asset：`ClassroomTranscriber-1.0.0-macOS-AppleSilicon.zip`
 
-下文所述的 Clean 工具栏、窗口高度约束、Session 重置/复制行为和全文恢复已经在当前 `codex/clean-toolbar-rename-v1` feature branch 实现，并完成人工实机验证；它们尚未 merge、tag 或打包进 Release 1.0.0。因此，当前可下载的 1.0.0 App 还不包含这些 feature-branch 改动。
+1.1.0 是 `codex/release-1-1-0-automation` 上尚未构建、尚未发布的候选版。其固定候选标题为 **Classroom Transcriber 1.1.0**，预定 asset 为 `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip`，其中包含 `ClassroomTranscriber.app`。当前可下载的 1.0.0 App 不包含这些候选改动。过去对 1.0.0 完成的 clean-machine 验收仅是历史证据，不会验收任何新的 1.1.0 App 或 ZIP 字节。
 
 普通用户**不需要** clone 本仓库，不需要安装 Python，也不需要自行编译 `whisper.cpp`。ZIP 不包含 Whisper 模型；打开 App 后，请通过 Model Manager 下载或导入模型。
 
@@ -253,10 +253,16 @@ cd live_subtitle_generator
 .venv/bin/python -m unittest discover -s testCodes -p 'test_*.py' -v
 ```
 
-Release packaging 详见 [`PACKAGING.md`](PACKAGING.md)。简化流程是在 clean formal build 后执行：
+Release packaging 详见 [`PACKAGING.md`](PACKAGING.md)。REL1A ZIP 入口要求固定 1.1.0 identity、与 clean HEAD 一致的预期 source commit、build provenance，以及仓库外显式指定的 artifact 和保留供人工检查的解压路径：
 
 ```bash
-.venv/bin/python scripts/build_release_zip.py --version <version>
+mkdir -p /tmp/classroom-transcriber-release
+.venv/bin/python scripts/build_release_zip.py \
+  --version 1.1.0 \
+  --expected-source-commit "$(git rev-parse HEAD)" \
+  --build-provenance dist/ClassroomTranscriber.app.provenance.json \
+  --artifact /tmp/classroom-transcriber-release/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip \
+  --human-review-extraction /tmp/classroom-transcriber-release/human-review
 ```
 
 本节只是快速入口，不能代替 packaging 和 deployment contracts。

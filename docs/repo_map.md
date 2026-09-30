@@ -51,7 +51,7 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | Model discovery, selection/import/download UI support, app settings | `model_manager.py`, `ui_app.py` |
 | Downloadable-model integrity transaction | `model_integrity.py`, `packaging/model_manifest.json` |
 | Reproducible source runtime and App packaging | `scripts/`, `packaging/runtime_manifest.json`, `packaging/icons/`, PyInstaller specs |
-| Release artifact creation and validation | `scripts/build_release_zip.py` |
+| Release identity, App provenance, artifact creation and validation | `packaging/release_contract.json`, `scripts/release_identity.py`, `scripts/build_release_zip.py` |
 | Contract and regression coverage | `testCodes/` |
 | Governance, current state, user/build documentation | `README.md`, `README.zh-CN.md`, `PACKAGING.md`, `docs/` |
 
@@ -83,11 +83,12 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | `scripts/bootstrap_whisper_runtime.sh` | Rebuilds or verifies (`--verify-only`) the pinned ignored whisper.cpp Runtime. | Uses manifest values through `whisper_runtime_contract.py`; may download CMake and clone/build `external/whisper.cpp`; refuses dirty/unexpected third-party state. | Controls third-party Runtime provenance and generated binary closure. `test_whisper_runtime_bootstrap.py`, `test_runtime_manifest.py`. |
 | `scripts/whisper_runtime_contract.py` | Manifest reader and source-Runtime verifier; commands: `get`, `cmake-arguments`, `artifact-records`, `verify-runtime`. | Reads `runtime_manifest.json`; invokes Git, `file`, `otool`, and the CLI smoke during verification. | Centralizes build-profile/data interpretation. Do not duplicate manifest facts in bootstrap code. Bootstrap/manifest tests protect it. |
 | `scripts/build_app_icon.py` | Manifest-driven macOS icon generator. | Validates the tracked source SHA/canvas, removes its edge-connected light matte, renders a 1024 px RGBA master and complete iconset with locked PySide6/NumPy, then calls macOS `iconutil`; writes only ignored temporary/`build/` output. | Reproducible icon quality and generated ICNS boundary. `test_app_icon.py`, manifest/packaging tests. |
-| `scripts/build_macos.sh` | Formal Release App build and hard gate. | Validates sources, deletes generated `build/` and `dist/`, generates the Manifest App icon, runs PyInstaller, normalizes App Runtime, ad-hoc signs, then verifies. | Build success semantics and generated artifacts. `test_app_icon.py`, `test_packaged_runtime.py`, `test_build_orchestration.py`. |
+| `scripts/build_macos.sh` | Formal Release App build and hard gate. | Requires clean canonical source and this clone's Python 3.12.14 `.venv`, deletes generated `build/` and `dist/`, generates the icon, runs PyInstaller, normalizes, ad-hoc signs, verifies, then writes non-clobbering canonical App provenance. | Build success semantics and generated artifacts. `test_release_identity.py`, `test_app_icon.py`, `test_packaged_runtime.py`, `test_build_orchestration.py`. |
 | `scripts/build_macos_debug.sh` | Separate console/debug PyInstaller build. | Deletes its generated debug outputs and applies permissive debug RPath adjustments. | Not the formal Release gate; changes should be checked against the Debug spec and manual debug use. |
 | `scripts/package_runtime.py` | Manifest-driven source preflight and post-PyInstaller App Runtime normalizer; subcommands `validate-sources` and `normalize-app`. | Reads manifest and model contract; modifies copied App binaries with `install_name_tool`, permissions, and resource checks. | High-risk package closure boundary; `test_packaged_runtime.py`. |
-| `scripts/verify_packaged_runtime.py` | Read-only packaged-App verifier. | Checks the Manifest App icon resource/ICNS structure/`CFBundleIconFile`, required Runtime files, arm64, RPaths/dependency closure, downloader/model manifest, codesign, bundled CLI smoke, and isolated Runtime smoke. | Formal build and Release ZIP trust boundary; `test_packaged_runtime.py` and `test_release_zip.py`. |
-| `scripts/build_release_zip.py` | Formal Release ZIP entry (`--version` required). | Requires formal Python, macOS arm64, clean Git source, and a verified App; writes a staged/final ZIP under `dist/`, extracts outside the repo, compares bytes/modes/symlinks, and re-verifies. | Release payload and provenance boundary. `test_release_zip.py`. |
+| `scripts/verify_packaged_runtime.py` | Read-only packaged-App verifier. | Checks both App plist versions equal 1.1.0, the icon resource/ICNS/`CFBundleIconFile`, required Runtime files, arm64, RPaths/dependency closure, downloader/model manifest, codesign, bundled CLI smoke, and isolated Runtime smoke. | Formal build and Release ZIP trust boundary; `test_packaged_runtime.py` and `test_release_zip.py`. |
+| `scripts/release_identity.py` | Fixed REL1A identity and canonical build-provenance helper. | Validates project/lock/App/notes/contract identity and repository origin; hashes the complete App tree, release contract, and a code-defined complete REL1A tool set; writes and validates exact canonical provenance. | Does not integrate, approve, tag, upload, publish, or control a release. `test_release_identity.py`. |
+| `scripts/build_release_zip.py` | Formal fixed-1.1.0 Release ZIP entry. | Requires formal Python, macOS arm64, clean HEAD equal to an explicit commit, valid identity/provenance, and explicit absent artifact/extraction paths outside the repo; stages, verifies, retains extraction, and publishes with atomic no-clobber semantics. | Release payload boundary only. `test_release_zip.py`. |
 | `scripts/clean_build.sh` | Developer cleanup tool. | Deletes generated `build/`, `dist/`, and selected caches while preserving models, outputs, external Runtime, and historical `venv/`. | Destructive only for generated locations; not called by formal build. |
 | `run_long_test.sh` | Legacy long-running console transcription and system-monitoring helper. | Starts the legacy stream runner, writes ignored test-run logs, samples macOS system tools, and contains a machine-specific developer path. | It is not portable and not part of the formal build/release path; its current maintenance status is not established by source. |
 
@@ -96,6 +97,7 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | Path / group | Responsibility | Used by / change impact |
 | --- | --- | --- |
 | `packaging/runtime_manifest.json` | Machine-readable frozen Runtime/build/bundle/release contract plus observed/pending metadata. Enumerates the seven required Runtime components, vendored downloader, model-manifest location, App-icon source/hash/generated/bundle paths, formal build entry, and release filename template. | Consumed by bootstrap/icon helpers, PyInstaller specs, Runtime normalizer/verifier, Release ZIP code, and manifest tests. It is the packaging data source of truth. |
+| `packaging/release_contract.json`, `RELEASE_NOTES_1.1.0.md` | Compact fixed 1.1.0 product/repository/candidate identity and its exact bilingual candidate notes. | Consumed and byte-bound by `release_identity.py`; describes an unbuilt, unpublished, ad-hoc-signed, non-notarized candidate with external models. |
 | `packaging/model_manifest.json` | Frozen five-model download metadata: filename, exact byte count, SHA-256, upstream revision/provenance, staging and receipt policy. | Loaded by `model_integrity.py`; indirectly drives Model Manager availability/download list; bundled and verified in the App. `test_model_integrity.py`, `test_model_download_resources.py`, packaging tests. |
 | `packaging/icons/ClassroomTranscriber.png` | Tracked, user-approved square source artwork for the formal App icon; the Manifest freezes its SHA-256. | Read only by `build_app_icon.py`; the source is normalized/generated during formal build, never loaded from a developer Downloads path. `test_app_icon.py`, `test_runtime_manifest.py`. |
 | `packaging/ClassroomTranscriber.spec` | Release PyInstaller spec; entry is `ui_app.py`, data list and generated icon path are manifest-derived, microphone usage string is declared, and `BUNDLE` receives the generated `ClassroomTranscriber.icns`. | Called by Release build; PyInstaller writes the ICNS resource and `CFBundleIconFile`. `test_packaged_runtime.py`. |
@@ -126,7 +128,8 @@ Tests are a mix of `unittest` contract suites and directly executable regression
 | `test_whisper_runtime_bootstrap.py` | Runtime bootstrap/helper and manifest | CMake acquisition, manifest-derived CMake profile, component/smoke completeness, and repo-relative bootstrap facts. |
 | `test_build_orchestration.py` | `.command`, orchestrator, formal build metadata | Executable/syntax requirements, thin wrapper, formal stage order, formal Python injection, expected App checks, and portability. |
 | `test_packaged_runtime.py` | specs, `build_macos.sh`, package normalizer, packaged verifier | Manifest-driven collection/icon wiring; order of icon generation/preflight/normalize/sign/verify; missing component/dependency/downloader/manifest/icon failures; architecture and smoke gates. |
-| `test_release_zip.py` | `build_release_zip.py` and packaged verifier handoff | Explicit version/locked Python/clean source, deterministic ZIP round-trip including ICNS bytes, payload exclusions, path/symlink safety, verifier failure handling, and reported digest. |
+| `test_release_identity.py` | Fixed project/release identity and App build provenance | Project/lock/spec/notes/asset agreement, unchanged schema/dependency pins, wrong identity/App versions/notes, non-clobber provenance, and stale App/source/contract/required-tool bindings. |
+| `test_release_zip.py` | `build_release_zip.py` and packaged verifier handoff | Fixed identity/locked Python/clean expected source/provenance, outside-tree and no-clobber targets, durable extraction, deterministic ZIP round-trip, exclusions, path/symlink safety, verifier failure handling, and exact digest. |
 
 ### Documentation and historical material
 
@@ -263,13 +266,16 @@ Build ClassroomTranscriber.command
       -> package_runtime normalize-app
       -> ad-hoc codesign
       -> verify_packaged_runtime
+      -> release_identity write-build-provenance
       -> dist/ClassroomTranscriber.app
 
-.venv/bin/python scripts/build_release_zip.py --version <version>
--> clean source + formal-Python checks
+.venv/bin/python scripts/build_release_zip.py --version 1.1.0 \
+  --expected-source-commit <commit> --build-provenance <path> \
+  --artifact <outside-repo-zip> --human-review-extraction <outside-repo-directory>
+-> clean expected source + formal-Python + fixed identity/provenance checks
 -> verify source App -> archive only App -> extract outside repo
 -> compare bundle structure/bytes/modes/symlinks -> verify extracted App
--> dist/ClassroomTranscriber-<version>-macOS-AppleSilicon.zip
+-> atomically publish the no-clobber ZIP and retain the verified extraction
 ```
 
 The ignored `external/whisper.cpp` is a build input reconstructed by bootstrap, not a tracked source dependency to copy. The resulting App bundles CLI/dylibs, the vendored downloader, model-integrity manifest, and generated ICNS; it deliberately does not bundle model binaries or user settings.
@@ -286,7 +292,7 @@ The ignored `external/whisper.cpp` is a build input reconstructed by bootstrap, 
 | Settings/resource split | Source versus frozen mode resolves different resource and writable paths; app settings and session config have distinct scopes. | `resource_paths.py`, `settings.py`, `model_manager.py`, controller | `test_ui_support.py`, `test_model_download_resources.py`; packaging tests if a bundled resource changes. |
 | Packaged Runtime closure | Manifest-driven resource collection, dylib/RPath normalization, signing, and bundled/isolated smoke form a fail-fast chain. A valid UI alone is insufficient. | runtime manifest, specs, bootstrap/helper/build/package/verifier scripts | `test_runtime_manifest.py`, `test_whisper_runtime_bootstrap.py`, `test_build_orchestration.py`, `test_packaged_runtime.py`; formal build/verifier for implementation changes. |
 | Packaged App icon | A tracked approved source must produce the ICNS referenced by `Info.plist`, survive signing and ZIP round-trip, and never depend on an external developer path. | `packaging/icons/ClassroomTranscriber.png`, runtime manifest, icon generator, Release spec/build/verifier | `test_app_icon.py`, `test_runtime_manifest.py`, `test_packaged_runtime.py`, `test_release_zip.py`; formal App/ZIP verification. |
-| Release ZIP closure | Release script rejects dirty source and unsafe contents, then validates a round trip and extracted App Runtime. | `build_release_zip.py`, runtime verifier, release manifest fields | `test_release_zip.py` plus actual formal Release ZIP flow when release code/specs change. |
+| Release ZIP closure | Release script rejects wrong/dirty source, stale identity/provenance, unsafe contents, in-repo or existing targets, then validates a complete round trip and retains the verified App extraction before atomic no-clobber ZIP publication. | `release_identity.py`, `build_release_zip.py`, runtime verifier, release contract/manifest fields | `test_release_identity.py`, `test_release_zip.py`, plus a future real formal 1.1.0 App/ZIP flow. |
 
 ## Product Polish architecture impact index
 

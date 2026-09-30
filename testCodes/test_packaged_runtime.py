@@ -112,7 +112,14 @@ class PackagedRuntimeTests(unittest.TestCase):
         icon_path.write_bytes(b"icns" + (12).to_bytes(4, "big") + b"TEST")
         plist_path = app / "Contents" / "Info.plist"
         with plist_path.open("wb") as handle:
-            plistlib.dump({"CFBundleIconFile": app_icon["bundle_filename"]}, handle)
+            plistlib.dump(
+                {
+                    "CFBundleIconFile": app_icon["bundle_filename"],
+                    "CFBundleShortVersionString": "1.1.0",
+                    "CFBundleVersion": "1.1.0",
+                },
+                handle,
+            )
         return app
 
     def verifier_exit(self, app: Path, fake: FakeMacOSTools) -> int:
@@ -142,6 +149,8 @@ class PackagedRuntimeTests(unittest.TestCase):
         self.assertIn('manifest["frozen"]["app_icon"]', text)
         self.assertIn("icon=str(icon_path)", text)
         self.assertNotIn("icon=None", text)
+        self.assertIn('"CFBundleShortVersionString": "1.1.0"', text)
+        self.assertIn('"CFBundleVersion": "1.1.0"', text)
 
     def test_formal_build_orders_preflight_normalize_sign_and_verify_before_success(self):
         text = BUILD_SCRIPT_PATH.read_text(encoding="utf-8")
@@ -232,8 +241,36 @@ class PackagedRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             app = self.make_app_fixture(Path(temp))
             with (app / "Contents" / "Info.plist").open("wb") as handle:
-                plistlib.dump({"CFBundleIconFile": "wrong.icns"}, handle)
+                plistlib.dump(
+                    {
+                        "CFBundleIconFile": "wrong.icns",
+                        "CFBundleShortVersionString": "1.1.0",
+                        "CFBundleVersion": "1.1.0",
+                    },
+                    handle,
+                )
             self.assertNotEqual(self.verifier_exit(app, fake), 0)
+
+    def test_missing_or_altered_product_versions_return_nonzero(self):
+        fake = FakeMacOSTools()
+        for key, value in (
+            ("CFBundleShortVersionString", None),
+            ("CFBundleVersion", None),
+            ("CFBundleShortVersionString", "1.0.0"),
+            ("CFBundleVersion", "1.0.0"),
+        ):
+            with self.subTest(key=key, value=value), tempfile.TemporaryDirectory() as temp:
+                app = self.make_app_fixture(Path(temp))
+                plist_path = app / "Contents" / "Info.plist"
+                with plist_path.open("rb") as handle:
+                    info = plistlib.load(handle)
+                if value is None:
+                    del info[key]
+                else:
+                    info[key] = value
+                with plist_path.open("wb") as handle:
+                    plistlib.dump(info, handle)
+                self.assertNotEqual(self.verifier_exit(app, fake), 0)
 
     def test_packaged_cli_smoke_failure_returns_nonzero(self):
         fake = FakeMacOSTools(smoke_returncode=9)

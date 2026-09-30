@@ -36,7 +36,7 @@ The current formal release is **1.0.0**:
 - [Classroom Transcriber 1.0.0 GitHub Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.0.0)
 - Release asset: `ClassroomTranscriber-1.0.0-macOS-AppleSilicon.zip`
 
-The Clean toolbar, bounded-window layout, Session reset/copy behavior, and full-history recovery documented below are implemented and Human-tested on the current `codex/clean-toolbar-rename-v1` feature branch. They have not been merged, tagged, or packaged into Release 1.0.0. The downloadable 1.0.0 app therefore does not yet contain those feature-branch changes.
+Version 1.1.0 is an unbuilt, unpublished candidate on `codex/release-1-1-0-automation`. Its fixed candidate title is **Classroom Transcriber 1.1.0**, and its intended asset is `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip` containing `ClassroomTranscriber.app`. The downloadable 1.0.0 App does not contain these candidate changes. Prior clean-machine acceptance of 1.0.0 remains historical evidence only; it does not accept any new 1.1.0 App or ZIP bytes.
 
 Ordinary users do **not** need to clone this repository, install Python, or compile `whisper.cpp`. Whisper models are not included in the ZIP; download or import one from Model Manager after opening the app.
 
@@ -259,10 +259,16 @@ Run the unit/contract test suite with:
 .venv/bin/python -m unittest discover -s testCodes -p 'test_*.py' -v
 ```
 
-Release packaging is documented in [`PACKAGING.md`](PACKAGING.md). In brief, a clean formal build is followed by:
+Release packaging is documented in [`PACKAGING.md`](PACKAGING.md). The REL1A ZIP entry requires the fixed 1.1.0 identity, the clean expected source commit, build provenance, and explicit artifact and retained Human-review extraction paths outside the repository:
 
 ```bash
-.venv/bin/python scripts/build_release_zip.py --version <version>
+mkdir -p /tmp/classroom-transcriber-release
+.venv/bin/python scripts/build_release_zip.py \
+  --version 1.1.0 \
+  --expected-source-commit "$(git rev-parse HEAD)" \
+  --build-provenance dist/ClassroomTranscriber.app.provenance.json \
+  --artifact /tmp/classroom-transcriber-release/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip \
+  --human-review-extraction /tmp/classroom-transcriber-release/human-review
 ```
 
 Do not treat this short section as a replacement for the packaging and deployment contracts.
