@@ -273,12 +273,12 @@ mkdir -p "$HOME/Downloads/classroom-transcriber-release/artifacts"
 
 Do not treat this short section as a replacement for the packaging and deployment contracts.
 
-### REL1B integration controller candidate
+### REL1B integration controller
 
-REL1A's version/App/ZIP identity foundation has been accepted locally. The REL1B
-candidate adds `status`, `integrate`, and `resume` to
-[`scripts/release_controller.py`](scripts/release_controller.py); independent
-review is still required. The whole Step 1, real main integration, a new App/ZIP,
+REL1A's version/App/ZIP identity foundation and REL1B's integration controller
+were independently accepted for their bounded implementation scopes. REL1B
+provides `status`, `integrate`, and `resume` through
+[`scripts/release_controller.py`](scripts/release_controller.py). The whole Step 1, real main integration, a new App/ZIP,
 and publication are pending. Build, package, Human-pass, tag, draft, upload, and
 publish are unavailable in this controller.
 
@@ -298,6 +298,38 @@ the result is `MAIN_PRESENT_HUMAN_RECONCILIATION`, without rollback or another p
 Disposable fixture signatures and callback-gate tests authorize only new local
 test repositories. See [`PACKAGING.md`](PACKAGING.md#rel1b-approval-integration-and-recovery)
 for deployment proposals, transport limits, recovery, and validation commands.
+
+### REL1C1 workflow candidate
+
+The new candidate entry accepts exactly `release_workflow.py status|build|resume|human-gate`.
+It requires a separately signed workflow approval binding all eight control modules,
+all required build tools, parent/REL1B/REL1C contracts and final Step 1 decisions.
+The legacy REL1B entry keeps its four-module authorization scope. Production trust
+and protected entries are still undeployed; repository commands stop without them.
+There are no caller-selected trust, receipt, source, signer or fixture options.
+
+`status` reads local recorded hints without accepting decisions or writing anything.
+`build` verifies an independently signed exact final-main source receipt, actual Git
+objects/parents/tree/bytes and exact remote refs, then stops with
+`BUILD_PROTOCOL_REVIEW_REQUIRED`. The original one-entry build needs reviewed
+synchronous stage checkpoints before this candidate can execute it. C1 is incomplete;
+no formal build or publication occurred. `resume` verifies surviving artifact facts
+or stops for review; it never reuses a recorded environment proof or old outputs.
+
+`human-gate` validates a separate externally signed Owner PASS against the exact
+ZIP, source, attempt, App tree/identity and retained extraction. It cannot create or
+sign PASS; recorded states and integration permission cannot replace that receipt.
+Even a fixture PASS enables no tag, draft, upload or publish command. New workflow
+state and artifacts live separately from REL1B's journal root; attempts preserve
+prior ZIPs, Human directories and failed evidence.
+
+For future Human review, use Finder to open the exact retained extraction's
+`ClassroomTranscriber.app`, then test model download, microphone/Start/Stop, a second
+Session, language choices, Copy New Text, window/scrolling, bilingual Clean controls,
+active/stopped rename and full-history Yes/No recovery. Use Privacy & Security →
+Open Anyway if macOS blocks this ad-hoc, non-notarized App. Record actual hardware,
+language and model limits; historical 1.0.0 App acceptance does not approve 1.1.0.
+The receipt protocol and build-interface gap are documented in [`PACKAGING.md`](PACKAGING.md#rel1c1-candidate-receipts-and-recovery).
 
 ## Architecture
 

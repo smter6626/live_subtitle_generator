@@ -1,7 +1,9 @@
 """External fixture-signature and closed production trust rejection cases."""
 import copy
 import os
+import sys
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from testCodes.test_release_controller import Fixture, retained_root, approval
@@ -121,6 +123,71 @@ class ApprovalTests(unittest.TestCase):
         expected = approval.downloads()
         with mock.patch.dict(os.environ, {'HOME': '/SECRET', 'TMPDIR': '/SECRET'}):
             self.assertEqual(approval.downloads(), expected)
+
+
+class WorkflowApprovalTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from testCodes.test_release_workflow import retained_root
+        cls.root = retained_root()
+
+    def test_fixed_scope_cannot_be_smaller_or_select_legacy_entry(self):
+        from testCodes.test_release_workflow import Fixture
+        f = Fixture(self.root)
+        self.assertEqual(approval.authorize_workflow(f.policy), f.auth)
+        for relative in approval.WORKFLOW_CONTROL_TOOLS:
+            value = copy.deepcopy(f.payload)
+            del value['tools'][relative]
+            f.sign('workflow-approval', value)
+            with self.subTest(relative=relative), self.assertRaises(approval.Stop):
+                approval.authorize_workflow(f.policy)
+        f.sign('workflow-approval', {**f.payload, 'purpose': 'integration-only'})
+        with self.assertRaises(approval.Stop):
+            approval.authorize_workflow(f.policy)
+
+    def test_c1_tool_contract_config_evidence_replacements_and_revocation_refuse(self):
+        from testCodes.test_release_workflow import Fixture
+        for kind in ('tool', 'contract', 'epoch', 'review', 'revoke', 'legacy-root', 'namespace'):
+            f = Fixture(self.root)
+            if kind == 'tool':
+                f.payload['tools']['scripts/release_human_gate.py'] = 'a' * 64
+                f.sign('workflow-approval', f.payload)
+            elif kind == 'contract':
+                (f.root / 'rel1c.md').write_text('replacement contract\n')
+            elif kind == 'epoch':
+                f.config['epoch'] = 2
+                f.write('workflow-config.json', approval.canonical(f.config))
+            elif kind == 'review':
+                f.write('review.json', approval.canonical({'scope': 'rel1c1-only-review', 'PASS': True}))
+            elif kind == 'revoke':
+                f.write('revoked.json', approval.canonical({'schema_version': 1, 'ids': [f.payload['id']]}))
+            elif kind == 'legacy-root':
+                f.sign('workflow-approval', {**f.payload, 'workflow': f.payload['managed']})
+            else:
+                f.sign('workflow-approval', f.payload, namespace=approval.NAMESPACE)
+            with self.subTest(kind=kind), self.assertRaises(approval.Stop):
+                approval.authorize_workflow(f.policy)
+            self.assertFalse((f.root / 'workflow').exists())
+
+    def test_workflow_protected_entry_checks_all_eight_loaded_paths_and_bytes(self):
+        # The test seam substitutes the protected file reader only for this unit
+        # check. No fixture config/key or mock is reachable from production CLI.
+        config = {'entry_sha256': {p: approval.digest(p.encode()) for p in approval.WORKFLOW_CONTROL_TOOLS}}
+        root = approval.TRUST_ROOT / 'entry'
+        modules = {Path(p).stem: type('Module', (), {'__file__': str(root / p)})()
+                   for p in approval.WORKFLOW_CONTROL_TOOLS}
+        with (mock.patch.object(approval, '__file__', str(root / 'scripts/release_approval.py')),
+              mock.patch.dict(sys.modules, modules),
+              mock.patch.object(approval, 'read_file', side_effect=lambda p, **_: p.relative_to(root).as_posix().encode())):
+            approval._workflow_entry(approval.WorkflowPolicy(), config)
+            for relative in approval.WORKFLOW_CONTROL_TOOLS:
+                name = Path(relative).stem
+                module = modules[name]
+                old = module.__file__
+                module.__file__ = '/caller/' + relative
+                with self.subTest(relative=relative), self.assertRaises(approval.Stop):
+                    approval._workflow_entry(approval.WorkflowPolicy(), config)
+                module.__file__ = old
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@
 | Repository | `smter6626/live_subtitle_generator` (Classroom Live Transcriber) |
 | Branch | Historical `main`/`codex/clean-toolbar-rename-v1` baseline plus `codex/release-1-1-0-automation`; real feature/main integration remains pending |
 | Structural baseline | Original full scan at `4d2059d273d0ba94373b1969b8236ef462b6acae`; affected architecture ownership/flows updated through Product Polish Step 1F, session clipboard UI commit `cb4261825b7d51d3ec33a97e083683c50e6b9e82`, window-layout commit `569e5c551c101811ed80fca23bd5708d6ac880cf`, and final Clean full-text recovery R2 commit `fb317ea4a2b1db557133e91590e852c0241a3cd8`. |
-| Updated | 2026-09-30; REL1B candidate architecture, awaiting independent review |
+| Updated | 2026-10-01; accepted REL1A/REL1B and incomplete REL1C1 candidate architecture |
 | Scan scope | 65 Git-tracked files at the original map baseline; later structural syncs update affected ownership/flows without re-running a full-file recount |
 | Document role | A derived architecture and change-navigation aid, not a product contract or API reference |
 
@@ -53,10 +53,31 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | Reproducible source runtime and App packaging | `scripts/`, `packaging/runtime_manifest.json`, `packaging/icons/`, PyInstaller specs |
 | Release identity, App provenance, artifact creation and validation | `packaging/release_contract.json`, `scripts/release_identity.py`, `scripts/build_release_zip.py` |
 | Independent integration approval, recovery hints and live Git/test gate | `scripts/release_approval.py`, `scripts/release_journal.py`, `scripts/release_integration.py`, `scripts/release_controller.py` |
+| C1 workflow, exact-source receipt, artifact facts and independent Human decision | `scripts/release_workflow.py`, `release_workflow_state.py`, `release_artifact.py`, `release_human_gate.py`; independent workflow scope in `release_approval.py` |
 | Contract and regression coverage | `testCodes/` |
 | Governance, current state, user/build documentation | `README.md`, `README.zh-CN.md`, `PACKAGING.md`, `docs/` |
 
 ## File and module map
+
+### REL1C1 candidate control ownership
+
+C1 is incomplete: build execution stops pending a reviewed synchronous checkpoint
+interface in the original orchestrator; C2/C3, production deployment and real
+integration/build/Human/publication remain pending. REL1A/REL1B implementation
+acceptance does not extend to this candidate or to new artifact bytes.
+
+| Module | Responsibility / boundary | Direct regression |
+| --- | --- | --- |
+| `release_workflow.py` | Fixed status/build/resume/human-gate CLI; loads all protected controls, keeps status read-only and blocks the pending build protocol and all publication actions. | `test_release_workflow.py`; actual CLI refusal and repeated snapshots. |
+| `release_workflow_state.py` | Strict separate C1 recovery hints, 0700/0600 atomic persistence, unique attempts, intent/outcome and conservative stop after partial/unknown storage. Does not enlarge the REL1B journal. | `test_release_workflow_state.py`; fsync/replace crashes, schema/path refusal. |
+| `release_artifact.py` | Independently authenticated exact main source plus audited Git/byte facts; validated `ReleaseMetadata`, canonical provenance, exact ZIP/App/retained-directory identities and rechecks. Package facts do not prove a fresh build. | `test_release_artifact.py`; real local Git/signatures/ZIP and synthetic App verifier. |
+| `release_human_gate.py` | Callable separately signed exact-artifact Owner PASS/FAIL validator. Cannot sign decisions; every consultation reauthenticates and checks current files. | `test_release_human_gate.py`; valid signed fixture PASS and adversarial receipts/replacements. |
+| `release_approval.py` C1 scope | Fixed eight loaded protected modules, complete build/C1 tools and parent/REL1B/REL1C contracts; distinct workflow configuration and purpose-specific receipts through existing trust/signature route. Legacy entry/default checks remain intact. | `test_release_approval.py` legacy and C1 scope tests. |
+
+The separate C1 layout retains `attempts`, `artifacts`, `human`, `evidence`, `tmp` and
+`state.json`. None of these records grants acceptance. Publication adapters and
+live stage-specific environment proof are still absent. See PACKAGING for exact
+CLI, receipt fields, retained-App Human procedure and build-interface proposal.
 
 ### Runtime application modules
 

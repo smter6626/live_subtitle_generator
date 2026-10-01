@@ -267,11 +267,11 @@ mkdir -p "$HOME/Downloads/classroom-transcriber-release/artifacts"
 
 本节只是快速入口，不能代替 packaging 和 deployment contracts。
 
-### REL1B 集成控制器候选
+### REL1B 集成控制器
 
-REL1A 的版本、App/ZIP 身份基础层已局部接受。REL1B 候选在
+REL1A 的版本、App/ZIP 身份基础层及 REL1B 集成控制器均已在各自有界实现范围内独立接受。
 [`scripts/release_controller.py`](scripts/release_controller.py) 提供 `status`、
-`integrate` 和 `resume`，仍待独立审核。整个 Step 1、真实 main 集成、新的
+`integrate` 和 `resume`。整个 Step 1、真实 main 集成、新的
 App/ZIP 和发布均未完成。控制器尚不提供 build、package、Human-pass、tag、
 draft、upload 或 publish。
 
@@ -288,6 +288,32 @@ ignored 环境都会在执行前被拒绝，随后 interpreter、uv、环境代�
 不 rollback、不重复 push。Disposable fixture 签名和 callback gate 只授权新建的
 本地测试仓库。部署待决方案、transport 限制、恢复及验证命令见
 [`PACKAGING.md`](PACKAGING.md#rel1b-approval-integration-and-recovery)。
+
+### REL1C1 workflow 候选
+
+新增候选入口只接受 `release_workflow.py status|build|resume|human-gate`。
+独立签署的 workflow 批准必须绑定全部八个控制模块、完整构建工具集、父/REL1B/REL1C
+合同及最终 Step 1 审核和 Owner 集成决定。REL1B 原入口继续使用原四模块范围。
+生产 trust 和 protected entry 尚未部署；仓库入口缺少它们时停止，不提供 caller-selected
+trust、receipt、source、signer 或 fixture 参数。
+
+`status` 只读记录，不接受决定、不创建或修复文件。`build` 验证独立签署的精确最终 main
+source receipt、真实 Git 对象/parents/tree/源码字节及精确远端 refs，然后以
+`BUILD_PROTOCOL_REVIEW_REQUIRED` 停止。原 one-entry 构建仍需要经过审核的同步阶段
+checkpoint，候选 C1 尚未完成，未正式构建或发布。`resume` 只能验证幸存产物事实或
+停机交审核，不从记录恢复环境信任，也不重用旧输出。
+
+`human-gate` 验证独立外部签署的 Owner PASS，绑定精确 ZIP、source、attempt、App
+身份/tree 及保留解压目录。workflow 不能制造或签署 PASS；记录状态和集成许可不能代替
+receipt。即使 fixture PASS 也不提供 tag、draft、upload 或 publish。新 workflow 状态及
+artifact 使用独立于 REL1B journal 的目录；新 attempt 保留旧 ZIP、Human 目录和失败证据。
+
+未来人工验收必须在 Finder 打开该精确保留目录中的 `ClassroomTranscriber.app`，验证
+模型下载、麦克风/Start/Stop、第二个 Session、语言选择、增量复制、窗口/滚动、中英
+Clean 控件、录制中/停止后重命名及全文恢复 Yes/No。该 App 使用 ad-hoc、未公证；
+如被 macOS 阻止，通过“隐私与安全性 → 仍要打开”。记录实际硬件、语言及模型限制；
+1.0.0 历史验收不能批准 1.1.0。receipt 协议及构建接口缺口详见
+[`PACKAGING.md`](PACKAGING.md#rel1c1-candidate-receipts-and-recovery)。
 
 ## 架构
 

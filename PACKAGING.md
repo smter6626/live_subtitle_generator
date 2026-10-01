@@ -147,11 +147,11 @@ Models, `.venv`, `.tools`, `external`, source-tree files, build caches, and user
 
 ## Future 1.1.0 artifact work
 
-The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. REL1A's identity/provenance/ZIP foundation is locally accepted; REL1B's controller is a candidate awaiting independent review. A real 1.1.0 integration, fresh build, Human artifact review, and publication remain pending; REL1C is not implemented.
+The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. REL1A's identity/provenance/ZIP foundation and REL1B's integration controller are independently accepted for their bounded implementation scopes. A real 1.1.0 integration, fresh build, Human artifact review, and publication remain pending; REL1C1 is an incomplete candidate; its receipt/state/artifact modules are present, while its controlled build protocol and C2/C3 remain pending.
 
 ## REL1B approval, integration, and recovery
 
-The candidate controller accepts exactly one positional command:
+The accepted REL1B controller accepts exactly one positional command:
 
 ```text
 release_controller.py status
@@ -274,6 +274,96 @@ fixture root, and run sequentially:
 
 Keep logs and hashes for independent review. Offscreen/source/fixture checks do
 not accept a packaged App, microphone behavior, Human gate or publication.
+
+## REL1C1 candidate receipts and recovery
+
+C1 is an incomplete implementation candidate, awaiting independent review. Its fixed
+CLI is `release_workflow.py status|build|resume|human-gate`; it has no options and no
+publication commands. Production remains disabled without separately deployed
+root-owned trust/entry and final Step 1 approval. No production trust, personal
+credentials, formal App/ZIP or real external release objects were created here.
+
+Authorization uses the existing trust root, fixed Owner signer and OpenSSH route.
+`workflow-config.json` independently binds an epoch and the complete eight-module
+protected entry. `workflow-approval.json`/`.sig` has the code-defined
+`release-workflow-control` purpose and exact legacy-plus-C1 tool set. It binds the
+accepted implementation, current parent/REL1B/REL1C static contract hashes and the
+existing final-Step-1 review and Owner-integration records. A payload cannot select
+a smaller set. Legacy `config.json`/`approval.json` and the four-module REL1B entry
+keep their original validation. Revocation/config/tool replacements stop both
+receipt validation and dependent work; fixture policies are Python-only seams
+restricted to new `Downloads/rel1c1-fixtures.*/case-*` trees, local bare remotes and
+a distinct fixture signer/namespace. They cannot be selected by production CLI.
+
+The independently signed `integration.json`/`.sig` uses purpose
+`independent-final-main-source` and the fixed signing namespace suffix
+`-integration`. It requires an explicit ACCEPT decision and binds the full final main commit/tree, exact ordered merge
+parents, baseline, accepted implementation/tools/contracts, applicable final refs,
+managed integration clone, external integration-evidence hash and decision reference.
+The validator audits Git before repository commands, checks actual commit/tree
+objects, ancestry, all tracked bytes (including hidden index drift), required tools
+and source HEAD. Build additionally checks real remote refs. Journal COMPLETE,
+process success and old PASS logs do not authorize source acceptance.
+
+Build currently stops with `BUILD_PROTOCOL_REVIEW_REQUIRED` before workspace creation
+or subprocess build execution. The unchanged `bootstrap_and_build.sh` has no
+synchronous controller handoff between Python bootstrap, Runtime bootstrap and App
+build. A bounded proposal requests reviewed before/after pipe checkpoints in that
+script and direct `test_build_orchestration.py` regressions. Neither file was changed.
+Separate stage invocation would require Reviewer clarification of the one-entry
+requirement; this candidate does not silently substitute that interpretation.
+No stage-specific build mutation policy or live environment proof is claimed complete.
+
+The artifact layer consumes the existing ZIP helper's `ReleaseMetadata`, canonical
+App-adjacent provenance and original round-trip checks. Fixtures exercise the real
+ZIP/CRC/bytes/modes/symlink implementation with explicitly synthetic Runtime
+verification. `fix_metadata` fixes package facts; it cannot prove fresh build or grant
+Owner acceptance. The pending build protocol must provide invocation-local proof
+before recording a production artifact. Identity includes exact ZIP absolute
+path/size/hash, source/tree/receipt, tools/contracts, App name/bundle identifier/both
+versions/tree, build/package evidence hashes and the surviving Human directory.
+Subsequent gates recheck actual files, safe ancestry and single-link regular files.
+
+`artifact-human.json`/`.sig` is a separately signed Owner decision, purpose
+`owner-exact-artifact-decision`, fixed namespace suffix `-artifact-human`. Its strict
+schema includes receipt ID, PASS/FAIL, external Owner decision reference, trust/config
+and authorization identities, repository/version, accepted tools/contracts, source
+receipt hash and the complete exact artifact identity. `validate_human_gate` is a
+callable future C2 gate and reauthenticates/rechecks on every consultation. A signed
+FAIL stops. A forged/revoked/wrong-purpose receipt, integration approval, Boolean
+flag, lost receipt, recomputed metadata/state/provenance or replacement ZIP/App cannot
+grant PASS. No workflow command signs decisions or calls GitHub. C1 still rejects
+all tag/draft/upload/publish commands even after a valid synthetic fixture PASS.
+
+Workflow storage is a signed separate Downloads path, never beneath REL1B's managed
+journal or implementation source. The layout is `state.json`, `attempts/<id>/source`,
+`artifacts/<id>/<fixed ZIP name>`, `human/<id>/ClassroomTranscriber.app`,
+`evidence/<id>/{build,package}.log`, and `tmp`. Controlled directories are 0700;
+state/logs are 0600. Intent writes use exclusive same-directory temporary files,
+file fsync, atomic replacement and directory fsync. Partial/unknown storage stops
+without repair. New attempts use unique IDs and preserve prior paths. A checksummed
+state is a recovery hint, never authorization or an environment proof.
+
+`status` is strictly local/read-only: no receipt acceptance, fetch, bootstrap, packaged
+executable, directory creation or state write. It prints `*_RECORDED_UNVERIFIED`.
+`resume` checks surviving artifact facts or reports `RECOVERY_REVIEW_REQUIRED`; unknown
+build/package outcomes are not replayed. `human-gate` validates before persisting
+HUMAN_CHECK intent and revalidates before/after recording a receipt. Receipt loss or
+file replacement stops subsequent Human checks. Recorded Human state does not enable
+publication; receipt/signature validation remains mandatory for every future action.
+
+Future Human procedure: obtain the exact ZIP's verified retained-App locator from
+the independently accepted build outcome. Open that App in Finder, with the normal
+Privacy & Security → Open Anyway route if needed. Test external model acquisition,
+microphone permission, Start/Stop and a second Session, Original Language/.en
+compatibility, display reset/incremental copy, bounded window/scrolling, bilingual
+Clean toolbar/path controls, active/stopped no-clobber rename and R2 full-history
+Yes/No recovery. Record hardware/language/model coverage and decide PASS/FAIL through
+the separate trusted signing path. Keep the exact ZIP and extraction untouched.
+A rebuild or changed bytes requires fresh automated verification and Owner review.
+Historical 1.0.0 M4 Max/M5 testing does not approve this unbuilt 1.1.0 candidate or
+claim coverage of every offered language. PT-REL-01 closure belongs to independent
+governance review; the notes/hash correction here does not close it.
 
 ## Clean-machine validation
 
