@@ -165,6 +165,27 @@ def execution_snapshot(repo):
     """Identity and bytes of every input/output, with no broad cache exclusions."""
     inspect_path(repo, owner=os.getuid(), directory=True)
     result = {}
+    cache_targets = {}
+    def cache_link(path, relative, text, target):
+        cache = repo / '.tools/cache'
+        # Resolve must not hide another alias in the target's ancestry. Native
+        # uv wheel entries point directly at archive-v0/<id>, using relative
+        # text. Both the link's ancestry and the target tree are scanned below.
+        require(not Path(text).is_absolute() and target.is_relative_to(cache) and
+                Path(os.path.abspath(path.parent / text)) == target,
+                'ENVIRONMENT_INVALID')
+        parts = Path(relative).parts
+        if target.is_dir():
+            native = (parts[:4] == ('.tools', 'cache', 'wheels-v6', 'pypi') and len(parts) == 6 or
+                      parts[:4] == ('.tools', 'cache', 'wheels-v6', 'url') and len(parts) == 7)
+            require(native and target.parent == cache / 'archive-v0', 'ENVIRONMENT_INVALID')
+        for item in (*reversed(target.relative_to(cache).parents), target.relative_to(cache)):
+            info = (cache / item).lstat()
+            require(info.st_uid == os.getuid() and not info.st_mode & 0o022 and
+                    (stat.S_ISDIR(info.st_mode) or
+                     item == target.relative_to(cache) and stat.S_ISREG(info.st_mode) and info.st_nlink == 1),
+                    'ENVIRONMENT_INVALID')
+        cache_targets[relative] = target.relative_to(repo).as_posix()
     def visit(directory):
         with os.scandir(directory) as iterator:
             entries = sorted(iterator, key=lambda entry: entry.name)
@@ -192,11 +213,17 @@ def execution_snapshot(repo):
                 result[relative] = ('directory', identity)
                 visit(path)
             elif stat.S_ISLNK(info.st_mode):
-                target = path.resolve(strict=True)
+                try:
+                    target = path.resolve(strict=True)
+                except (OSError, RuntimeError):
+                    raise Stop('ENVIRONMENT_INVALID') from None
                 require(target.is_relative_to(repo), 'ENVIRONMENT_INVALID')
+                text = os.readlink(path)
                 if relative.startswith('.tools/cache/'):
-                    require(not target.is_dir(), 'ENVIRONMENT_INVALID')
-                result[relative] = ('symlink', identity, os.readlink(path), info.st_ctime_ns)
+                    cache_link(path, relative, text, target)
+                require(path.lstat() == info and os.readlink(path) == text, 'ENVIRONMENT_CHANGED')
+                result[relative] = ('symlink', identity, text, info.st_nlink,
+                                    info.st_size, info.st_mtime_ns, info.st_ctime_ns)
             else:
                 require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, 'ENVIRONMENT_INVALID')
                 fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
@@ -211,6 +238,10 @@ def execution_snapshot(repo):
                 result[relative] = ('file', identity, info.st_size,
                                     info.st_mtime_ns, info.st_ctime_ns, checksum)
     visit(repo)
+    # Target directories and every descendant byte are covered under their real
+    # paths, never by following directory aliases or excluding cache contents.
+    require(all(target in result and result[target][0] in ('directory', 'file')
+                for target in cache_targets.values()), 'ENVIRONMENT_INVALID')
     return result
 
 

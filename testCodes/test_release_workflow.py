@@ -19,10 +19,13 @@ import sys
 import tempfile
 import unittest
 import uuid
+import zipfile
 from pathlib import Path
 from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
+NATIVE_CACHE_LINK = '.tools/cache/wheels-v6/url/fixture-url/fixture/1.0-py3-none-any'
+NATIVE_CACHE_TARGET = '.tools/cache/archive-v0/fixture-archive'
 sys.path.insert(0, str(REPO / 'scripts'))
 import release_approval as approval
 import release_artifact as artifact
@@ -52,6 +55,10 @@ mkdir -p .tools/uv/0.12.5 .tools/python/bin .tools/cache .venv/bin
 : > .tools/cache/.lock
 chmod 666 .tools/cache/.lock
 printf 'SYNTHETIC acquired cache bytes\n' > .tools/cache/fixture
+mkdir -p .tools/cache/archive-v0/fixture-archive .tools/cache/wheels-v6/url/fixture-url/fixture .tools/cache/wheels-v6/pypi/fixture
+printf 'SYNTHETIC native wheel target bytes\n' > .tools/cache/archive-v0/fixture-archive/fixture.py
+ln -s ../../../../archive-v0/fixture-archive .tools/cache/wheels-v6/url/fixture-url/fixture/1.0-py3-none-any
+ln -s ../../../archive-v0/fixture-archive .tools/cache/wheels-v6/pypi/fixture/1.0-py3-none-any
 cat > .tools/python/bin/python <<'PYTHON'
 #!/bin/bash
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -374,6 +381,136 @@ class CacheLockTests(unittest.TestCase):
                   'cache_files': sorted(p.name for p in cache.iterdir())}
         (root / 'native-lock-report.json').write_text(json.dumps(report, indent=2) + '\n')
 
+    def test_native_identity_checked_uv_populates_wheel_cache_offline(self):
+        uv = REPO / '.tools/uv/0.12.5/uv'
+        python = Path(sys._base_executable).resolve(strict=True)
+        self.assertEqual(Path(sys.executable), REPO / '.venv/bin/python')
+        self.assertEqual(Path(sys.executable).resolve(strict=True), python)
+        self.assertTrue(python.is_relative_to(REPO / '.tools/python'))
+        expected = {uv: 'ad3564874e19defa0debefcf48e8381ac1d087c584190c1323c247bd351dd25f',
+                    python: 'bc56ea9cdc0fface1eb75712f871a454324f6cbfec4e30311b197f208a7f3d07'}
+        def identities():
+            result = {}
+            for path, checksum in expected.items():
+                info = path.lstat()
+                raw = approval.read_file(path, owner=os.getuid(), mode=0o755, limit=64 * 1024 * 1024)
+                self.assertEqual(approval.digest(raw), checksum)
+                self.assertEqual(path.lstat(), info)
+                result[str(path)] = {name: getattr(info, name) for name in (
+                    'st_dev', 'st_ino', 'st_uid', 'st_mode', 'st_nlink',
+                    'st_size', 'st_mtime_ns', 'st_ctime_ns')}
+                result[str(path)]['sha256'] = checksum
+            return result
+        before = identities()
+        root = Path(tempfile.mkdtemp(prefix='native-uv-wheel-', dir=self.root))
+        workspace = root / 'workspace'
+        workspace.mkdir(mode=0o700)
+        cache = workspace / '.tools/cache'
+        cache.mkdir(parents=True, mode=0o700)
+        wheel = root / 'native_cache_fixture-1.0-py3-none-any.whl'
+        module = b'"""Synthetic offline native cache regression."""\nVALUE = 1\n'
+        with zipfile.ZipFile(wheel, 'w') as archive:
+            archive.writestr('native_cache_fixture.py', module)
+            archive.writestr('native_cache_fixture-1.0.dist-info/METADATA',
+                             'Metadata-Version: 2.1\nName: native-cache-fixture\nVersion: 1.0\n')
+            archive.writestr('native_cache_fixture-1.0.dist-info/WHEEL',
+                             'Wheel-Version: 1.0\nGenerator: synthetic-fixture\nRoot-Is-Purelib: true\nTag: py3-none-any\n')
+            archive.writestr('native_cache_fixture-1.0.dist-info/RECORD', '')
+        env = {'PATH': '/usr/bin:/bin', 'HOME': str(root), 'LC_ALL': 'C', 'TMPDIR': str(root),
+               'UV_CACHE_DIR': str(cache), 'UV_NO_CONFIG': '1', 'UV_LINK_MODE': 'copy',
+               'UV_PYTHON_DOWNLOADS': 'never', 'UV_PYTHON_INSTALL_DIR': str(workspace / '.tools/python'),
+               'PYTHONDONTWRITEBYTECODE': '1'}
+        argv = [str(uv), 'pip', 'install', '--offline', '--no-index', '--python', str(REPO / '.venv/bin/python'),
+                '--target', str(root / 'installed'), str(wheel)]
+        result = subprocess.run(argv, cwd=root, env=env, capture_output=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
+        self.assertEqual(identities(), before)
+        proof = workflow.execution_snapshot(workspace)
+        links = []
+        for relative, record in proof.items():
+            if record[0] != 'symlink':
+                continue
+            path = workspace / relative
+            target = path.resolve(strict=True)
+            self.assertTrue(relative.startswith('.tools/cache/wheels-v6/url/'))
+            self.assertTrue(target.is_dir())
+            self.assertEqual(target.parent, cache / 'archive-v0')
+            target_relative = target.relative_to(workspace).as_posix()
+            self.assertEqual(proof[target_relative][0], 'directory')
+            self.assertEqual(proof[target_relative + '/native_cache_fixture.py'][-1], approval.digest(module))
+            links.append({'relative': relative, 'link_text': os.readlink(path), 'proof': record,
+                          'target': target_relative, 'target_proof': proof[target_relative]})
+        self.assertTrue(links, 'Pinned uv must produce a populated native directory-link graph')
+        self.assertFalse((workspace / '.tools/python').exists())
+        self.assertFalse((workspace / '.venv').exists())
+        self.assertEqual((root / 'installed/native_cache_fixture.py').read_bytes(), module)
+        report = {'scope': 'Pinned uv offline synthetic wheel; current trusted clone interpreter only; no acquisition/formal build',
+                  'fixture_root': str(root), 'argv': argv, 'env': env, 'exit_code': result.returncode,
+                  'stdout': result.stdout.decode(), 'stderr': result.stderr.decode(),
+                  'tools_before': before, 'tools_after': identities(), 'wheel_sha256': approval.digest(wheel.read_bytes()),
+                  'native_links': links, 'proof': proof, 'no_interpreter_acquired': True}
+        (root / 'native-wheel-report.json').write_text(json.dumps(report, indent=2) + '\n')
+
+    def test_native_cache_link_shapes_cover_real_targets_and_refuse_unsafe_aliases(self):
+        cases = ('url', 'pypi', 'unrelated-alias', 'outside-cache', 'escape', 'broken', 'cycle',
+                 'absolute', 'target-alias', 'target-ancestry-alias', 'writable-target',
+                 'writable-target-file', 'foreign-link', 'foreign-target', 'foreign-target-file')
+        for kind in cases:
+            with self.subTest(kind=kind):
+                root, cache, _ = self.cache()
+                target = root / NATIVE_CACHE_TARGET
+                target.mkdir(parents=True)
+                contents = target / 'fixture.py'
+                contents.write_bytes(b'native target contents\n')
+                link = root / ('.tools/cache/wheels-v6/pypi/fixture/1.0-py3-none-any' if kind == 'pypi'
+                               else NATIVE_CACHE_LINK)
+                link.parent.mkdir(parents=True)
+                text = os.path.relpath(target, link.parent)
+                if kind == 'unrelated-alias':
+                    link = cache / 'alias'
+                    text = os.path.relpath(target, link.parent)
+                elif kind in ('outside-cache', 'escape'):
+                    other = (root if kind == 'outside-cache' else self.root) / ('other-' + uuid.uuid4().hex)
+                    other.mkdir()
+                    text = os.path.relpath(other, link.parent)
+                elif kind == 'broken':
+                    text += '-missing'
+                elif kind == 'cycle':
+                    text = link.name
+                elif kind == 'absolute':
+                    text = str(target)
+                elif kind == 'target-alias':
+                    target.rename(target.with_name('retired'))
+                    target.symlink_to('retired', target_is_directory=True)
+                elif kind == 'target-ancestry-alias':
+                    target.parent.rename(cache / 'retired-archive')
+                    (cache / 'archive-v0').symlink_to('retired-archive', target_is_directory=True)
+                elif kind == 'writable-target':
+                    target.chmod(0o777)
+                elif kind == 'writable-target-file':
+                    contents.chmod(0o666)
+                link.symlink_to(text, target_is_directory=True)
+                foreign_path = {'foreign-link': link, 'foreign-target': target,
+                                'foreign-target-file': contents}.get(kind)
+                original = Path.lstat
+                def foreign(path):
+                    info = original(path)
+                    if path == foreign_path:
+                        values = list(info)
+                        values[4] = os.getuid() + 1
+                        return os.stat_result(values)
+                    return info
+                with mock.patch.object(Path, 'lstat', foreign):
+                    if kind in ('url', 'pypi'):
+                        proof = workflow.execution_snapshot(root)
+                        self.assertEqual(proof[link.relative_to(root).as_posix()][0], 'symlink')
+                        self.assertEqual(proof[NATIVE_CACHE_TARGET][0], 'directory')
+                        self.assertEqual(proof[NATIVE_CACHE_TARGET + '/fixture.py'][-1], approval.digest(contents.read_bytes()))
+                    else:
+                        with self.assertRaises(approval.Stop) as failure:
+                            workflow.execution_snapshot(root)
+                        self.assertEqual(failure.exception.code, 'ENVIRONMENT_INVALID')
+
     def test_exact_cache_lock_rejects_wrong_types_modes_links_content_and_ancestry(self):
         cases = ('directory', 'fifo', 'symlink', 'escape', 'hardlink', 'nonempty',
                  'nonempty-readonly', 'mode-664', 'mode-644', 'mode-777',
@@ -462,6 +599,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(lock_proof[1][2]), 0o666)
         self.assertEqual(lock_proof[2], 0)
         self.assertEqual(lock_proof[-1], approval.digest(b''))
+        self.assertEqual(controller.proof[NATIVE_CACHE_LINK][0], 'symlink')
+        self.assertEqual(controller.proof[NATIVE_CACHE_TARGET][0], 'directory')
+        self.assertEqual(controller.proof[NATIVE_CACHE_TARGET + '/fixture.py'][-1],
+                         approval.digest(b'SYNTHETIC native wheel target bytes\n'))
         value = controller.store.inspect()
         self.assertEqual(value['state'], 'ARTIFACT')
         self.assertEqual(len(controller.fixture_verifier_calls), 2)
@@ -471,6 +612,8 @@ class WorkflowTests(unittest.TestCase):
         (f.root / 'cache-lock-controller-report.json').write_text(json.dumps({
             'scope': 'Independently signed synthetic stages; actual controller/original shell/ZIP chain',
             'events': controller.events, 'state': value['state'], 'lock_proof': lock_proof,
+            'cache_proof': {k: v for k, v in controller.proof.items() if k.startswith('.tools/cache')},
+            'verifier_calls': controller.fixture_verifier_calls,
             'build_log': value['artifact']['evidence']['build'],
             'package_log': value['artifact']['evidence']['package']}, indent=2) + '\n')
         # No receipt is fabricated by the controller. The independent fixture
@@ -513,6 +656,10 @@ class WorkflowTests(unittest.TestCase):
             'chmod 777 .tools/cache',
             'mv .tools/cache .tools/retired-cache; ln -s retired-cache .tools/cache',
             'mkdir .tools/cache/real-directory; ln -s real-directory .tools/cache/alias',
+            'rm ' + NATIVE_CACHE_LINK + '; ln -s ../../../../../python ' + NATIVE_CACHE_LINK,
+            'rm ' + NATIVE_CACHE_LINK + '; ln -s ../../../../archive-v0/missing ' + NATIVE_CACHE_LINK,
+            'mv ' + NATIVE_CACHE_TARGET + ' .tools/cache/archive-v0/retired; ln -s retired ' + NATIVE_CACHE_TARGET,
+            'chmod 777 ' + NATIVE_CACHE_TARGET,
         )
         for suffix in suffixes:
             with self.subTest(suffix=suffix):
@@ -539,7 +686,9 @@ class WorkflowTests(unittest.TestCase):
                     'state': controller.store.inspect()}, indent=2) + '\n')
 
     def test_acquired_lock_cache_and_interpreter_drift_refused_before_runtime(self):
-        for kind in ('lock-replacement', 'lock-timestamp', 'cache-replacement', 'cache-bytes', 'interpreter-replacement'):
+        for kind in ('lock-replacement', 'lock-timestamp', 'cache-replacement', 'cache-bytes',
+                     'link-replacement', 'link-retargeting', 'target-replacement', 'target-bytes',
+                     'interpreter-replacement'):
             with self.subTest(kind=kind):
                 f = Fixture(self.root, synthetic=True)
                 acquired = {}
@@ -556,6 +705,23 @@ class WorkflowTests(unittest.TestCase):
                     elif kind == 'cache-replacement':
                         cache.rename(f.root / 'retired-cache')
                         shutil.copytree(f.root / 'retired-cache', cache)
+                    elif kind == 'link-replacement':
+                        path = controller.workspace / NATIVE_CACHE_LINK
+                        text = os.readlink(path)
+                        path.rename(f.root / 'retired-link')
+                        path.symlink_to(text, target_is_directory=True)
+                    elif kind == 'link-retargeting':
+                        target = controller.workspace / NATIVE_CACHE_TARGET
+                        shutil.copytree(target, target.with_name('other-archive'))
+                        path = controller.workspace / NATIVE_CACHE_LINK
+                        path.unlink()
+                        path.symlink_to('../../../../archive-v0/other-archive', target_is_directory=True)
+                    elif kind == 'target-replacement':
+                        target = controller.workspace / NATIVE_CACHE_TARGET
+                        target.rename(f.root / 'retired-target')
+                        shutil.copytree(f.root / 'retired-target', target)
+                    elif kind == 'target-bytes':
+                        (controller.workspace / NATIVE_CACHE_TARGET / 'fixture.py').write_bytes(b'changed wheel target bytes\n')
                     else:
                         path = lock if kind == 'lock-replacement' else controller.workspace / '.tools/python/bin/python'
                         original = f.root / ('retired-' + path.name)

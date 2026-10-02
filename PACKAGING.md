@@ -330,13 +330,34 @@ in the snapshot rather than being blanket exclusions. The uv cache advisory lock
 has a narrow writable-file exception: current-owner, empty regular single-link file
 with mode `0666`, reached through real current-owner directories with no group/other
 write permission in the fresh controlled workspace. Other writable cache files,
-nonempty locks, aliases and unsafe ancestry are refused. The cache lock remains in
+nonempty locks, lock/root aliases and unsafe ancestry are refused. The cache lock remains in
 the proof with device/inode, owner/mode, size, modification/change timestamps and
 SHA-256 of its bytes; later replacement or modification stops before the next stage.
 An offline regression uses the identity-checked local pinned uv binary to initialize
 a new empty cache with `uv cache prune --offline`; this is cache maintenance only,
-with no interpreter acquisition or formal build. Signed synthetic children reproduce
-that lock in the six-checkpoint controller/package test. The pinned Runtime source
+with no interpreter acquisition or formal build. A second offline regression uses
+the identity-checked pinned uv and current clone interpreter to install a locally
+generated minimal synthetic wheel with `UV_LINK_MODE=copy`, no index, and Python
+downloads disabled into a fresh outside-source Downloads fixture. It requires a
+populated native wheel-cache directory link and checks the real target bytes.
+
+Cache directory links are supported only at `wheels-v6/pypi/<package>/<wheel>` or
+`wheels-v6/url/<source>/<package>/<wheel>`, pointing by relative text directly to a
+real `archive-v0/<id>` directory inside the same freshly acquired `.tools/cache`.
+The workspace, `.tools`, cache root, link ancestry and target ancestry remain real,
+current-owner and safely permissioned. Target resolution cannot pass through other
+aliases. Escaping, broken/cyclic, absolute or unrelated directory aliases, foreign
+owners, writable targets/contents and malformed locks fail closed. Cache file links
+also require real safe targets inside the same cache. The snapshot records link
+device/inode/owner/mode, text, link count, size and modification/change timestamps;
+it traverses every real cache directory and hashes every regular file, including
+the archive targets. No directory link is traversed as an alternate tree or used to
+exclude target bytes. Later link replacement/retargeting, real directory replacement,
+target byte changes or interpreter drift stops before Runtime. Signed synthetic
+children reproduce both native wheel link layouts and the advisory lock in the
+six-checkpoint controller/package test. These regressions prove the specified local
+cache boundary, not production readiness, whole Step 1 acceptance or Human artifact
+PASS. The pinned Runtime source
 and tracked bytes are validated, and its original verifier runs with the acquired
 interpreter. App provenance is checked after a successful fresh invocation, then
 the original ZIP helper returns actual `ReleaseMetadata`. Snapshot proof exists only
