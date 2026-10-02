@@ -1,7 +1,7 @@
 """C1 retained Downloads fixtures: real signatures/Git/ZIP, synthetic App only.
 
-No fixture tests run the formal build or a packaged executable. Build is blocked
-pending an accepted stage-checkpoint interface; this is an explicit coverage gap.
+The actual controller and original shell entry run signed synthetic children.
+No formal build or packaged executable is run.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import io
 import os
 import plistlib
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -40,8 +41,89 @@ def retained_root():
     return Path(tempfile.mkdtemp(prefix='rel1c1-fixtures.', dir=approval.downloads()))
 
 
+def synthetic_stages():
+    python_stage = r'''#!/bin/bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+mkdir -p .tools/uv/0.12.5 .tools/python/bin .tools/cache .venv/bin
+cat > .tools/python/bin/python <<'PYTHON'
+#!/bin/bash
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+printf '{"prefix":"%s/.venv","base_prefix":"%s/.tools/python","base_executable":"%s/.tools/python/bin/python","version":"3.12.14"}\n' "$ROOT_DIR" "$ROOT_DIR" "$ROOT_DIR"
+PYTHON
+cat > .tools/uv/0.12.5/uv <<'UV'
+#!/bin/bash
+if [[ "${1:-}" == --version ]]; then printf 'uv 0.12.5 synthetic\n'; fi
+UV
+chmod 755 .tools/python/bin/python .tools/uv/0.12.5/uv
+ln -s ../../.tools/python/bin/python .venv/bin/python
+printf 'SYNTHETIC acquisition; no formal build\n'
+'''
+    runtime_stage = r'''#!/bin/bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+mkdir -p .tools/cmake/4.2.3/CMake.app/Contents/bin external/whisper.cpp/build/bin
+printf 'SYNTHETIC pinned Runtime fixture\n' > external/whisper.cpp/fixture-source
+printf 'SYNTHETIC Runtime; never execute\n' > external/whisper.cpp/build/bin/whisper-cli
+printf '#!/bin/bash\nexit 0\n' > .tools/cmake/4.2.3/CMake.app/Contents/bin/cmake
+chmod 755 .tools/cmake/4.2.3/CMake.app/Contents/bin/cmake
+'''
+    app_stage = r'''#!/bin/bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+SYNTHETIC_TEST_PYTHON -B - <<'APP'
+from pathlib import Path
+import sys, plistlib, json
+sys.path.insert(0, str(Path.cwd() / 'scripts'))
+import release_identity
+root = Path.cwd()
+app = root / 'dist/ClassroomTranscriber.app'
+executable = app / 'Contents/MacOS/ClassroomTranscriber'
+executable.parent.mkdir(parents=True)
+executable.write_bytes(b'SYNTHETIC APP - DO NOT EXECUTE\n')
+executable.chmod(0o755)
+resources = app / 'Contents/Resources'
+resources.mkdir()
+(app / 'Contents/Frameworks').mkdir()
+(app / 'Contents/Frameworks/fixture').write_bytes(b'synthetic framework\n')
+(resources / 'fixture').symlink_to('../Frameworks/fixture')
+manifest = json.loads((root / 'packaging/runtime_manifest.json').read_text())
+icon = manifest['frozen']['app_icon']['bundle_filename']
+(resources / icon).write_bytes(b'icns' + (12).to_bytes(4, 'big') + b'TEST')
+(app / 'Contents/Info.plist').write_bytes(plistlib.dumps({
+    'CFBundleIdentifier': 'com.local.classroomtranscriber',
+    'CFBundleShortVersionString': '1.1.0', 'CFBundleVersion': '1.1.0', 'CFBundleIconFile': icon}))
+(root / 'build/app-icon').mkdir(parents=True)
+(root / 'build/app-icon' / icon).write_bytes((resources / icon).read_bytes())
+commit = release_identity.git_output(root, 'rev-parse', 'HEAD')
+release_identity.write_build_provenance(root / 'dist/ClassroomTranscriber.app.provenance.json',
+                                        app, commit, repo_root=root)
+APP
+'''.replace('SYNTHETIC_TEST_PYTHON', shlex.quote(sys.executable))
+    return {'bootstrap_python_env.sh': python_stage, 'bootstrap_whisper_runtime.sh': runtime_stage,
+            'build_macos.sh': app_stage}
+
+
+def synthetic_runtime(controller):
+    assert (controller.workspace / 'external/whisper.cpp/fixture-source').read_bytes() == b'SYNTHETIC pinned Runtime fixture\n'
+
+
+def synthetic_controller(fixture, checkpoint=None):
+    calls = []
+    def verifier(app, manifest):
+        calls.append(str(app))
+        assert manifest == release_zip.load_manifest(fixture.source / 'packaging/runtime_manifest.json')
+    value = workflow.BuildController(fixture.policy, fixture_checkpoint=checkpoint,
+                                    fixture_runtime=synthetic_runtime, fixture_verifier=verifier)
+    value.fixture_verifier_calls = calls
+    return value
+
+
 class Fixture:
-    def __init__(self, root):
+    def __init__(self, root, *, synthetic=False, stage_overrides=None):
         self.root = root / ('case-' + uuid.uuid4().hex)
         self.root.mkdir(mode=0o700)
         self.policy = approval.WorkflowPolicy(self.root)
@@ -56,6 +138,9 @@ class Fixture:
             target = self.source / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(REPO / relative, target)
+        if synthetic:
+            for name, text in {**synthetic_stages(), **(stage_overrides or {})}.items():
+                (self.source / 'scripts' / name).write_text(text)
         self.baseline = self.commit('fixture baseline')
         (self.source / 'main-only.txt').write_text('main only\n')
         self.main = self.commit('fixture main')
@@ -227,17 +312,96 @@ class WorkflowTests(unittest.TestCase):
     def setUpClass(cls):
         cls.root = retained_root()
 
-    def test_source_receipt_does_not_use_journal_complete_and_build_is_explicitly_blocked(self):
-        f = Fixture(self.root)
+    def test_actual_controller_original_entry_and_zip_chain_success_with_synthetic_children(self):
+        f = Fixture(self.root, synthetic=True)
         (f.managed / 'journal.json').write_text('{"state":"COMPLETE","gate":"PASS"}\n')
-        actual, _ = artifact.accepted_source(f.policy, f.auth, remote=True)
-        self.assertEqual(actual['source_commit'], f.final)
+        controller = synthetic_controller(f)
+        self.assertEqual(controller.execute(), 'ARTIFACT_RECORDED_C1_ONLY')
+        self.assertEqual(controller.events, list(workflow.EVENTS))
+        value = controller.store.inspect()
+        self.assertEqual(value['state'], 'ARTIFACT')
+        self.assertEqual(len(controller.fixture_verifier_calls), 2)
+        self.assertEqual(controller.fixture_verifier_calls[0], str(controller.workspace / 'dist' / artifact.APP))
+        self.assertEqual(controller.fixture_verifier_calls[1], str(Path(value['artifact']['extraction_path']) / artifact.APP))
+        artifact.validate_artifact(value['artifact'], controller.auth, controller.source, controller.source_hash)
+        # No receipt is fabricated by the controller. The independent fixture
+        # signer supplies the exact decision only after the retained tuple exists.
+        f.sign('artifact-human', {**f.common('artifact-human'), 'decision': 'PASS',
+            'integration_receipt_sha256': controller.source_hash, 'artifact': value['artifact']})
+        self.assertEqual(f.cli('human-gate'), (0, 'release-workflow: HUMAN_RECORDED_C1_ONLY\n'))
         before = snapshot(f.root)
-        result, text = f.cli('build')
-        self.assertEqual(result, 1)
-        self.assertIn('BUILD_PROTOCOL_REVIEW_REQUIRED', text)
+        with self.assertRaises(approval.Stop):
+            synthetic_controller(f).execute()
         self.assertEqual(snapshot(f.root), before)
-        self.assertFalse((f.root / 'workflow').exists())
+
+    def test_controller_denies_mutated_source_interpreter_helpers_and_cache_before_runtime(self):
+        for relative in ('scripts/build_macos.sh', 'model_integrity.py',
+                         '.tools/python/bin/python', '.tools/cache/counterfeit.py'):
+            f = Fixture(self.root, synthetic=True)
+            def corrupt(controller, event):
+                if event == 'before:runtime':
+                    path = controller.workspace / relative
+                    if not relative.startswith('.tools/'):
+                        integration.git(controller.workspace, 'update-index', '--assume-unchanged', relative)
+                    path.write_bytes(b'COUNTERFEIT INPUT - NEVER EXECUTE\n')
+            controller = synthetic_controller(f, corrupt)
+            with self.subTest(relative=relative), self.assertRaises(approval.Stop):
+                controller.execute()
+            self.assertEqual(controller.events, ['before:python', 'after:python'])
+            self.assertFalse((controller.workspace / 'external').exists())
+            self.assertEqual(controller.store.inspect()['state'], 'BUILDING')
+
+    def test_actual_controller_malformed_duplicate_order_crash_and_unexpected_creations(self):
+        base = synthetic_stages()['bootstrap_python_env.sh']
+        for suffix in ("printf 'bad\\n' >&\"$REL1C_EVENT_FD\"\n",
+                       "printf 'before:python\\n' >&\"$REL1C_EVENT_FD\"\n",
+                       "printf 'before:app\\n' >&\"$REL1C_EVENT_FD\"\n",
+                       'exit 19\n', 'mkdir -p .tools/counterfeit; touch .tools/counterfeit/code\n'):
+            f = Fixture(self.root, synthetic=True, stage_overrides={'bootstrap_python_env.sh': base + suffix})
+            controller = synthetic_controller(f)
+            with self.subTest(suffix=suffix), self.assertRaises(approval.Stop):
+                controller.execute()
+            self.assertEqual(controller.events, ['before:python'])
+            self.assertFalse((controller.workspace / 'external').exists())
+            self.assertEqual(controller.store.inspect()['state'], 'BUILDING')
+
+    def test_package_failure_and_parent_interruption_retire_without_reexecution_then_fresh_retry(self):
+        for kind in ('package', 'interrupt'):
+            f = Fixture(self.root, synthetic=True)
+            def interrupt(controller, event):
+                if kind == 'interrupt' and event == 'after:runtime':
+                    raise KeyboardInterrupt()
+            controller = synthetic_controller(f, interrupt)
+            if kind == 'package':
+                controller.fixture_verifier = lambda *_: (_ for _ in ()).throw(RuntimeError('SYNTHETIC PACKAGE FAIL'))
+            with self.subTest(kind=kind), self.assertRaises((RuntimeError, KeyboardInterrupt)):
+                controller.execute()
+            old = controller.store.inspect()
+            self.assertEqual(old['state'], 'PACKAGING' if kind == 'package' else 'BUILDING')
+            retained = snapshot(controller.store.root / 'attempts' / old['attempt'])
+            before_log = (controller.store.root / 'evidence' / old['attempt'] / 'build.log').read_bytes()
+            self.assertEqual(f.cli('resume'), (0, 'release-workflow: RECOVERY_REVIEW_REQUIRED\n'))
+            retry = synthetic_controller(f)
+            self.assertEqual(retry.execute(), 'ARTIFACT_RECORDED_C1_ONLY')
+            self.assertNotEqual(retry.store.inspect()['attempt'], old['attempt'])
+            self.assertEqual(snapshot(controller.store.root / 'attempts' / old['attempt']), retained)
+            self.assertEqual((controller.store.root / 'evidence' / old['attempt'] / 'build.log').read_bytes(), before_log)
+
+    def test_production_preimport_refusal_does_not_execute_path_substituted_code(self):
+        root = Path(tempfile.mkdtemp(prefix='preimport-', dir=self.root))
+        scripts = root / 'scripts'
+        scripts.mkdir()
+        shutil.copy2(REPO / 'scripts/release_workflow.py', scripts / 'release_workflow.py')
+        marker = root / 'COUNTERFEIT_EXECUTED'
+        payload = 'from pathlib import Path; Path(' + repr(str(marker)) + ').write_text("executed")\n'
+        for name in ('release_approval.py', 'release_identity.py', 'build_release_zip.py', 'json.py'):
+            (scripts / name).write_text(payload)
+            (root / name).write_text(payload)
+        result = subprocess.run([sys.executable, '-B', str(scripts / 'release_workflow.py'), 'build'],
+                                env={**os.environ, 'PYTHONPATH': str(root)}, capture_output=True, check=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b'TRUST_UNAVAILABLE', result.stderr)
+        self.assertFalse(marker.exists())
 
     def test_missing_independent_source_acceptance_refuses_build_without_process(self):
         f = Fixture(self.root)
@@ -282,6 +446,10 @@ class WorkflowTests(unittest.TestCase):
             store = state.StateStore(f.auth)
             value = store.new_attempt(store.create())
             store.change(value, state=stage, intent=intent)
+            before = snapshot(f.root)
+            self.assertIn('RECOVERY_REVIEW_REQUIRED', f.cli('resume')[1])
+            retired = store.inspect()
+            self.assertEqual(retired['state'], 'REVIEW_REQUIRED')
             before = snapshot(f.root)
             self.assertIn('RECOVERY_REVIEW_REQUIRED', f.cli('resume')[1])
             self.assertEqual(snapshot(f.root), before)

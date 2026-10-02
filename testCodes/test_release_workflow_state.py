@@ -2,6 +2,7 @@
 import copy
 import os
 import unittest
+import uuid
 from unittest import mock
 
 from testCodes.test_release_workflow import Fixture, retained_root, snapshot, approval, state
@@ -31,6 +32,22 @@ class WorkflowStateTests(unittest.TestCase):
         self.assertNotEqual(store.root, f.managed)
         self.assertEqual(sorted(p.name for p in f.managed.iterdir()), ['clone'])
         self.assertEqual(store.inspect(), second)
+
+    def test_attempt_collision_persists_unknown_intent_without_clobber(self):
+        f = Fixture(self.root)
+        store = state.StateStore(f.auth)
+        value = store.create()
+        fixed = uuid.UUID('12345678123456781234567812345678')
+        with mock.patch.object(state.uuid, 'uuid4', return_value=fixed):
+            first = store.new_attempt(value)
+            retained = store.root / 'artifacts' / first['attempt'] / 'retained.fixture'
+            retained.write_bytes(b'historical output\n')
+            review = store.change(first, state='REVIEW_REQUIRED', intent=None)
+            with self.assertRaises(approval.Stop) as caught:
+                store.new_attempt(review)
+        self.assertEqual(caught.exception.code, 'ATTEMPT_COLLISION')
+        self.assertEqual(retained.read_bytes(), b'historical output\n')
+        self.assertEqual(store.inspect()['state'], 'BUILDING')
 
     def test_schema_duplicate_unknown_boolean_versions_and_legitimate_rehash(self):
         f = Fixture(self.root)

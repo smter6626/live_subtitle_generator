@@ -295,11 +295,16 @@ def authorize(policy: Policy, *, entry: bool = True) -> Authorization:
 
 # C1 has its own fixed scope/configuration. The REL1B entry and default minimum
 # above deliberately remain unchanged: a signed payload cannot choose a scope.
-WORKFLOW_CONTROL_TOOLS = CONTROL_TOOLS + tuple('scripts/' + name + '.py' for name in (
+WORKFLOW_HELPERS = ('scripts/release_identity.py', 'scripts/build_release_zip.py',
+                    'scripts/verify_packaged_runtime.py', 'model_integrity.py', 'resource_paths.py')
+WORKFLOW_DATA = ('packaging/model_manifest.json',)
+WORKFLOW_CONTROL_TOOLS = CONTROL_TOOLS + WORKFLOW_HELPERS + tuple('scripts/' + name + '.py' for name in (
     'release_workflow', 'release_workflow_state', 'release_artifact', 'release_human_gate'))
 WORKFLOW_REQUIRED_TOOLS = REQUIRED_TOOLS + tuple(
     item for item in WORKFLOW_CONTROL_TOOLS if item not in REQUIRED_TOOLS
-) + ('RELEASE_NOTES_1.1.0.md',)
+) + ('RELEASE_NOTES_1.1.0.md',) + tuple(
+    item for item in (*WORKFLOW_HELPERS, *WORKFLOW_DATA) if item not in REQUIRED_TOOLS
+)
 WORKFLOW_CONTRACTS = {**CONTRACTS, 'rel1c': WORKLOAD / 'rel1c_static.md'}
 WORKFLOW_PURPOSE = 'release-workflow-control'
 RECEIPT_PURPOSES = {
@@ -403,6 +408,10 @@ def authorize_workflow(policy: WorkflowPolicy) -> Authorization:
         hex_value(checksum)
     require(all(value['tools'][key] == config['entry_sha256'][key]
                 for key in WORKFLOW_CONTROL_TOOLS), 'ENTRY_INVALID')
+    if policy.fixture_root is None:
+        for relative in (*WORKFLOW_DATA, 'packaging/runtime_manifest.json', 'packaging/release_contract.json'):
+            require(digest(read_file(policy.root / 'entry' / relative, owner=0,
+                                     mode=0o644, protected=True)) == value['tools'][relative], 'ENTRY_INVALID')
     # Reuse the accepted common approval/evidence validator. Project only the
     # code-defined legacy minimum; this does not alter or weaken its default.
     common = {key: item for key, item in value.items() if key not in ('purpose', 'workflow')}

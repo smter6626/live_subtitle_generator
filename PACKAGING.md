@@ -147,7 +147,7 @@ Models, `.venv`, `.tools`, `external`, source-tree files, build caches, and user
 
 ## Future 1.1.0 artifact work
 
-The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. REL1A's identity/provenance/ZIP foundation and REL1B's integration controller are independently accepted for their bounded implementation scopes. A real 1.1.0 integration, fresh build, Human artifact review, and publication remain pending; REL1C1 is an incomplete candidate; its receipt/state/artifact modules are present, while its controlled build protocol and C2/C3 remain pending.
+The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. REL1A's identity/provenance/ZIP foundation and REL1B's integration controller are independently accepted for their bounded implementation scopes. A real 1.1.0 integration, fresh build, Human artifact review, and publication remain pending; REL1C1 has a staged build/package controller and receipt/state/artifact modules awaiting independent review; C2/C3 remain pending.
 
 ## REL1B approval, integration, and recovery
 
@@ -277,15 +277,19 @@ not accept a packaged App, microphone behavior, Human gate or publication.
 
 ## REL1C1 candidate receipts and recovery
 
-C1 is an incomplete implementation candidate, awaiting independent review. Its fixed
+C1 is an implementation candidate awaiting independent review. Its fixed
 CLI is `release_workflow.py status|build|resume|human-gate`; it has no options and no
 publication commands. Production remains disabled without separately deployed
 root-owned trust/entry and final Step 1 approval. No production trust, personal
 credentials, formal App/ZIP or real external release objects were created here.
 
 Authorization uses the existing trust root, fixed Owner signer and OpenSSH route.
-`workflow-config.json` independently binds an epoch and the complete eight-module
-protected entry. `workflow-approval.json`/`.sig` has the code-defined
+`workflow-config.json` independently binds an epoch and the complete control/helper
+protected entry, including release_identity, build_release_zip, verify_packaged_runtime,
+model_integrity and resource_paths. Protected model/runtime/product-contract data and
+accepted-source bytes are also bound. The CLI strips caller import paths and verifies
+the protected locations, independent signature and exact bytes before loading helpers;
+it compiles verified source rather than trusting cached bytecode. `workflow-approval.json`/`.sig` has the code-defined
 `release-workflow-control` purpose and exact legacy-plus-C1 tool set. It binds the
 accepted implementation, current parent/REL1B/REL1C static contract hashes and the
 existing final-Step-1 review and Owner-integration records. A payload cannot select
@@ -305,24 +309,44 @@ objects, ancestry, all tracked bytes (including hidden index drift), required to
 and source HEAD. Build additionally checks real remote refs. Journal COMPLETE,
 process success and old PASS logs do not authorize source acceptance.
 
-Build currently stops with `BUILD_PROTOCOL_REVIEW_REQUIRED` before workspace creation
-or subprocess build execution. The unchanged `bootstrap_and_build.sh` has no
-synchronous controller handoff between Python bootstrap, Runtime bootstrap and App
-build. A bounded proposal requests reviewed before/after pipe checkpoints in that
-script and direct `test_build_orchestration.py` regressions. Neither file was changed.
-Separate stage invocation would require Reviewer clarification of the one-entry
-requirement; this candidate does not silently substitute that interpretation.
-No stage-specific build mutation policy or live environment proof is claimed complete.
+Build persists BUILD intent before creating a new unique attempt and clean clone of
+that exact signed final source. It accepts no ignored interpreter, tools, old dist or
+copied environment. The original `bootstrap_and_build.sh` retains its normal developer/
+Finder behavior, argv/order and child failures. Controlled invocation uses fixed
+before/after Python, Runtime and App events over inherited request/ack pipes and a
+separate parent-lifetime pipe. There is no hook command/executable or CLI override.
+Denial, missing/invalid/duplicate/out-of-order events, child failure and parent loss
+stop the active session before further stages. The controller closes pipes and waits
+for child termination, escalating to kill when necessary.
+
+Every checkpoint rechecks independent approval, exact source/tools/contracts/pins,
+remote refs and the identity/bytes of all previously acquired inputs. Python may
+create `.tools/{uv,python,cache}` and `.venv`; Runtime may create the pinned
+`.tools/cmake/4.2.3` and `external/whisper.cpp` source/build; App may create `build`
+and `dist`, including generated icon and PyInstaller cache. Existing files cannot
+change at these boundaries. Cache/interpreter/site-package/third-party bytes remain
+in the snapshot rather than being blanket exclusions. The pinned Runtime source
+and tracked bytes are validated, and its original verifier runs with the acquired
+interpreter. App provenance is checked after a successful fresh invocation, then
+the original ZIP helper returns actual `ReleaseMetadata`. Snapshot proof exists only
+in that invocation's memory; version output and stored checksums cannot replace it.
+Tests use independently signed, explicitly synthetic stage scripts and a separate
+fixture Runtime verifier seam; they do not establish real acquisition or formal App
+success. The fixture seams are unavailable from production CLI.
 
 The artifact layer consumes the existing ZIP helper's `ReleaseMetadata`, canonical
 App-adjacent provenance and original round-trip checks. Fixtures exercise the real
 ZIP/CRC/bytes/modes/symlink implementation with explicitly synthetic Runtime
 verification. `fix_metadata` fixes package facts; it cannot prove fresh build or grant
-Owner acceptance. The pending build protocol must provide invocation-local proof
-before recording a production artifact. Identity includes exact ZIP absolute
+Owner acceptance. The controller requires its live invocation-local proof before recording an artifact. Identity includes exact ZIP absolute
 path/size/hash, source/tree/receipt, tools/contracts, App name/bundle identifier/both
 versions/tree, build/package evidence hashes and the surviving Human directory.
 Subsequent gates recheck actual files, safe ancestry and single-link regular files.
+They also compare the archive directly with the accepted bundle snapshot definition:
+all members, file bytes/sizes, modes, types, directory structure and symlink targets
+must match the retained App. Duplicate/aliased/missing/extra members fail even when
+metadata/state/provenance are recomputed and a purpose-correct fixture receipt is signed.
+This comparison writes no scratch files, including during read-only status.
 
 `artifact-human.json`/`.sig` is a separately signed Owner decision, purpose
 `owner-exact-artifact-decision`, fixed namespace suffix `-artifact-human`. Its strict
@@ -346,8 +370,12 @@ state is a recovery hint, never authorization or an environment proof.
 
 `status` is strictly local/read-only: no receipt acceptance, fetch, bootstrap, packaged
 executable, directory creation or state write. It prints `*_RECORDED_UNVERIFIED`.
-`resume` checks surviving artifact facts or reports `RECOVERY_REVIEW_REQUIRED`; unknown
-build/package outcomes are not replayed. `human-gate` validates before persisting
+`resume` checks surviving artifact facts as unverified records. For BUILDING, BUILT
+or PACKAGING it revalidates source/approval and persists REVIEW_REQUIRED without
+executing or accepting surviving outputs. An explicit later `build` uses a fresh
+unique attempt; old workspace, logs, artifacts and Human extraction are never reused
+or overwritten. Partial persistence stops for review. An ARTIFACT label or checksum
+cannot reconstruct a lost invocation-local build proof. `human-gate` validates before persisting
 HUMAN_CHECK intent and revalidates before/after recording a receipt. Receipt loss or
 file replacement stops subsequent Human checks. Recorded Human state does not enable
 publication; receipt/signature validation remains mandatory for every future action.

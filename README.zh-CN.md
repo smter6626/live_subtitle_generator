@@ -292,19 +292,25 @@ ignored 环境都会在执行前被拒绝，随后 interpreter、uv、环境代�
 ### REL1C1 workflow 候选
 
 新增候选入口只接受 `release_workflow.py status|build|resume|human-gate`。
-独立签署的 workflow 批准必须绑定全部八个控制模块、完整构建工具集、父/REL1B/REL1C
+独立签署的 workflow 批准必须绑定全部控制模块及实际加载的包装 helper/dependency closure、完整构建工具集、父/REL1B/REL1C
 合同及最终 Step 1 审核和 Owner 集成决定。REL1B 原入口继续使用原四模块范围。
 生产 trust 和 protected entry 尚未部署；仓库入口缺少它们时停止，不提供 caller-selected
 trust、receipt、source、signer 或 fixture 参数。
 
 `status` 只读记录，不接受决定、不创建或修复文件。`build` 验证独立签署的精确最终 main
-source receipt、真实 Git 对象/parents/tree/源码字节及精确远端 refs，然后以
-`BUILD_PROTOCOL_REVIEW_REQUIRED` 停止。原 one-entry 构建仍需要经过审核的同步阶段
-checkpoint，候选 C1 尚未完成，未正式构建或发布。`resume` 只能验证幸存产物事实或
-停机交审核，不从记录恢复环境信任，也不重用旧输出。
+source receipt、真实 Git 对象/parents/tree/源码字节及精确远端 refs。它先持久化 intent，
+创建全新 attempt/clone，再调用原 `bootstrap_and_build.sh`。Python 获取、Runtime
+获取/构建、App 生成的前后各有 inherited-pipe checkpoint；每次重核批准、source/tools
+和已获取的解释器/import 输入字节，只允许已审核阶段的输出路径新增。
+成功执行后实际调用原 Runtime verifier、canonical App provenance 和 ZIP helper，
+保留精确包和 Human 目录。本次实施未正式构建或发布；C1 仍待独立审核，生产部署、
+整个 Step 1 验收及真实产物人工验收仍未完成。`resume` 验证幸存产物事实，或把未知
+build/package outcome 标为待审核，不重跑。后续明确调用 `build` 使用新的唯一路径，
+保留历史 attempt，不从记录恢复环境信任。
 
 `human-gate` 验证独立外部签署的 Owner PASS，绑定精确 ZIP、source、attempt、App
-身份/tree 及保留解压目录。workflow 不能制造或签署 PASS；记录状态和集成许可不能代替
+身份/tree 及保留解压目录。每次 artifact/Human consultation 都直接比对 ZIP member
+和保留 App 的 bytes、modes、结构及 symlink targets，分别重算 hash 不足以通过。workflow 不能制造或签署 PASS；记录状态和集成许可不能代替
 receipt。即使 fixture PASS 也不提供 tag、draft、upload 或 publish。新 workflow 状态及
 artifact 使用独立于 REL1B journal 的目录；新 attempt 保留旧 ZIP、Human 目录和失败证据。
 
@@ -312,7 +318,7 @@ artifact 使用独立于 REL1B journal 的目录；新 attempt 保留旧 ZIP、H
 模型下载、麦克风/Start/Stop、第二个 Session、语言选择、增量复制、窗口/滚动、中英
 Clean 控件、录制中/停止后重命名及全文恢复 Yes/No。该 App 使用 ad-hoc、未公证；
 如被 macOS 阻止，通过“隐私与安全性 → 仍要打开”。记录实际硬件、语言及模型限制；
-1.0.0 历史验收不能批准 1.1.0。receipt 协议及构建接口缺口详见
+1.0.0 历史验收不能批准 1.1.0。receipt 协议及分阶段构建边界详见
 [`PACKAGING.md`](PACKAGING.md#rel1c1-candidate-receipts-and-recovery)。
 
 ## 架构

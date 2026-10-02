@@ -7,7 +7,7 @@
 | Repository | `smter6626/live_subtitle_generator` (Classroom Live Transcriber) |
 | Branch | Historical `main`/`codex/clean-toolbar-rename-v1` baseline plus `codex/release-1-1-0-automation`; real feature/main integration remains pending |
 | Structural baseline | Original full scan at `4d2059d273d0ba94373b1969b8236ef462b6acae`; affected architecture ownership/flows updated through Product Polish Step 1F, session clipboard UI commit `cb4261825b7d51d3ec33a97e083683c50e6b9e82`, window-layout commit `569e5c551c101811ed80fca23bd5708d6ac880cf`, and final Clean full-text recovery R2 commit `fb317ea4a2b1db557133e91590e852c0241a3cd8`. |
-| Updated | 2026-10-01; accepted REL1A/REL1B and incomplete REL1C1 candidate architecture |
+| Updated | 2026-10-01; accepted REL1A/REL1B and staged REL1C1 candidate architecture |
 | Scan scope | 65 Git-tracked files at the original map baseline; later structural syncs update affected ownership/flows without re-running a full-file recount |
 | Document role | A derived architecture and change-navigation aid, not a product contract or API reference |
 
@@ -61,23 +61,24 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 
 ### REL1C1 candidate control ownership
 
-C1 is incomplete: build execution stops pending a reviewed synchronous checkpoint
-interface in the original orchestrator; C2/C3, production deployment and real
+C1 implements synchronous inherited-pipe checkpoints in the original orchestrator
+and a live fresh-clone build/package controller, awaiting independent review; C2/C3, production deployment and real
 integration/build/Human/publication remain pending. REL1A/REL1B implementation
 acceptance does not extend to this candidate or to new artifact bytes.
 
 | Module | Responsibility / boundary | Direct regression |
 | --- | --- | --- |
-| `release_workflow.py` | Fixed status/build/resume/human-gate CLI; loads all protected controls, keeps status read-only and blocks the pending build protocol and all publication actions. | `test_release_workflow.py`; actual CLI refusal and repeated snapshots. |
+| `release_workflow.py` | Fixed status/build/resume/human-gate CLI; verifies helpers before imports, creates a fresh exact-source attempt, supervises six original-entry checkpoints, binds acquired inputs and calls the unchanged verifier/provenance/ZIP chain. Status stays read-only; all publication actions remain unavailable. | `test_release_workflow.py`; actual CLI refusal and repeated snapshots. |
 | `release_workflow_state.py` | Strict separate C1 recovery hints, 0700/0600 atomic persistence, unique attempts, intent/outcome and conservative stop after partial/unknown storage. Does not enlarge the REL1B journal. | `test_release_workflow_state.py`; fsync/replace crashes, schema/path refusal. |
-| `release_artifact.py` | Independently authenticated exact main source plus audited Git/byte facts; validated `ReleaseMetadata`, canonical provenance, exact ZIP/App/retained-directory identities and rechecks. Package facts do not prove a fresh build. | `test_release_artifact.py`; real local Git/signatures/ZIP and synthetic App verifier. |
+| `release_artifact.py` | Independently authenticated exact main source plus audited Git/byte facts; validated `ReleaseMetadata`, canonical provenance, exact ZIP/App/retained-directory identities and rechecks. Every consultation also compares actual ZIP members to retained App bytes/modes/types/links; package facts alone do not prove a fresh build. | `test_release_artifact.py`; real local Git/signatures/ZIP and synthetic App verifier. |
 | `release_human_gate.py` | Callable separately signed exact-artifact Owner PASS/FAIL validator. Cannot sign decisions; every consultation reauthenticates and checks current files. | `test_release_human_gate.py`; valid signed fixture PASS and adversarial receipts/replacements. |
-| `release_approval.py` C1 scope | Fixed eight loaded protected modules, complete build/C1 tools and parent/REL1B/REL1C contracts; distinct workflow configuration and purpose-specific receipts through existing trust/signature route. Legacy entry/default checks remain intact. | `test_release_approval.py` legacy and C1 scope tests. |
+| `release_approval.py` C1 scope | Fixed complete loaded control/helper closure and relevant protected data, complete build/C1 tools and parent/REL1B/REL1C contracts; distinct workflow configuration and purpose-specific receipts through existing trust/signature route. Legacy entry/default checks remain intact. | `test_release_approval.py` legacy and C1 scope tests. |
 
 The separate C1 layout retains `attempts`, `artifacts`, `human`, `evidence`, `tmp` and
 `state.json`. None of these records grants acceptance. Publication adapters and
-live stage-specific environment proof are still absent. See PACKAGING for exact
-CLI, receipt fields, retained-App Human procedure and build-interface proposal.
+production deployment are still absent. Build proof is invocation-local and cannot
+be recovered from checksummed state. See PACKAGING for exact CLI, checkpoint paths,
+receipt fields, retained-App Human procedure and recovery boundaries.
 
 ### Runtime application modules
 
@@ -100,7 +101,7 @@ CLI, receipt fields, retained-App Human procedure and build-interface proposal.
 | Path | Role / interface | Dependencies and side effects | Change impact / related tests |
 | --- | --- | --- | --- |
 | `Build ClassroomTranscriber.command` | Finder-facing, thin formal build entry. | Resolves the repo root and `exec`s `scripts/bootstrap_and_build.sh`. | Must remain portable and thin. `test_build_orchestration.py`. |
-| `scripts/bootstrap_and_build.sh` | Formal one-entry build orchestrator. | Requires macOS arm64; calls the Python bootstrap, Runtime bootstrap, then injects `.venv/bin/python` into the Release build; checks the produced `.app`. | The main developer-build boundary. `test_build_orchestration.py`, packaging/runtime tests. |
+| `scripts/bootstrap_and_build.sh` | Formal one-entry build orchestrator. | Requires macOS arm64; calls the Python bootstrap, Runtime bootstrap, then injects `.venv/bin/python` into the Release build; checks the produced `.app`; the C1 inherited-pipe mode synchronously authorizes before/after each stage and stops on parent lifetime EOF. | The main developer-build boundary. `test_build_orchestration.py`, packaging/runtime tests. |
 | `scripts/bootstrap_python_env.sh` | Creates or, with `--recreate`, removes/rebuilds the project `.venv` from pinned uv/Python/lock metadata. | Downloads and SHA-checks uv when needed; writes ignored `.tools/` and `.venv/`; runs environment contract tests. | Dependency lock, formal interpreter, and destructive recreate behavior are sensitive. `test_python_environment.py`, `test_runtime_manifest.py`. |
 | `scripts/bootstrap_whisper_runtime.sh` | Rebuilds or verifies (`--verify-only`) the pinned ignored whisper.cpp Runtime. | Uses manifest values through `whisper_runtime_contract.py`; may download CMake and clone/build `external/whisper.cpp`; refuses dirty/unexpected third-party state. | Controls third-party Runtime provenance and generated binary closure. `test_whisper_runtime_bootstrap.py`, `test_runtime_manifest.py`. |
 | `scripts/whisper_runtime_contract.py` | Manifest reader and source-Runtime verifier; commands: `get`, `cmake-arguments`, `artifact-records`, `verify-runtime`. | Reads `runtime_manifest.json`; invokes Git, `file`, `otool`, and the CLI smoke during verification. | Centralizes build-profile/data interpretation. Do not duplicate manifest facts in bootstrap code. Bootstrap/manifest tests protect it. |

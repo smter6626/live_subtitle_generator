@@ -5,6 +5,8 @@ import hashlib
 import os
 import plistlib
 import stat
+import zipfile
+from pathlib import PurePosixPath
 from pathlib import Path
 
 from release_approval import (
@@ -16,7 +18,7 @@ from release_integration import (
     audit_git, check_remote, check_source, clean, git, run_git, worktree_bytes,
 )
 from release_identity import app_tree_sha256, validate_build_provenance
-from build_release_zip import ReleaseMetadata, snapshot_bundle, validate_archive, verify_round_trip
+from build_release_zip import BundleEntry, ReleaseMetadata, snapshot_bundle, validate_archive, verify_round_trip
 
 APP = 'ClassroomTranscriber.app'
 ASSET = 'ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip'
@@ -101,7 +103,9 @@ def file_hash(path: Path):
         before = os.fstat(handle.fileno())
         checksum = hashlib.file_digest(handle, 'sha256').hexdigest()
         after = os.fstat(handle.fileno())
-    require(before == after and path.lstat() == after, 'ARTIFACT_CHANGED')
+    identity = lambda info: (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink,
+                             info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    require(identity(before) == identity(after) == identity(path.lstat()), 'ARTIFACT_CHANGED')
     return before.st_size, checksum
 
 
@@ -124,6 +128,52 @@ def safe_app(path: Path):
             info.get('CFBundleShortVersionString') == '1.1.0' and
             info.get('CFBundleVersion') == '1.1.0', 'ARTIFACT_APP_IDENTITY')
     return app_tree_sha256(path)
+
+
+def verify_zip_app(archive: Path, app: Path):
+    """Compare actual ZIP members with REL1A's retained bundle definition.
+
+    No extraction, scratch writes or executable invocation. CRC/hash alone and
+    a separately hashed App do not prove correspondence. Reject aliases and
+    duplicates before comparing bytes, types, permissions and link targets.
+    """
+    expected = snapshot_bundle(app)
+    actual = {}
+    validate_archive(archive, APP)
+    with zipfile.ZipFile(archive) as opened:
+        seen = set()
+        root_seen = False
+        for info in opened.infolist():
+            name = info.filename
+            path = PurePosixPath(name)
+            require(name == path.as_posix() + ('/' if info.is_dir() else '') and
+                    path not in seen and not info.flag_bits & 1 and
+                    info.create_system == 3, 'ZIP_APP_MISMATCH')
+            seen.add(path)
+            mode = info.external_attr >> 16
+            if path == PurePosixPath(APP):
+                require(info.is_dir() and stat.S_ISDIR(mode) and info.file_size == 0 and
+                        stat.S_IMODE(mode) == stat.S_IMODE(app.lstat().st_mode), 'ZIP_APP_MISMATCH')
+                root_seen = True
+                continue
+            relative = PurePosixPath(*path.parts[1:])
+            require(relative in expected, 'ZIP_APP_MISMATCH')
+            if stat.S_ISDIR(mode):
+                require(info.is_dir() and info.file_size == 0, 'ZIP_APP_MISMATCH')
+                entry = BundleEntry('directory', stat.S_IMODE(mode))
+            elif stat.S_ISLNK(mode):
+                require(not info.is_dir() and info.file_size <= 4096, 'ZIP_APP_MISMATCH')
+                entry = BundleEntry('symlink', stat.S_IMODE(mode),
+                                    link_target=opened.read(info).decode('utf-8'))
+            else:
+                require(stat.S_ISREG(mode) and not info.is_dir(), 'ZIP_APP_MISMATCH')
+                require(info.file_size == expected[relative].size, 'ZIP_APP_MISMATCH')
+                with opened.open(info) as member:
+                    checksum = hashlib.file_digest(member, 'sha256').hexdigest()
+                entry = BundleEntry('file', stat.S_IMODE(mode), info.file_size, checksum)
+            actual[relative] = entry
+        require(root_seen and actual == expected, 'ZIP_APP_MISMATCH')
+    require(snapshot_bundle(app) == expected, 'ARTIFACT_CHANGED')
 
 
 def artifact_checksum(value):
@@ -172,6 +222,8 @@ def validate_artifact(value, auth: Authorization, source, receipt_sha256):
     extraction = absolute(value['extraction_path'])
     require(sorted(item.name for item in extraction.iterdir()) == [APP], 'ARTIFACT_PATH')
     require(safe_app(extraction / APP) == value['app_tree_sha256'], 'ARTIFACT_CHANGED')
+    verify_zip_app(archive, extraction / APP)
+    require(file_hash(archive) == (value['zip_bytes'], value['zip_sha256']), 'ARTIFACT_CHANGED')
     for item in value['evidence'].values():
         raw = read_file(absolute(item['path']), owner=os.getuid(), mode=0o600, limit=64 * 1024 * 1024)
         require(digest(raw) == item['sha256'], 'ARTIFACT_EVIDENCE_CHANGED')

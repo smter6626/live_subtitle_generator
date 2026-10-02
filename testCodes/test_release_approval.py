@@ -169,7 +169,7 @@ class WorkflowApprovalTests(unittest.TestCase):
                 approval.authorize_workflow(f.policy)
             self.assertFalse((f.root / 'workflow').exists())
 
-    def test_workflow_protected_entry_checks_all_eight_loaded_paths_and_bytes(self):
+    def test_workflow_protected_entry_checks_complete_loaded_helper_closure_and_bytes(self):
         # The test seam substitutes the protected file reader only for this unit
         # check. No fixture config/key or mock is reachable from production CLI.
         config = {'entry_sha256': {p: approval.digest(p.encode()) for p in approval.WORKFLOW_CONTROL_TOOLS}}

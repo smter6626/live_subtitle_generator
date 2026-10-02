@@ -125,7 +125,7 @@ class StateStore:
     def new_attempt(self, value):
         """Persist intent before creating a unique, never reused attempt path.
 
-        Only a future accepted build protocol may execute code in this path.
+        The live controller executes only after independent revalidation.
         Retries use a new ID; no old workspace or artifact is removed.
         """
         require(value['state'] in ('NEW', 'REVIEW_REQUIRED'), 'RECOVERY_REVIEW_REQUIRED')
