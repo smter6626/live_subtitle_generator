@@ -325,7 +325,18 @@ create `.tools/{uv,python,cache}` and `.venv`; Runtime may create the pinned
 `.tools/cmake/4.2.3` and `external/whisper.cpp` source/build; App may create `build`
 and `dist`, including generated icon and PyInstaller cache. Existing files cannot
 change at these boundaries. Cache/interpreter/site-package/third-party bytes remain
-in the snapshot rather than being blanket exclusions. The pinned Runtime source
+in the snapshot rather than being blanket exclusions. The uv cache advisory lock
+`.tools/cache/.lock`, like the Python/virtualenv advisory locks,
+has a narrow writable-file exception: current-owner, empty regular single-link file
+with mode `0666`, reached through real current-owner directories with no group/other
+write permission in the fresh controlled workspace. Other writable cache files,
+nonempty locks, aliases and unsafe ancestry are refused. The cache lock remains in
+the proof with device/inode, owner/mode, size, modification/change timestamps and
+SHA-256 of its bytes; later replacement or modification stops before the next stage.
+An offline regression uses the identity-checked local pinned uv binary to initialize
+a new empty cache with `uv cache prune --offline`; this is cache maintenance only,
+with no interpreter acquisition or formal build. Signed synthetic children reproduce
+that lock in the six-checkpoint controller/package test. The pinned Runtime source
 and tracked bytes are validated, and its original verifier runs with the acquired
 interpreter. App provenance is checked after a successful fresh invocation, then
 the original ZIP helper returns actual `ReleaseMetadata`. Snapshot proof exists only

@@ -8,10 +8,12 @@ from __future__ import annotations
 import contextlib
 import copy
 import io
+import json
 import os
 import plistlib
 import shutil
 import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -47,6 +49,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 mkdir -p .tools/uv/0.12.5 .tools/python/bin .tools/cache .venv/bin
+: > .tools/cache/.lock
+chmod 666 .tools/cache/.lock
+printf 'SYNTHETIC acquired cache bytes\n' > .tools/cache/fixture
 cat > .tools/python/bin/python <<'PYTHON'
 #!/bin/bash
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -307,6 +312,141 @@ def snapshot(root):
     return result
 
 
+class CacheLockTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.root = retained_root()
+
+    def cache(self):
+        root = Path(tempfile.mkdtemp(prefix='cache-lock-', dir=self.root))
+        cache = root / '.tools/cache'
+        cache.mkdir(parents=True, mode=0o700)
+        lock = cache / '.lock'
+        lock.touch(mode=0o666)
+        lock.chmod(0o666)
+        return root, cache, lock
+
+    def test_native_identity_checked_uv_initializes_empty_cache_offline(self):
+        # This fixed test-only identity is independently recorded by cycle-02,
+        # not a caller-selected tool or a production bootstrap trust shortcut.
+        uv = REPO / '.tools/uv/0.12.5/uv'
+        expected = 'ad3564874e19defa0debefcf48e8381ac1d087c584190c1323c247bd351dd25f'
+        def uv_identity():
+            info = uv.lstat()
+            return {name: getattr(info, name) for name in (
+                'st_dev', 'st_ino', 'st_uid', 'st_mode', 'st_nlink',
+                'st_size', 'st_mtime_ns', 'st_ctime_ns')}
+        before = uv_identity()
+        self.assertEqual(approval.digest(approval.read_file(
+            uv, owner=os.getuid(), mode=0o755, limit=64 * 1024 * 1024)), expected)
+        self.assertEqual(uv_identity(), before)
+        root = Path(tempfile.mkdtemp(prefix='native-uv-cache-', dir=self.root))
+        cache = root / '.tools/cache'
+        cache.mkdir(parents=True, mode=0o700)
+        self.assertEqual(list(cache.iterdir()), [])
+        env = {'PATH': '/usr/bin:/bin', 'HOME': str(root), 'LC_ALL': 'C',
+               'TMPDIR': str(root), 'UV_CACHE_DIR': str(cache), 'UV_NO_CONFIG': '1',
+               'UV_PYTHON_DOWNLOADS': 'never', 'UV_PYTHON_INSTALL_DIR': str(root / '.tools/python')}
+        argv = [str(uv), 'cache', 'prune', '--offline']
+        result = subprocess.run(argv, cwd=root, env=env, capture_output=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
+        self.assertEqual(uv_identity(), before)
+        self.assertEqual(approval.digest(approval.read_file(
+            uv, owner=os.getuid(), mode=0o755, limit=64 * 1024 * 1024)), expected)
+        self.assertEqual(uv_identity(), before)
+        lock = cache / '.lock'
+        info = lock.lstat()
+        self.assertTrue(stat.S_ISREG(info.st_mode))
+        self.assertEqual((info.st_uid, info.st_nlink, info.st_size, stat.S_IMODE(info.st_mode)),
+                         (os.getuid(), 1, 0, 0o666))
+        proof = workflow.execution_snapshot(root)
+        self.assertEqual(proof['.tools/cache/.lock'], (
+            'file', (info.st_dev, info.st_ino, info.st_mode, info.st_uid), 0,
+            info.st_mtime_ns, info.st_ctime_ns, approval.digest(b'')))
+        self.assertFalse((root / '.tools/python').exists())
+        self.assertFalse((root / '.venv').exists())
+        report = {'scope': 'Native offline cache maintenance only; no interpreter acquisition or formal build',
+                  'fixture_root': str(root), 'lock_path': str(lock),
+                  'lock_identity': {name: getattr(info, name) for name in before},
+                  'argv': argv, 'env': env, 'exit_code': result.returncode,
+                  'stdout': result.stdout.decode(), 'stderr': result.stderr.decode(),
+                  'uv_sha256': expected, 'uv_identity': before, 'proof': proof,
+                  'cache_files': sorted(p.name for p in cache.iterdir())}
+        (root / 'native-lock-report.json').write_text(json.dumps(report, indent=2) + '\n')
+
+    def test_exact_cache_lock_rejects_wrong_types_modes_links_content_and_ancestry(self):
+        cases = ('directory', 'fifo', 'symlink', 'escape', 'hardlink', 'nonempty',
+                 'nonempty-readonly', 'mode-664', 'mode-644', 'mode-777',
+                 'writable-cache-file', 'writable-elsewhere', 'cache-mode', 'tools-mode',
+                 'cache-alias', 'tools-alias', 'nested-cache-alias')
+        for kind in cases:
+            with self.subTest(kind=kind):
+                root, cache, lock = self.cache()
+                if kind in ('directory', 'fifo', 'symlink', 'escape', 'hardlink'):
+                    lock.unlink()
+                    if kind == 'directory':
+                        lock.mkdir()
+                    elif kind == 'fifo':
+                        os.mkfifo(lock, mode=0o600)
+                    else:
+                        target = (root if kind != 'escape' else self.root) / ('target-' + uuid.uuid4().hex)
+                        target.touch(mode=0o600)
+                        if kind == 'hardlink':
+                            os.link(target, lock)
+                        else:
+                            lock.symlink_to(target)
+                elif kind.startswith('nonempty'):
+                    lock.write_bytes(b'counterfeit')
+                    if kind == 'nonempty-readonly':
+                        lock.chmod(0o644)
+                elif kind.startswith('mode-'):
+                    lock.chmod(int(kind[5:], 8))
+                elif kind.startswith('writable-'):
+                    path = (cache if kind == 'writable-cache-file' else root) / 'unrelated'
+                    path.touch()
+                    path.chmod(0o666)
+                elif kind in ('cache-mode', 'tools-mode'):
+                    (cache if kind == 'cache-mode' else cache.parent).chmod(0o777)
+                elif kind == 'nested-cache-alias':
+                    (cache / 'real-directory').mkdir()
+                    (cache / 'alias').symlink_to('real-directory', target_is_directory=True)
+                else:
+                    path = cache if kind == 'cache-alias' else cache.parent
+                    target = root / 'aliased-directory'
+                    path.rename(target)
+                    path.symlink_to(target, target_is_directory=True)
+                with self.assertRaises(approval.Stop) as failure:
+                    workflow.execution_snapshot(root)
+                self.assertEqual(failure.exception.code, 'ENVIRONMENT_INVALID')
+
+    def test_cache_lock_wrong_owner_is_refused(self):
+        root, _, lock = self.cache()
+        original = Path.lstat
+        def foreign(path):
+            info = original(path)
+            if path == lock:
+                values = list(info)
+                values[4] = os.getuid() + 1
+                return os.stat_result(values)
+            return info
+        with mock.patch.object(Path, 'lstat', foreign), self.assertRaises(approval.Stop) as failure:
+            workflow.execution_snapshot(root)
+        self.assertEqual(failure.exception.code, 'ENVIRONMENT_INVALID')
+
+    def test_workspace_unsafe_ancestry_is_refused(self):
+        root, _, _ = self.cache()
+        root.chmod(0o777)
+        with self.assertRaises(approval.Stop) as failure:
+            workflow.execution_snapshot(root)
+        self.assertEqual(failure.exception.code, 'PATH_MODE')
+        root.chmod(0o700)
+        alias = self.root / ('workspace-alias-' + uuid.uuid4().hex)
+        alias.symlink_to(root, target_is_directory=True)
+        with self.assertRaises(approval.Stop) as failure:
+            workflow.execution_snapshot(alias)
+        self.assertEqual(failure.exception.code, 'PATH_SYMLINK')
+
+
 class WorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -318,12 +458,21 @@ class WorkflowTests(unittest.TestCase):
         controller = synthetic_controller(f)
         self.assertEqual(controller.execute(), 'ARTIFACT_RECORDED_C1_ONLY')
         self.assertEqual(controller.events, list(workflow.EVENTS))
+        lock_proof = controller.proof['.tools/cache/.lock']
+        self.assertEqual(stat.S_IMODE(lock_proof[1][2]), 0o666)
+        self.assertEqual(lock_proof[2], 0)
+        self.assertEqual(lock_proof[-1], approval.digest(b''))
         value = controller.store.inspect()
         self.assertEqual(value['state'], 'ARTIFACT')
         self.assertEqual(len(controller.fixture_verifier_calls), 2)
         self.assertEqual(controller.fixture_verifier_calls[0], str(controller.workspace / 'dist' / artifact.APP))
         self.assertEqual(controller.fixture_verifier_calls[1], str(Path(value['artifact']['extraction_path']) / artifact.APP))
         artifact.validate_artifact(value['artifact'], controller.auth, controller.source, controller.source_hash)
+        (f.root / 'cache-lock-controller-report.json').write_text(json.dumps({
+            'scope': 'Independently signed synthetic stages; actual controller/original shell/ZIP chain',
+            'events': controller.events, 'state': value['state'], 'lock_proof': lock_proof,
+            'build_log': value['artifact']['evidence']['build'],
+            'package_log': value['artifact']['evidence']['package']}, indent=2) + '\n')
         # No receipt is fabricated by the controller. The independent fixture
         # signer supplies the exact decision only after the retained tuple exists.
         f.sign('artifact-human', {**f.common('artifact-human'), 'decision': 'PASS',
@@ -350,6 +499,84 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(controller.events, ['before:python', 'after:python'])
             self.assertFalse((controller.workspace / 'external').exists())
             self.assertEqual(controller.store.inspect()['state'], 'BUILDING')
+
+    def test_controller_refuses_malformed_acquired_cache_lock_before_runtime(self):
+        suffixes = (
+            'printf counterfeit > .tools/cache/.lock',
+            'printf counterfeit > .tools/cache/.lock; chmod 644 .tools/cache/.lock',
+            'rm .tools/cache/.lock; mkdir .tools/cache/.lock',
+            'rm .tools/cache/.lock; mkfifo .tools/cache/.lock',
+            'rm .tools/cache/.lock; ln -s fixture .tools/cache/.lock',
+            'ln .tools/cache/.lock .tools/cache/alias',
+            'chmod 644 .tools/cache/.lock',
+            'touch .tools/cache/unrelated; chmod 666 .tools/cache/unrelated',
+            'chmod 777 .tools/cache',
+            'mv .tools/cache .tools/retired-cache; ln -s retired-cache .tools/cache',
+            'mkdir .tools/cache/real-directory; ln -s real-directory .tools/cache/alias',
+        )
+        for suffix in suffixes:
+            with self.subTest(suffix=suffix):
+                stage = synthetic_stages()['bootstrap_python_env.sh'] + '\n' + suffix + '\n'
+                f = Fixture(self.root, synthetic=True, stage_overrides={'bootstrap_python_env.sh': stage})
+                acquired = {}
+                def capture(controller, event):
+                    if event == 'after:python':
+                        acquired.update(snapshot(controller.workspace / '.tools'))
+                controller = synthetic_controller(f, capture)
+                with self.assertRaises(approval.Stop) as failure:
+                    controller.execute()
+                self.assertEqual(failure.exception.code, 'ENVIRONMENT_INVALID')
+                self.assertEqual(controller.events, ['before:python'])
+                self.assertFalse((controller.workspace / 'external').exists())
+                self.assertEqual(controller.store.inspect()['state'], 'BUILDING')
+                self.assertTrue(controller.workspace.is_dir())
+                self.assertEqual(snapshot(controller.workspace / '.tools'), acquired)
+                (f.root / 'cache-lock-refusal-report.json').write_text(json.dumps({
+                    'scope': 'Signed synthetic malformed acquisition', 'suffix': suffix,
+                    'refusal': failure.exception.code, 'events': controller.events,
+                    'runtime_entered': False, 'retained_workspace': str(controller.workspace),
+                    'acquired_inputs_unchanged_on_refusal': True,
+                    'state': controller.store.inspect()}, indent=2) + '\n')
+
+    def test_acquired_lock_cache_and_interpreter_drift_refused_before_runtime(self):
+        for kind in ('lock-replacement', 'lock-timestamp', 'cache-replacement', 'cache-bytes', 'interpreter-replacement'):
+            with self.subTest(kind=kind):
+                f = Fixture(self.root, synthetic=True)
+                acquired = {}
+                def corrupt(controller, event):
+                    if event != 'before:runtime':
+                        return
+                    cache = controller.workspace / '.tools/cache'
+                    lock = cache / '.lock'
+                    if kind == 'lock-timestamp':
+                        info = lock.stat()
+                        os.utime(lock, ns=(info.st_atime_ns, info.st_mtime_ns + 1_000_000_000))
+                    elif kind == 'cache-bytes':
+                        (cache / 'fixture').write_bytes(b'changed acquired cache bytes\n')
+                    elif kind == 'cache-replacement':
+                        cache.rename(f.root / 'retired-cache')
+                        shutil.copytree(f.root / 'retired-cache', cache)
+                    else:
+                        path = lock if kind == 'lock-replacement' else controller.workspace / '.tools/python/bin/python'
+                        original = f.root / ('retired-' + path.name)
+                        path.rename(original)
+                        shutil.copy2(original, path)
+                    acquired.update(snapshot(controller.workspace / '.tools'))
+                controller = synthetic_controller(f, corrupt)
+                with self.assertRaises(approval.Stop) as failure:
+                    controller.execute()
+                self.assertEqual(failure.exception.code, 'ENVIRONMENT_CHANGED')
+                self.assertEqual(controller.events, ['before:python', 'after:python'])
+                self.assertFalse((controller.workspace / 'external').exists())
+                self.assertEqual(controller.store.inspect()['state'], 'BUILDING')
+                self.assertTrue(controller.workspace.is_dir())
+                self.assertEqual(snapshot(controller.workspace / '.tools'), acquired)
+                (f.root / 'cache-drift-refusal-report.json').write_text(json.dumps({
+                    'scope': 'Acquired synthetic input drift before Runtime', 'kind': kind,
+                    'refusal': failure.exception.code, 'events': controller.events,
+                    'runtime_entered': False, 'retained_workspace': str(controller.workspace),
+                    'acquired_inputs_unchanged_on_refusal': True,
+                    'state': controller.store.inspect()}, indent=2) + '\n')
 
     def test_actual_controller_malformed_duplicate_order_crash_and_unexpected_creations(self):
         base = synthetic_stages()['bootstrap_python_env.sh']

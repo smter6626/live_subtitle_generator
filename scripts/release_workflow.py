@@ -163,6 +163,7 @@ EVENTS = ('before:python', 'after:python', 'before:runtime', 'after:runtime',
 
 def execution_snapshot(repo):
     """Identity and bytes of every input/output, with no broad cache exclusions."""
+    inspect_path(repo, owner=os.getuid(), directory=True)
     result = {}
     def visit(directory):
         with os.scandir(directory) as iterator:
@@ -173,9 +174,16 @@ def execution_snapshot(repo):
             if relative == '.git':
                 continue  # Independently audited Git metadata at every boundary.
             info = path.lstat()
-            advisory = (relative in ('.venv/.lock', '.tools/python/.lock') and
+            advisory = (relative in ('.venv/.lock', '.tools/python/.lock', '.tools/cache/.lock') and
                         stat.S_ISREG(info.st_mode) and info.st_size == 0 and
+                        info.st_nlink == 1 and
                         stat.S_IMODE(info.st_mode) == 0o666)
+            # uv's cache lock is advisory, never an alias or cache exclusion.
+            # Its containing directories must also be real, safe directories.
+            if relative in ('.tools', '.tools/cache'):
+                require(stat.S_ISDIR(info.st_mode), 'ENVIRONMENT_INVALID')
+            if relative == '.tools/cache/.lock':
+                require(advisory, 'ENVIRONMENT_INVALID')
             require(info.st_uid == os.getuid() and
                     (stat.S_ISLNK(info.st_mode) or advisory or not info.st_mode & 0o022),
                     'ENVIRONMENT_INVALID')
@@ -184,7 +192,10 @@ def execution_snapshot(repo):
                 result[relative] = ('directory', identity)
                 visit(path)
             elif stat.S_ISLNK(info.st_mode):
-                require(path.resolve(strict=True).is_relative_to(repo), 'ENVIRONMENT_INVALID')
+                target = path.resolve(strict=True)
+                require(target.is_relative_to(repo), 'ENVIRONMENT_INVALID')
+                if relative.startswith('.tools/cache/'):
+                    require(not target.is_dir(), 'ENVIRONMENT_INVALID')
                 result[relative] = ('symlink', identity, os.readlink(path), info.st_ctime_ns)
             else:
                 require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, 'ENVIRONMENT_INVALID')
