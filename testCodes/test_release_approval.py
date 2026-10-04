@@ -145,6 +145,20 @@ class WorkflowApprovalTests(unittest.TestCase):
         with self.assertRaises(approval.Stop):
             approval.authorize_workflow(f.policy)
 
+    def test_integration_scope_is_exact_code_type_not_payload_or_subclass(self):
+        from testCodes.test_release_workflow import Fixture
+        f = Fixture(self.root)
+        self.assertEqual(approval.authorize_integration(f.policy), f.auth)
+        class CallerPolicy(approval.WorkflowPolicy):
+            pass
+        with self.assertRaises(approval.Stop) as caught:
+            approval.authorize_integration(CallerPolicy(f.root))
+        self.assertEqual(caught.exception.code, 'APPROVAL_POLICY')
+        f.payload['purpose'] = 'integration-only'
+        f.sign('workflow-approval', f.payload)
+        with self.assertRaises(approval.Stop):
+            approval.authorize_integration(f.policy)
+
     def test_c1_tool_contract_config_evidence_replacements_and_revocation_refuse(self):
         from testCodes.test_release_workflow import Fixture
         for kind in ('tool', 'contract', 'epoch', 'review', 'revoke', 'legacy-root', 'namespace'):

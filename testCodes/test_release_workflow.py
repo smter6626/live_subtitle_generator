@@ -136,7 +136,7 @@ def synthetic_controller(fixture, checkpoint=None):
 
 
 class Fixture:
-    def __init__(self, root, *, synthetic=False, stage_overrides=None, full_source=False):
+    def __init__(self, root, *, synthetic=False, stage_overrides=None, full_source=False, integrated=True):
         self.root = root / ('case-' + uuid.uuid4().hex)
         self.root.mkdir(mode=0o700)
         self.policy = approval.WorkflowPolicy(self.root)
@@ -171,7 +171,8 @@ class Fixture:
         integration.git(self.source, 'checkout', '-b', approval.FEATURE.removeprefix('refs/heads/'), self.baseline)
         (self.source / 'feature-only.txt').write_text('independently reviewed fixture\n')
         self.accepted = self.commit('fixture implementation')
-        integration.git(self.source, 'push', 'origin', self.accepted + ':' + approval.FEATURE)
+        if integrated:
+            integration.git(self.source, 'push', 'origin', self.accepted + ':' + approval.FEATURE)
         self.policy.root.mkdir(mode=0o700)
         for name in approval.WORKFLOW_CONTRACTS:
             (self.root / (name + '.md')).write_text('C1 independent fixture contract ' + name + '\n')
@@ -208,6 +209,12 @@ class Fixture:
         self.sign('workflow-approval', self.payload)
         self.auth = approval.authorize_workflow(self.policy)
         self.managed = self.root / 'managed'
+        if not integrated:
+            reader = self.root / 'git-reader.config'
+            reader.write_bytes(integration.fixture_reader_config(str(self.remote)))
+            reader.chmod(0o600)
+            self.calls = []
+            return
         self.managed.mkdir(mode=0o700)
         self.clone = self.managed / 'clone'
         integration.git(None, 'clone', '--no-local', '--no-hardlinks', '--no-tags', '--template=',
@@ -1041,9 +1048,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(snapshot(f.root), before)
         (f.policy.root / 'artifact-human.json').unlink()
         self.assertEqual(f.cli('human-gate')[0], 1)
-        for command in ('tag', 'draft', 'upload', 'publish'):
+        for command in ('tag', 'draft', 'upload'):
             with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 workflow.build_parser().parse_args([command])
+        # New publication command still requires independent exact Human/plan
+        # decisions, not a recorded C1 label or the former parser rejection.
+        self.assertEqual(f.cli('publish')[0], 1)
 
     def test_unknown_build_or_package_outcome_does_not_reexecute_or_repair(self):
         for stage, intent in (('BUILDING', 'BUILD'), ('BUILT', None), ('PACKAGING', 'PACKAGE')):

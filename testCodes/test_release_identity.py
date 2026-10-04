@@ -43,10 +43,15 @@ class ReleaseIdentityTests(unittest.TestCase):
         cls.manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
     def test_corrected_candidate_notes_have_fixed_reviewed_hash(self):
-        expected = "9901c141b3765dda965bc2fcacae5a24d4a721f0e6d1725ae1e7fc2c86d387cd"
+        expected = "69013bcae2de876202b3c6d2633fcb75a659b1f5f413cd905295eb6431a12703"
         self.assertEqual(release_identity.EXPECTED_CONTRACT["release_notes_sha256"], expected)
         self.assertEqual(release_identity.load_contract()["release_notes_sha256"], expected)
         self.assertEqual(release_identity.sha256_file(REPO_ROOT / "RELEASE_NOTES_1.1.0.md"), expected)
+        text = (REPO_ROOT / "RELEASE_NOTES_1.1.0.md").read_text(encoding="utf-8")
+        self.assertNotIn("remain pending", text)
+        self.assertNotIn("These candidate bytes have not been built", text)
+        self.assertIn("Every published 1.1.0 artifact must be bound", text)
+        self.assertIn("not evidence that any particular ZIP", text)
 
     def make_app(self, root: Path) -> Path:
         app = root / "ClassroomTranscriber.app"

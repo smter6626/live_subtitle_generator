@@ -7,7 +7,7 @@ from __future__ import annotations
 # Strip caller paths as well, and compile verified bytes instead of trusting pyc.
 import sys
 if __name__ == '__main__':
-    if len(sys.argv) != 2 or sys.argv[1] not in ('status', 'build', 'resume', 'human-gate'):
+    if len(sys.argv) != 2 or sys.argv[1] not in ('status', 'build', 'resume', 'human-gate', 'prepare', 'pipeline-status', 'pipeline-resume', 'publish'):
         print('release-workflow: STOP ARGUMENTS_INVALID', file=sys.stderr)
         raise SystemExit(2)
     _stdlib = sys.base_prefix + '/lib/python' + str(sys.version_info.major) + '.' + str(sys.version_info.minor)
@@ -30,7 +30,8 @@ if __name__ == '__main__':
         entry = root / 'entry'
         controls = tuple('scripts/' + name + '.py' for name in (
             'release_controller', 'release_approval', 'release_journal', 'release_integration',
-            'release_workflow', 'release_workflow_state', 'release_artifact', 'release_human_gate'))
+            'release_workflow', 'release_workflow_state', 'release_artifact', 'release_human_gate',
+            'release_publication', 'release_publication_state', 'release_pipeline'))
         helpers = ('scripts/release_identity.py', 'scripts/build_release_zip.py',
                    'scripts/verify_packaged_runtime.py', 'model_integrity.py', 'resource_paths.py')
         def read(path):
@@ -80,7 +81,7 @@ if __name__ == '__main__':
         # Preload every stdlib dependency before a helper adjusts sys.path.
         for name in ('argparse', 'pwd', 're', 'shutil', 'tempfile', 'uuid', 'dataclasses',
                      'typing', 'platform', 'plistlib', 'tomllib', 'zipfile', 'contextlib',
-                     'select', 'signal', 'time', 'io'):
+                     'select', 'signal', 'time', 'io', 'datetime'):
             _importlib.import_module(name)
         class Loader(_abc.MetaPathFinder, _abc.Loader):
             def find_spec(self, fullname, path=None, target=None):
@@ -125,6 +126,9 @@ import release_journal
 import release_artifact
 import release_human_gate
 import release_workflow_state
+import release_publication
+import release_publication_state
+import release_pipeline
 from release_approval import (WorkflowPolicy, Stop, authorize_workflow, require,
                               inspect_path, read_file, digest, decode, absolute)
 import build_release_zip
@@ -134,7 +138,8 @@ from release_journal import fsync_directory
 
 def build_parser():
     parser = release_controller.Parser(description=__doc__, allow_abbrev=False)
-    parser.add_argument('command', choices=('status', 'build', 'resume', 'human-gate'))
+    parser.add_argument('command', choices=('status', 'build', 'resume', 'human-gate',
+                                          'prepare', 'pipeline-status', 'pipeline-resume', 'publish'))
     return parser
 
 
@@ -709,10 +714,20 @@ def human_gate(policy):
     return 'HUMAN_RECORDED_C1_ONLY'
 
 
-def _run(argv, policy):
+def _run(argv, policy, *, fixture_gate=None, fixture_integration_checkpoint=None, fixture_build=None):
     args = build_parser().parse_args(argv)
     try:
-        stage = {'status': status, 'build': build, 'resume': resume, 'human-gate': human_gate}[args.command](policy)
+        if args.command == 'prepare':
+            stage = release_pipeline.prepare(policy, fixture_gate=fixture_gate,
+                fixture_integration_checkpoint=fixture_integration_checkpoint, fixture_build=fixture_build)
+        elif args.command == 'pipeline-resume':
+            require(fixture_build is None, 'FIXTURE_BOUNDARY')
+            stage = release_pipeline.resume(policy, fixture_gate=fixture_gate,
+                fixture_integration_checkpoint=fixture_integration_checkpoint)
+        else:
+            require(all(item is None for item in (fixture_gate, fixture_integration_checkpoint, fixture_build)), 'FIXTURE_BOUNDARY')
+            stage = {'status': status, 'build': build, 'resume': resume, 'human-gate': human_gate,
+                     'pipeline-status': release_pipeline.status, 'publish': release_pipeline.publish}[args.command](policy)
         print('release-workflow: ' + stage)
         return 0
     except Stop as exc:

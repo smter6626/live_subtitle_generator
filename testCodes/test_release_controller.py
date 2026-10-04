@@ -248,6 +248,19 @@ class ControllerTests(unittest.TestCase):
         (f.root / 'git-facts.json').write_bytes(approval.canonical({'main_before': f.main, 'accepted': f.accepted,
                     'main_after': merge, 'tree': value['merge_tree'], 'parents': [f.main, f.accepted]}))
 
+    def test_workflow_tools_not_in_legacy_minimum_are_checked_before_feature_push(self):
+        from testCodes.test_release_workflow import Fixture as WorkflowFixture, retained_root as workflow_root
+        f = WorkflowFixture(workflow_root(), synthetic=True, integrated=False)
+        # Hide a new helper change from git status; fixed Workflow scope must
+        # still bind its actual worktree bytes, unlike a legacy-only minimum.
+        integration.git(f.source, 'update-index', '--assume-unchanged', 'scripts/release_publication.py')
+        (f.source / 'scripts/release_publication.py').write_bytes(b'changed new workflow helper\n')
+        before = integration.git(f.remote, 'show-ref')
+        with self.assertRaises(approval.Stop):
+            integration.Integration(f.policy, fixture_gate=lambda *_: None).execute()
+        self.assertEqual(integration.git(f.remote, 'show-ref'), before)
+        self.assertFalse(f.managed.exists())
+
     def test_production_missing_trust_has_no_mutation_and_no_override_cli(self):
         before = integration.git(REPO, 'show-ref')
         for arg in ('status', 'integrate', 'resume'):

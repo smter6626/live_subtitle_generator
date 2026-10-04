@@ -10,7 +10,8 @@ import uuid
 from pathlib import Path
 
 from release_approval import (Authorization, FEATURE, MAIN, ORIGINS, REQUIRED_TOOLS, Policy,
-                              SHA, Stop, authorize, decode, digest, hex_value,
+                              SHA, Stop, WorkflowPolicy, WORKFLOW_REQUIRED_TOOLS,
+                              authorize_integration, decode, digest, hex_value,
                               inspect_path, read_file, require)
 from release_journal import Journal, fsync_directory
 
@@ -144,7 +145,9 @@ def clean(repo: Path):
 
 
 def tools(repo: Path, auth: Authorization, revision: str | None = None):
-    for relative in REQUIRED_TOOLS:
+    # Workflow authorization has a fixed larger closure; legacy remains exact.
+    required = WORKFLOW_REQUIRED_TOOLS if auth.payload.get('purpose') == 'release-workflow-control' else REQUIRED_TOOLS
+    for relative in required:
         if revision is None:
             data = read_file(repo / relative)
         else:
@@ -215,7 +218,7 @@ class Integration:
         self.policy = policy
         self.fixture_gate = fixture_gate
         self.checkpoint = checkpoint or (lambda _: None)
-        self.auth = authorize(policy)
+        self.auth = authorize_integration(policy)
         self.journal = Journal(self.auth)
         self.clone = self.auth.managed / 'clone'
         # Never persisted: journal bytes cannot prove where an executable came
@@ -223,7 +226,7 @@ class Integration:
         self.environment_proof = None
 
     def revalidate(self):
-        latest = authorize(self.policy)
+        latest = authorize_integration(self.policy)
         require(latest == self.auth, 'APPROVAL_CHANGED')
         check_source(self.auth)
         if os.path.lexists(self.clone):
@@ -540,14 +543,14 @@ class Integration:
             raise Stop('CLONE_INCOMPLETE')
         if value['state'] == 'NEW':
             # During no-checkout acquisition do not invoke worktree-clean checks.
-            latest = authorize(self.policy)
+            latest = authorize_integration(self.policy)
             require(latest == self.auth, 'APPROVAL_CHANGED')
             check_source(self.auth)
             audit_git(self.clone, p['origin'])
             require(check_remote(self.policy, self.auth) == refs, 'REMOTE_DRIFT')
             value = self.journal.change(value, intent='FETCH')
             self.checkpoint('before_fetch')
-            require(authorize(self.policy) == self.auth, 'APPROVAL_CHANGED')
+            require(authorize_integration(self.policy) == self.auth, 'APPROVAL_CHANGED')
             check_source(self.auth)
             audit_git(self.clone, p['origin'])
             require(check_remote(self.policy, self.auth) == refs, 'REMOTE_DRIFT')

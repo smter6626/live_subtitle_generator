@@ -147,7 +147,7 @@ Models, `.venv`, `.tools`, `external`, source-tree files, build caches, and user
 
 ## Future 1.1.0 artifact work
 
-The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. REL1A's identity/provenance/ZIP foundation and REL1B's integration controller are independently accepted for their bounded implementation scopes. A real 1.1.0 integration, fresh build, Human artifact review, and publication remain pending; REL1C1 has a staged build/package controller and receipt/state/artifact modules awaiting independent review; C2/C3 remain pending.
+The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. REL1A/REL1B/C1 were independently accepted for their bounded implementation scopes. C2/C3 publication/routing is an implementation candidate awaiting independent review. A real 1.1.0 integration, fresh build, Human artifact review and publication remain pending.
 
 ## REL1B approval, integration, and recovery
 
@@ -277,9 +277,9 @@ not accept a packaged App, microphone behavior, Human gate or publication.
 
 ## REL1C1 candidate receipts and recovery
 
-C1 is an implementation candidate awaiting independent review. Its fixed
-CLI is `release_workflow.py status|build|resume|human-gate`; it has no options and no
-publication commands. Production remains disabled without separately deployed
+C1 was independently accepted for its bounded local implementation scope. The
+expanded CLI is `status|build|resume|human-gate|prepare|pipeline-status|pipeline-resume|publish`;
+it has no options. Publication is separately gated below. Production remains disabled without separately deployed
 root-owned trust/entry and final Step 1 approval. No production trust, personal
 credentials, formal App/ZIP or real external release objects were created here.
 
@@ -418,8 +418,8 @@ receipt hash and the complete exact artifact identity. `validate_human_gate` is 
 callable future C2 gate and reauthenticates/rechecks on every consultation. A signed
 FAIL stops. A forged/revoked/wrong-purpose receipt, integration approval, Boolean
 flag, lost receipt, recomputed metadata/state/provenance or replacement ZIP/App cannot
-grant PASS. No workflow command signs decisions or calls GitHub. C1 still rejects
-all tag/draft/upload/publish commands even after a valid synthetic fixture PASS.
+grant PASS. No workflow command signs decisions. Human PASS alone does not enable
+publication; a separately signed plan and approved transport are required.
 
 Workflow storage is a signed separate Downloads path, never beneath REL1B's managed
 journal or implementation source. The layout is `state.json`, `attempts/<id>/source`,
@@ -454,6 +454,150 @@ A rebuild or changed bytes requires fresh automated verification and Owner revie
 Historical 1.0.0 M4 Max/M5 testing does not approve this unbuilt 1.1.0 candidate or
 claim coverage of every offered language. PT-REL-01 closure belongs to independent
 governance review; the notes/hash correction here does not close it.
+
+## C2/C3 publication pipeline and production gates
+
+This implementation candidate is awaiting independent review. No production
+trust, credentials, source integration, formal build, artifact PASS, tag or release
+has been created by the implementation/tests. Fixture success is not production
+readiness. The current formal download remains 1.0.0.
+
+Release notes now use phase-neutral version changes/install/limits language, with
+fixed SHA-256 `69013bcae2de876202b3c6d2633fcb75a659b1f5f413cd905295eb6431a12703`
+bound in the contract, identity helper, Publisher and direct tests. They neither
+claim that a package exists nor claim it remains unbuilt after publication. The
+contract's unchanged `candidate-unbuilt-unpublished` status is a static preparation
+identity label, NOT a live release outcome; signed artifact/Human receipts and
+actual GitHub facts determine delivery state. Historical C1 notes/hash acceptance
+remains historical; new note bytes require final implementation review/regression.
+
+The protected workflow entry exposes `prepare`, `pipeline-status`, `pipeline-resume` and `publish`
+alongside C1 commands. Its pre-import bootstrap and signed complete tool set now
+include `release_publication.py`, `release_publication_state.py` and
+`release_pipeline.py`. Verified source bytes are compiled, not caller imports/pyc.
+Legacy REL1B retains its original default scope/namespace and authentication isolation.
+An exact code-type switch lets WorkflowPolicy reuse the original Integration
+with the complete Workflow tool closure; no payload chooses a weaker scope.
+
+`prepare` invokes Integration, stops at `FINAL_MAIN_REVIEW_REQUIRED`, then uses a
+valid independently signed exact-main receipt on a later invocation to call the
+original BuildController. It ends at `EXACT_ARTIFACT_HUMAN_REVIEW_REQUIRED`.
+Existing artifacts are revalidated, never rebuilt/overwritten by preparation.
+Interrupted build/package recovery remains C1's conservative retirement plus an
+explicit fresh attempt. No command signs review, integration or Human decisions.
+`pipeline-status` is local/read-only, never contacts GitHub, creates files, repairs,
+accepts a receipt or executes a stage. All recorded states stay UNVERIFIED.
+
+`pipeline-resume` does not start absent work. Existing publication enters Publisher
+and rechecks all exact decisions/remote ownership; a build/package interruption
+only calls the original C1 retirement path, never rebuilds automatically. An existing
+artifact receives C1's local unverified validation. An unfinished integration uses
+the original Integration recovery; COMPLETE stops before a next stage. The original
+`resume` contract remains unchanged.
+
+| Local hint | What to inspect / explicit later command |
+| --- | --- |
+| MISSING | Check final Step 1/Owner/transport deployment, then explicitly `prepare` |
+| INTEGRATION_* | Check original journal/facts; `pipeline-resume` cannot supply independent final-main ACCEPT |
+| BUILDING/BUILT/PACKAGING | `pipeline-resume` retires unknown outcome; review, then explicit fresh `prepare` |
+| ARTIFACT/HUMAN_RECORDED | Inspect exact retained ZIP/App and current external decision; `human-gate`/`publish` only when gates actually validate |
+| PUBLICATION_* | Inspect stopped facts and obtain exact external reconciliation; `pipeline-resume` revalidates, never trusts the hint |
+
+This table does not validate a receipt or grant permission from a stage label.
+
+### Publication decisions and recovery
+
+The external signing path supplies `publication-plan.json`/`.sig`, purpose
+`owner-fixed-publication-plan`. The existing common receipt fields bind epoch,
+signer/trust/config/authorization, current tools/contracts/repository/version,
+accepted commit and an external decision reference. Additional fields bind
+`artifact_id`, exact Human receipt hash, source commit/tree, fixed notes hash,
+tag timestamp/object ID and transport. The annotated tag bytes are deterministic
+and independently fixed by the plan; both remote object ID and peeled commit are
+required. No implicit/default-branch tag creation is used.
+
+Publishing persists intent before each side effect, revalidates current signed
+source/Human/artifact/plan before and after writes and at recovery/complete, and
+checks remote draft metadata/tag/unique asset after the publish-intent boundary.
+It compares actual downloaded draft bytes before PATCH, requests `make_latest`
+as the REST string `"true"`, then verifies public/latest objects, tag and newly
+downloaded bytes. The unique fixed ZIP must retain its exact size/hash. POST must
+return HTTP 201; GET/PATCH require 200. JSON bodies use UTF-8 stdin, explicit
+methods and fixed host/endpoint; no `--repo`, field-magic, clobber or deletion.
+Lists are paginated completely and duplicate IDs/schema/HTTP errors stop.
+Binary upload uses the fixed file directly. Download spools HTTP bytes to a new
+0600 file with a 120s owned-process-group bound, parses at most 64KiB headers,
+then uses 1MiB chunks and exact size/SHA checks to create a new exclusive ZIP.
+Raw responses and partial files remain local; no ZIP is decoded or printed.
+
+Publication hints live at `workflow/publication/{state.json,downloads/}` with
+0700 directories/0600 state/files, strict stage-intent-ID schemas, checksum,
+file fsync/atomic replace/directory fsync. A valid checksum, saved ID or matching
+remote fields never proves ownership. Within one invocation only a successful
+HTTP 201 plus exact read-back establishes newly created object IDs. Across
+invocations, even a previously recorded COMPLETE, release/asset recovery requires
+external `publication-reconciliation.json`/`.sig`, purpose
+`owner-exact-publication-reconciliation`, binding plan/artifact/Human/source/tag,
+exact release/asset IDs and phase `DRAFT`, `UPLOADED` or `PUBLISHED`. Every remote
+field and actual download is checked again; advanced state cannot skip this gate.
+Unknown create/upload/publish results first read remote objects and then stop for
+that independent reconciliation, with no blind replay. No matching object also
+remains uncertain and requires review. A 502-created `starter` asset is retained
+for Human disposition, never automatically deleted. An externally reconciled
+already-public object is verified by a new public download without claiming that
+this invocation performed or proved the historical draft download.
+
+### Still-required production Owner decisions
+
+These are blocking production gates, not nonblocking pending work:
+
+1. Independently controlled trust/signing/receipt path, protected full entry and
+   trustworthy fixed bootstrap Python. The proposed root remains
+   `/Library/Application Support/ClassroomTranscriberRelease/1.1.0`; no deployment
+   or production private key creation/read is performed here. Ordinary Agents
+   cannot write accepted reviews, source decisions or exact-artifact PASS.
+2. Specific least-privilege Git and GitHub authenticated transport. Git still
+   disables credential helpers/global config/SSH identity and agent, so production
+   push authentication is NOT established. Owner must explicitly decide a bounded
+   transport before real integration, followed by a bounded Git protocol extension
+   and independent review. Deploying the gh group alone cannot authenticate Git
+   pushes or make `prepare` production-ready. Do not loosen isolation or use Codex Mix OAuth.
+
+The gh proposal uses a signed exact resolved executable/hash and fixed
+`<trust-root>/github-auth`. Owner chooses an explicitly dedicated group ID; there
+is no automatic staff/default group. Directory is root-owned 0750; only
+`config.yml`/`hosts.yml`, root-owned 0440 with that group, regular/single-link/no
+symlink, are allowed. The executing uid must be in the approved group and have
+read/traverse but no write access. Python checks metadata only; gh reads the
+approved credentials. No token is extracted, inherited, passed in environment or
+written to evidence. No group/key/auth directory is created during implementation.
+Credential refresh cannot write back; it requires independent Owner maintenance
+and updated approval as applicable, not silent fallback to a personal gh home.
+Fixture Policy instead uses only its newly created case-local fake executable and
+0700 gh-config; no production CLI flag selects it or addresses the network.
+
+After implementation acceptance and both deployment/transport gates, the approved
+controller can integrate/fix source and build the final ZIP. Only that exact ZIP's
+Human PASS permits tag/draft/upload/publish. Human uses the retained extraction's
+App and verifies microphone/model/Start/Stop/second Session/Clean/window/language/
+rename/recovery; offscreen/synthetic/old-App results cannot supply this PASS.
+
+### Parent implementation coverage (candidate, not acceptance)
+
+| Parent criterion | Implementation route | Remaining real-delivery evidence |
+| --- | --- | --- |
+| REL-AC-01 | Protected complete closure, fixed pipeline, separate signed purposes | Independent Step 1 acceptance and production deployment |
+| REL-AC-02 | Accepted REL1A identity/pins/notes and fixed publication constants | Actual final App/source/tag values |
+| REL-AC-03 | Original audited divergent two-parent Integration/live gate | Real authenticated feature/main push and independent final-source receipt |
+| REL-AC-04 | Original C1 six-checkpoint build/provenance/ZIP chain | Fresh formal Runtime/App/ZIP, not synthetic fixtures |
+| REL-AC-05 | Current signed exact-artifact Human validator at every write boundary | Human black-box PASS on those exact final bytes |
+| REL-AC-06 | Actual fake-gh argv/binary/tag/draft/download/latest tests | Real GitHub object IDs/public download bytes |
+| REL-AC-07 | Original local recovery plus signed remote-ID reconciliation | Real interruption/ref/API reconciliation when applicable |
+| REL-AC-08 | Bilingual docs, privacy, local readonly hints and tracked-source tests | Independent governance closure and accurate post-publication links |
+
+Single writer is still assumed. Read checks and writes are not an atomic remote
+transaction; observed boundary changes stop. No lock/concurrency/automatic rollback
+guarantee, and no cleaner deletes active audit or recovery evidence.
 
 ## Clean-machine validation
 

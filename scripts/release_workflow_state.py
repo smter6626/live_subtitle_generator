@@ -70,8 +70,10 @@ class StateStore:
     def inspect(self, *, missing=True):
         if not inspect_path(self.root, owner=os.getuid(), mode=0o700, directory=True, missing=missing):
             return None
-        require(all(item.name in ('state.json', *DIRECTORIES) for item in self.root.iterdir()),
+        require(all(item.name in ('state.json', 'publication', *DIRECTORIES) for item in self.root.iterdir()),
                 'PERSISTENCE_INCOMPLETE')
+        if os.path.lexists(self.root / 'publication'):
+            inspect_path(self.root / 'publication', owner=os.getuid(), mode=0o700, directory=True)
         for name in DIRECTORIES:
             inspect_path(self.root / name, owner=os.getuid(), mode=0o700, directory=True)
         require(inspect_path(self.path, owner=os.getuid(), mode=0o600, missing=True), 'PERSISTENCE_INCOMPLETE')

@@ -301,7 +301,7 @@ for deployment proposals, transport limits, recovery, and validation commands.
 
 ### REL1C1 workflow candidate
 
-The new candidate entry accepts exactly `release_workflow.py status|build|resume|human-gate`.
+The workflow entry accepts `status|build|resume|human-gate|prepare|pipeline-status|pipeline-resume|publish`.
 It requires a separately signed workflow approval binding all control modules and the loaded packaging/helper dependency closure,
 all required build tools, parent/REL1B/REL1C contracts and final Step 1 decisions.
 The legacy REL1B entry keeps its four-module authorization scope. Production trust
@@ -317,8 +317,8 @@ and App generation. Each checkpoint rechecks approval/source/tools and previousl
 acquired executable/import bytes. Only the reviewed stage output paths may appear.
 A successful invocation calls the original Runtime verifier, canonical App provenance
 validator and ZIP helper, and retains the exact package and Human directory.
-No formal build or publication occurred during implementation. C1 awaits independent
-review; production deployment, final Step 1 acceptance and actual artifact review
+No formal build or publication occurred during implementation. C1 was independently
+accepted; C2/C3, production deployment, final Step 1 acceptance and actual artifact review
 remain pending. `resume` validates surviving artifact facts or retires an unknown
 build/package outcome for review without re-execution. An explicitly requested later
 `build` uses new paths and preserves earlier attempts; no record restores environment trust.
@@ -328,7 +328,8 @@ ZIP, source, attempt, App tree/identity and retained extraction. Every artifact
 consultation compares actual ZIP member bytes, modes, structure and symlink targets
 with that retained App; separately consistent hashes are insufficient. It cannot create or
 sign PASS; recorded states and integration permission cannot replace that receipt.
-Even a fixture PASS enables no tag, draft, upload or publish command. New workflow
+PASS alone enables no publication: a separately signed publication plan and approved
+transport are additionally required. New workflow
 state and artifacts live separately from REL1B's journal root; attempts preserve
 prior ZIPs, Human directories and failed evidence.
 
@@ -339,6 +340,39 @@ active/stopped rename and full-history Yes/No recovery. Use Privacy & Security â
 Open Anyway if macOS blocks this ad-hoc, non-notarized App. Record actual hardware,
 language and model limits; historical 1.0.0 App acceptance does not approve 1.1.0.
 The receipt protocol and staged-build boundaries are documented in [`PACKAGING.md`](PACKAGING.md#rel1c1-candidate-receipts-and-recovery).
+
+### C2/C3 publication and combined pipeline candidate
+
+The candidate adds a fixed GitHub adapter and routing over the existing
+integration/build/Human controllers. It awaits independent review, not real main
+integration, App/ZIP acceptance or publication. Production trust and authenticated
+transport remain undeployed. The eventual protected-entry interface is:
+
+```text
+release_workflow.py prepare
+release_workflow.py pipeline-status
+release_workflow.py pipeline-resume
+release_workflow.py human-gate
+release_workflow.py publish
+```
+
+`prepare` runs the approved integration controller, then stops for a separately
+signed exact-final-main receipt. A later call with that valid receipt runs the
+original fresh build/package chain and stops at exact-artifact Human review.
+Existing artifacts are validated, not overwritten. `pipeline-status` is strictly
+local/read-only and explicitly unverified. No command signs decisions.
+`pipeline-resume` resumes only a recorded stage. It cannot start missing work or
+automatically rebuild an unknown build; source/Human/remote reconciliation gates
+remain independent. The original `resume` keeps its exact C1 behavior.
+
+`publish` rechecks the signed ZIP PASS, source/tools and a signed plan, creates only
+the deterministic annotated `1.1.0` tag/fixed draft/one ZIP, verifies downloaded
+draft bytes before formal/latest publication, then verifies public metadata and
+downloaded bytes again. No force/clobber/history deletion exists. Across invocations,
+release/asset ownership requires external signed exact-ID reconciliation; names,
+identical fields and checksums are insufficient. Preserve stopped evidence instead
+of editing state. Deployment, recovery and receipt details are in
+[`PACKAGING.md`](PACKAGING.md#c2c3-publication-pipeline-and-production-gates).
 
 ## Architecture
 

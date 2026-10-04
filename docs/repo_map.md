@@ -7,7 +7,7 @@
 | Repository | `smter6626/live_subtitle_generator` (Classroom Live Transcriber) |
 | Branch | Historical `main`/`codex/clean-toolbar-rename-v1` baseline plus `codex/release-1-1-0-automation`; real feature/main integration remains pending |
 | Structural baseline | Original full scan at `4d2059d273d0ba94373b1969b8236ef462b6acae`; affected architecture ownership/flows updated through Product Polish Step 1F, session clipboard UI commit `cb4261825b7d51d3ec33a97e083683c50e6b9e82`, window-layout commit `569e5c551c101811ed80fca23bd5708d6ac880cf`, and final Clean full-text recovery R2 commit `fb317ea4a2b1db557133e91590e852c0241a3cd8`. |
-| Updated | 2026-10-01; accepted REL1A/REL1B and staged REL1C1 candidate architecture |
+| Updated | 2026-10-03; accepted REL1A/REL1B/C1 and C2/C3 publication/pipeline candidate architecture |
 | Scan scope | 65 Git-tracked files at the original map baseline; later structural syncs update affected ownership/flows without re-running a full-file recount |
 | Document role | A derived architecture and change-navigation aid, not a product contract or API reference |
 
@@ -59,24 +59,28 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 
 ## File and module map
 
-### REL1C1 candidate control ownership
+### REL1C control ownership
 
-C1 implements synchronous inherited-pipe checkpoints in the original orchestrator
-and a live fresh-clone build/package controller, awaiting independent review; C2/C3, production deployment and real
-integration/build/Human/publication remain pending. REL1A/REL1B implementation
-acceptance does not extend to this candidate or to new artifact bytes.
+C1's synchronous inherited-pipe build/package controller was independently accepted.
+C2/C3 adds fixed publication and routing candidates awaiting independent review.
+Production deployment, authenticated Git transport and real integration/build/Human/
+publication remain pending. Local implementation acceptance does not accept new App bytes.
 
 | Module | Responsibility / boundary | Direct regression |
 | --- | --- | --- |
-| `release_workflow.py` | Fixed status/build/resume/human-gate CLI; verifies helpers before imports, creates a fresh exact-source attempt, supervises six original-entry checkpoints, binds acquired inputs and calls the unchanged verifier/provenance/ZIP chain. Status stays read-only; all publication actions remain unavailable. | `test_release_workflow.py`; actual CLI refusal and repeated snapshots. |
+| `release_workflow.py` | Fixed status/build/resume/human-gate/prepare/pipeline-status/pipeline-resume/publish CLI, complete protected pre-import closure, unchanged C1 fresh source/build/ZIP boundaries and routing to separately gated publication. | `test_release_workflow.py`, `test_release_pipeline.py`; actual CLI refusal and snapshots. |
 | `release_workflow_state.py` | Strict separate C1 recovery hints, 0700/0600 atomic persistence, unique attempts, intent/outcome and conservative stop after partial/unknown storage. Does not enlarge the REL1B journal. | `test_release_workflow_state.py`; fsync/replace crashes, schema/path refusal. |
 | `release_artifact.py` | Independently authenticated exact main source plus audited Git/byte facts; validated `ReleaseMetadata`, canonical provenance, exact ZIP/App/retained-directory identities and rechecks. Every consultation also compares actual ZIP members to retained App bytes/modes/types/links; package facts alone do not prove a fresh build. | `test_release_artifact.py`; real local Git/signatures/ZIP and synthetic App verifier. |
 | `release_human_gate.py` | Callable separately signed exact-artifact Owner PASS/FAIL validator. Cannot sign decisions; every consultation reauthenticates and checks current files. | `test_release_human_gate.py`; valid signed fixture PASS and adversarial receipts/replacements. |
 | `release_approval.py` C1 scope | Fixed complete loaded control/helper closure and relevant protected data, complete build/C1 tools and parent/REL1B/REL1C contracts; distinct workflow configuration and purpose-specific receipts through existing trust/signature route. Legacy entry/default checks remain intact. | `test_release_approval.py` legacy and C1 scope tests. |
+| `release_publication.py` | Signed fixed plan/transport/Human/source validation, deterministic annotated tag, actual gh API UTF-8/binary requests, draft/public downloads and formal/latest checks. Cross-invocation remote IDs require independent signed reconciliation, not journal adoption. | `test_release_publication.py`; actual fake-gh subprocess and local bare tag, malformed/drift/crash cases. |
+| `release_publication_state.py` | Separate 0700/0600 atomic publication hints with strict stage/intent/ID/download schemas; checksum never grants ownership or PASS. | `test_release_publication_state.py`; rehash/permissions/atomic/read-only tests. |
+| `release_pipeline.py` | Reuses Integration, BuildController and Publisher; stops for independent final-main and exact-artifact decisions, never signs them or invents a second implementation loop. | `test_release_pipeline.py`; local two-parent/real original Python/six-checkpoint/ZIP/fake-gh chain with explicit synthetic limits. |
 
-The separate C1 layout retains `attempts`, `artifacts`, `human`, `evidence`, `tmp` and
-`state.json`. None of these records grants acceptance. Publication adapters and
-production deployment are still absent. Build proof is invocation-local and cannot
+The separate workflow layout retains `attempts`, `artifacts`, `human`, `evidence`, `tmp`,
+`state.json` and the optional fixed `publication` directory. None grants acceptance.
+Publication is a gated candidate; production deployment/authentication remain absent.
+Build proof is invocation-local and cannot
 be recovered from checksummed state. See PACKAGING for exact CLI, checkpoint paths,
 receipt fields, retained-App Human procedure and recovery boundaries.
 
@@ -301,9 +305,12 @@ remotes and an independent fixture namespace; no production CLI switch enables
 it. Resume after environment creation stops because no journal establishes its
 trusted origin. Main already present without trusted completion enters Human
 reconciliation without repeat push or rollback. See `PACKAGING.md` for precise
-interfaces and current SSH/HTTPS authentication isolation limits. This candidate
-does not accept the entire Step 1, perform real main integration, or implement
-REL1C build/artifact/Human/tag/draft/upload/publication gates.
+interfaces and current SSH/HTTPS authentication isolation limits. This legacy
+entry does not accept the entire Step 1 or perform real production integration.
+The separate workflow entry composes Integration -> independent final-main
+receipt -> BuildController -> exact-artifact Human receipt -> signed publication
+plan -> Publisher. Its candidate release/asset recovery additionally requires
+external exact-ID reconciliation; deployment/authentication remain unavailable.
 
 ```text
 Build ClassroomTranscriber.command

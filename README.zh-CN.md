@@ -291,7 +291,7 @@ ignored 环境都会在执行前被拒绝，随后 interpreter、uv、环境代�
 
 ### REL1C1 workflow 候选
 
-新增候选入口只接受 `release_workflow.py status|build|resume|human-gate`。
+workflow 入口接受 `status|build|resume|human-gate|prepare|pipeline-status|pipeline-resume|publish`。
 独立签署的 workflow 批准必须绑定全部控制模块及实际加载的包装 helper/dependency closure、完整构建工具集、父/REL1B/REL1C
 合同及最终 Step 1 审核和 Owner 集成决定。REL1B 原入口继续使用原四模块范围。
 生产 trust 和 protected entry 尚未部署；仓库入口缺少它们时停止，不提供 caller-selected
@@ -303,7 +303,7 @@ source receipt、真实 Git 对象/parents/tree/源码字节及精确远端 refs
 获取/构建、App 生成的前后各有 inherited-pipe checkpoint；每次重核批准、source/tools
 和已获取的解释器/import 输入字节，只允许已审核阶段的输出路径新增。
 成功执行后实际调用原 Runtime verifier、canonical App provenance 和 ZIP helper，
-保留精确包和 Human 目录。本次实施未正式构建或发布；C1 仍待独立审核，生产部署、
+保留精确包和 Human 目录。本次实施未正式构建或发布；C1 已独立接受，C2/C3、生产部署、
 整个 Step 1 验收及真实产物人工验收仍未完成。`resume` 验证幸存产物事实，或把未知
 build/package outcome 标为待审核，不重跑。后续明确调用 `build` 使用新的唯一路径，
 保留历史 attempt，不从记录恢复环境信任。
@@ -311,7 +311,7 @@ build/package outcome 标为待审核，不重跑。后续明确调用 `build` �
 `human-gate` 验证独立外部签署的 Owner PASS，绑定精确 ZIP、source、attempt、App
 身份/tree 及保留解压目录。每次 artifact/Human consultation 都直接比对 ZIP member
 和保留 App 的 bytes、modes、结构及 symlink targets，分别重算 hash 不足以通过。workflow 不能制造或签署 PASS；记录状态和集成许可不能代替
-receipt。即使 fixture PASS 也不提供 tag、draft、upload 或 publish。新 workflow 状态及
+receipt。PASS 本身不启用发布，还须独立 publication plan 和已批准 transport。新 workflow 状态及
 artifact 使用独立于 REL1B journal 的目录；新 attempt 保留旧 ZIP、Human 目录和失败证据。
 
 未来人工验收必须在 Finder 打开该精确保留目录中的 `ClassroomTranscriber.app`，验证
@@ -320,6 +320,36 @@ Clean 控件、录制中/停止后重命名及全文恢复 Yes/No。该 App 使�
 如被 macOS 阻止，通过“隐私与安全性 → 仍要打开”。记录实际硬件、语言及模型限制；
 1.0.0 历史验收不能批准 1.1.0。receipt 协议及分阶段构建边界详见
 [`PACKAGING.md`](PACKAGING.md#rel1c1-candidate-receipts-and-recovery)。
+
+### C2/C3 发布与统一流程候选
+
+候选实现增加固定 GitHub adapter，以及调用原集成/构建/Human 控制器的路由层，
+仍待独立审核，不代表真实 main 已集成、新 App/ZIP 已构建或 Release 已接受。
+生产 protected entry 和认证 transport 尚未部署，当前仓库 CLI 会安全停止。
+未来部署后的固定入口为:
+
+```text
+release_workflow.py prepare
+release_workflow.py pipeline-status
+release_workflow.py pipeline-resume
+release_workflow.py human-gate
+release_workflow.py publish
+```
+
+`prepare` 先调用原集成控制器，停在独立 final-main receipt 门禁；获得该精确外部
+批准后再次调用，才进入原 fresh build/package 链，最终停在精确产物人工验收。
+已有 artifact 只核验、不覆盖。`pipeline-status` 只读本地提示，不证明完成。
+任何命令都不会签署决定或替 Human 写 PASS。
+`pipeline-resume` 只恢复已有阶段，不启动缺失的任务，也不自动重建未知 build。
+独立 source/Human/远端 reconciliation 门禁仍须通过；原 `resume` 保留 C1 的精确语义。
+
+`publish` 每阶段重核精确 ZIP 的签名 PASS、source/tools 和独立 publication plan，
+依次处理确定性 annotated `1.1.0` tag、固定 draft/title/notes、唯一 ZIP，先核 draft
+实际下载 bytes，再转正式/latest，最后复核公开 metadata 与下载 bytes。
+没有 force、clobber 或删除历史对象。结果未知时停机；跨 invocation 的 release/asset
+归属必须有独立签署、绑定精确 ID 的 reconciliation，不能凭同名、相同字段或 journal
+checksum 捡回对象。保留证据，不手工改状态来跳 gate。准确协议及仍需 Owner 决定的
+生产部署/认证事项见 [`PACKAGING.md`](PACKAGING.md#c2c3-publication-pipeline-and-production-gates)。
 
 ## 架构
 

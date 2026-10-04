@@ -299,7 +299,8 @@ WORKFLOW_HELPERS = ('scripts/release_identity.py', 'scripts/build_release_zip.py
                     'scripts/verify_packaged_runtime.py', 'model_integrity.py', 'resource_paths.py')
 WORKFLOW_DATA = ('packaging/model_manifest.json',)
 WORKFLOW_CONTROL_TOOLS = CONTROL_TOOLS + WORKFLOW_HELPERS + tuple('scripts/' + name + '.py' for name in (
-    'release_workflow', 'release_workflow_state', 'release_artifact', 'release_human_gate'))
+    'release_workflow', 'release_workflow_state', 'release_artifact', 'release_human_gate',
+    'release_publication', 'release_publication_state', 'release_pipeline'))
 WORKFLOW_REQUIRED_TOOLS = REQUIRED_TOOLS + tuple(
     item for item in WORKFLOW_CONTROL_TOOLS if item not in REQUIRED_TOOLS
 ) + ('RELEASE_NOTES_1.1.0.md',) + tuple(
@@ -310,6 +311,8 @@ WORKFLOW_PURPOSE = 'release-workflow-control'
 RECEIPT_PURPOSES = {
     'integration': 'independent-final-main-source',
     'artifact-human': 'owner-exact-artifact-decision',
+    'publication-plan': 'owner-fixed-publication-plan',
+    'publication-reconciliation': 'owner-exact-publication-reconciliation',
 }
 
 
@@ -457,3 +460,9 @@ def authenticated_receipt(policy: WorkflowPolicy, auth: Authorization, kind: str
     require(all(value[key] == item for key, item in expected.items()), 'RECEIPT_BINDING')
     require(raw == canonical(value), 'SCHEMA_INVALID')
     return value, digest(raw)
+
+
+def authorize_integration(policy: Policy) -> Authorization:
+    """Code-defined scope selection, never selected by a payload or CLI flag."""
+    require(type(policy) in (Policy, WorkflowPolicy), 'APPROVAL_POLICY')
+    return authorize_workflow(policy) if type(policy) is WorkflowPolicy else authorize(policy)
