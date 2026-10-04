@@ -110,6 +110,7 @@ import os
 import sys
 import contextlib
 import hashlib
+import re
 import select
 import signal
 import stat
@@ -159,6 +160,9 @@ def fresh_source(repo: Path):
 
 EVENTS = ('before:python', 'after:python', 'before:runtime', 'after:runtime',
           'before:app', 'after:app')
+VALIDATION_CACHE_ROOT = '.tools/cache/interpreter-v4'
+VALIDATION_CACHE_HEX = re.compile(r'[0-9a-f]{16}\Z')
+VALIDATION_CACHE_MAX_BYTES = 64 * 1024
 
 
 def execution_snapshot(repo):
@@ -259,6 +263,67 @@ def permitted_creation(relative, stage):
     return relative in parents or any(relative == root or relative.startswith(root + '/') for root in roots)
 
 
+def validated_lock_cache(before, after):
+    """One pinned offline lock check may acquire one native interpreter record.
+
+    This is not a cache exclusion or general stage permission. Every prior item
+    stays identical; new directories must be ancestors of the sole new record.
+    All safety/type/link checks have already run in execution_snapshot.
+    """
+    require(all(after.get(key) == item for key, item in before.items()), 'ENVIRONMENT_CHANGED')
+    added = {key: item for key, item in after.items() if key not in before}
+    if not added:
+        return after
+    files = [key for key, item in added.items() if item[0] == 'file']
+    require(len(files) == 1, 'VALIDATION_CACHE_UNEXPECTED')
+    leaf = files[0]
+    parts = Path(leaf).parts
+    require(len(parts) == 5 and '/'.join(parts[:3]) == VALIDATION_CACHE_ROOT and
+            VALIDATION_CACHE_HEX.fullmatch(parts[3]) is not None and
+            parts[4].endswith('.msgpack') and
+            VALIDATION_CACHE_HEX.fullmatch(parts[4][:-8]) is not None,
+            'VALIDATION_CACHE_UNEXPECTED')
+    allowed = {VALIDATION_CACHE_ROOT, str(Path(leaf).parent), leaf}
+    require(set(added) <= allowed and 0 < added[leaf][2] <= VALIDATION_CACHE_MAX_BYTES and
+            stat.S_IMODE(added[leaf][1][2]) in (0o600, 0o644), 'VALIDATION_CACHE_UNEXPECTED')
+    require(all(item[0] == 'directory' and stat.S_IMODE(item[1][2]) in (0o700, 0o755)
+                for key, item in added.items() if key != leaf), 'VALIDATION_CACHE_UNEXPECTED')
+    return after
+
+
+def verification_command(argv, *, cwd, env, timeout):
+    """Bound and reap a verifier and its newly owned process group only."""
+    process = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, start_new_session=True)
+    try:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise Stop('ENVIRONMENT_VERIFY_TIMEOUT') from None
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            raise Stop('ENVIRONMENT_VERIFY_CLEANUP_FAILED') from None
+        else:
+            # The leader has been reaped. A remaining group is a descendant,
+            # not permission to continue with a background writable process.
+            raise Stop('ENVIRONMENT_VERIFY_CHILDREN')
+        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+    finally:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            raise Stop('ENVIRONMENT_VERIFY_CLEANUP_FAILED') from None
+        try:
+            process.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            raise Stop('ENVIRONMENT_VERIFY_CLEANUP_FAILED') from None
+
+
 @contextlib.contextmanager
 def subprocess_environment(env):
     # The unchanged helpers launch synchronous subprocesses without an env
@@ -284,6 +349,7 @@ class BuildController:
         self.store = release_workflow_state.StateStore(self.auth)
         self.proof = None  # Never serialized or reconstructed from a state label.
         self.events = []
+        self.lock_cache_acquisition_started = False
         self.fixture_checkpoint = fixture_checkpoint
         self.fixture_runtime = fixture_runtime
         self.fixture_verifier = fixture_verifier
@@ -335,8 +401,55 @@ class BuildController:
     def clone(self):
         return self.workspace
 
-    def verify_environment(self):
-        release_integration.Integration.verify_environment(self, self.env)
+    def verify_environment(self, *, acquire_lock_cache=False):
+        # C1 retains REL1B's exact probe/lock checks, but grants a creation
+        # boundary to the lock command alone, once after fresh Python bootstrap.
+        # Python probe and uv --version never receive that permission.
+        if acquire_lock_cache:
+            require(self.events == ['before:python'] and not self.lock_cache_acquisition_started,
+                    'VALIDATION_CACHE_UNEXPECTED')
+            self.lock_cache_acquisition_started = True  # Failure also consumes it.
+        deadline = time.monotonic() + 20
+        # Reauthenticate external authority/Git/source facts at both ends.
+        # Each command also rehashes the entire immutable input tree. Repeating
+        # the full Git audit between probes adds no input protection and can
+        # exhaust the original 30s shell acknowledgement window.
+        self.revalidate()
+        def run(argv):
+            self.check_environment_proof()
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, 'ENVIRONMENT_VERIFY_TIMEOUT')
+            result = verification_command(argv, cwd=self.workspace, env=self.env, timeout=remaining)
+            require(time.monotonic() < deadline, 'ENVIRONMENT_VERIFY_TIMEOUT')
+            return result
+        self.check_environment_paths(present=True)
+        python = self.workspace / '.venv/bin/python'
+        result = run([str(python), '-B', '-I', '-c', release_integration.ENV_PROBE])
+        require(result.returncode == 0, 'ENVIRONMENT_INVALID')
+        value = decode(result.stdout)
+        require(type(value) is dict and set(value) == {'prefix', 'base_prefix', 'base_executable', 'version'} and
+                value['prefix'] == str(self.workspace / '.venv') and value['version'] == '3.12.14',
+                'ENVIRONMENT_INVALID')
+        for key in ('base_prefix', 'base_executable'):
+            require(type(value[key]) is str and Path(value[key]).is_relative_to(self.workspace / '.tools/python'),
+                    'ENVIRONMENT_INVALID')
+            inspect_path(Path(value[key]), owner=os.getuid(), directory=key == 'base_prefix')
+        uv = self.workspace / '.tools/uv/0.12.5/uv'
+        inspect_path(uv, owner=os.getuid())
+        result = run([str(uv), '--version'])
+        require(result.returncode == 0 and result.stdout.split()[:2] == [b'uv', b'0.12.5'],
+                'ENVIRONMENT_INVALID')
+        result = run([str(uv), 'lock', '--check', '--offline'])
+        require(result.returncode == 0, 'LOCK_INVALID')
+        current = execution_snapshot(self.workspace)
+        if acquire_lock_cache:
+            validated_lock_cache(self.proof, current)
+        else:
+            require(current == self.proof, 'ENVIRONMENT_CHANGED')
+        self.revalidate()
+        require(time.monotonic() < deadline, 'ENVIRONMENT_VERIFY_TIMEOUT')
+        if acquire_lock_cache:
+            self.proof = current  # Commit only the complete successful operation.
 
     def verify_runtime(self):
         self.check_environment_proof()
@@ -388,7 +501,7 @@ class BuildController:
                     'BUILD_OUTPUT_UNEXPECTED')
             self.proof = current
             if stage == 'python':
-                self.verify_environment()
+                self.verify_environment(acquire_lock_cache=True)
             elif stage == 'runtime':
                 self.verify_runtime()
             else:

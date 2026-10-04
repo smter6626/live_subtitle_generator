@@ -341,6 +341,35 @@ generated minimal synthetic wheel with `UV_LINK_MODE=copy`, no index, and Python
 downloads disabled into a fresh outside-source Downloads fixture. It requires a
 populated native wheel-cache directory link and checks the real target bytes.
 
+C1 also handles one expected side effect of the first validation after fresh
+Python acquisition. It retains the legacy exact Python prefix/base executable,
+version, pinned uv version and `uv lock --check --offline` checks. The full input
+proof, including source/tool bytes and identity, is checked before each command.
+External authority/Git/source facts receive the full audit at verification entry
+and exit and at the surrounding checkpoints. Only that first
+successful, fixed lock-check command can add at most one interpreter record at
+`.tools/cache/interpreter-v4/<16-lowercase-hex-key>/<16-lowercase-hex>.msgpack`.
+The record must be a current-owner, single-link regular file, 1..65536 bytes,
+mode 0600 or 0644; at most its root/key ancestors may be new real directories,
+mode 0700 or 0755. Every prior cache/source/tool/interpreter item must remain
+identical. Python probing and uv version checks cannot create any inputs. The
+complete post-command scan and external-authority revalidation must both pass
+before this one-time acquisition commits to the proof; the checkpoint then rechecks
+the frozen tree before acknowledgement. Failure consumes the permission without adopting changed bytes;
+later checks have no creation permission, including for another valid-shaped
+interpreter record. Unknown uv layouts, larger/multiple records, aliases,
+unsafe owners/modes and prior-item replacement stop for review, not automatic
+compatibility expansion. No cache directory or external validation cache is
+excluded or trusted from persisted state. Synchronous verification has a 20s
+budget and the original shell's 30s acknowledgement/lifetime protocol is unchanged.
+Each verifier has a newly owned process group. Timeout, exception or surviving
+background descendants stops validation and kills/reaps that group only; cleanup
+uncertainty cannot grant a successful environment proof.
+The native regression uses the original SHA-verified Python bootstrap on complete
+fresh tracked sources, not an old interpreter: actual uv/Python acquisition,
+frozen sync, original environment smoke, lock check and all six checkpoints run.
+Runtime/App children remain signed synthetic fixtures, never a formal build.
+
 Cache directory links are supported only at `wheels-v6/pypi/<package>/<wheel>` or
 `wheels-v6/url/<source>/<package>/<wheel>`, pointing by relative text directly to a
 real `archive-v0/<id>` directory inside the same freshly acquired `.tools/cache`.
@@ -362,9 +391,10 @@ and tracked bytes are validated, and its original verifier runs with the acquire
 interpreter. App provenance is checked after a successful fresh invocation, then
 the original ZIP helper returns actual `ReleaseMetadata`. Snapshot proof exists only
 in that invocation's memory; version output and stored checksums cannot replace it.
-Tests use independently signed, explicitly synthetic stage scripts and a separate
-fixture Runtime verifier seam; they do not establish real acquisition or formal App
-success. The fixture seams are unavailable from production CLI.
+Most tests use independently signed, explicitly synthetic stage scripts and a separate
+fixture Runtime verifier seam. The native Python regression above establishes only
+its fresh pinned Python acquisition/validation route, not a formal Runtime/App build
+or whole-release success. The fixture seams are unavailable from production CLI.
 
 The artifact layer consumes the existing ZIP helper's `ReleaseMetadata`, canonical
 App-adjacent provenance and original round-trip checks. Fixtures exercise the real

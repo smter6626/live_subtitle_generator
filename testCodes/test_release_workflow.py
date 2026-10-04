@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import uuid
 import zipfile
@@ -135,7 +136,7 @@ def synthetic_controller(fixture, checkpoint=None):
 
 
 class Fixture:
-    def __init__(self, root, *, synthetic=False, stage_overrides=None):
+    def __init__(self, root, *, synthetic=False, stage_overrides=None, full_source=False):
         self.root = root / ('case-' + uuid.uuid4().hex)
         self.root.mkdir(mode=0o700)
         self.policy = approval.WorkflowPolicy(self.root)
@@ -150,6 +151,16 @@ class Fixture:
             target = self.source / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(REPO / relative, target)
+        if full_source:
+            # The original environment smoke imports actual product modules.
+            # Fill complete current tracked bytes BEFORE the first signed commit;
+            # never copy ignored .venv/cache, credentials or fixture keys.
+            tracked = integration.run_git(REPO, 'ls-files', '-z').stdout.decode().split('\0')
+            for relative in filter(None, tracked):
+                target = self.source / relative
+                if not target.exists():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(REPO / relative, target)
         if synthetic:
             for name, text in {**synthetic_stages(), **(stage_overrides or {})}.items():
                 (self.source / 'scripts' / name).write_text(text)
@@ -582,6 +593,207 @@ class CacheLockTests(unittest.TestCase):
         with self.assertRaises(approval.Stop) as failure:
             workflow.execution_snapshot(alias)
         self.assertEqual(failure.exception.code, 'PATH_SYMLINK')
+
+
+class ValidationCacheTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.root = retained_root()
+
+    def test_lock_delta_is_one_bounded_native_record_and_immutable_prior_tree(self):
+        kinds = ('native', 'no-change', 'two-leaves', 'two-keys', 'extra-directory',
+                 'other-cache', 'root-file', 'key-file', 'bad-key', 'bad-leaf',
+                 'empty', 'oversized', 'executable', 'writable', 'symlink', 'hardlink',
+                 'existing-bytes', 'existing-inode', 'deleted-input', 'foreign-owner')
+        for kind in kinds:
+            with self.subTest(kind=kind):
+                root = Path(tempfile.mkdtemp(prefix='lock-delta-', dir=self.root))
+                cache = root / '.tools/cache'
+                cache.mkdir(parents=True, mode=0o700)
+                existing = cache / 'previous'
+                existing.write_bytes(b'previous acquired bytes\n')
+                before = workflow.execution_snapshot(root)
+                leaf = cache / 'interpreter-v4/0123456789abcdef/fedcba9876543210.msgpack'
+                if kind == 'no-change':
+                    self.assertEqual(workflow.validated_lock_cache(before, before), before)
+                    continue
+                leaf.parent.mkdir(parents=True)
+                leaf.write_bytes(b'unit native-shaped interpreter cache\n')
+                if kind == 'two-leaves':
+                    leaf.with_name('0123456789abcdef.msgpack').write_bytes(b'extra')
+                elif kind == 'two-keys':
+                    other = leaf.parent.with_name('fedcba9876543210')
+                    other.mkdir()
+                    (other / leaf.name).write_bytes(b'extra')
+                elif kind == 'extra-directory':
+                    (leaf.parent / 'unused').mkdir()
+                elif kind == 'other-cache':
+                    (cache / 'other').write_bytes(b'extra')
+                elif kind == 'root-file':
+                    shutil.rmtree(cache / 'interpreter-v4')
+                    (cache / 'interpreter-v4').write_bytes(b'not directory')
+                elif kind == 'key-file':
+                    shutil.rmtree(leaf.parent)
+                    leaf.parent.write_bytes(b'not directory')
+                elif kind == 'bad-key':
+                    leaf.parent.rename(leaf.parent.with_name('not-native'))
+                elif kind == 'bad-leaf':
+                    leaf.rename(leaf.with_name('not-native.msgpack'))
+                elif kind == 'empty':
+                    leaf.write_bytes(b'')
+                elif kind == 'oversized':
+                    leaf.write_bytes(b'x' * (workflow.VALIDATION_CACHE_MAX_BYTES + 1))
+                elif kind in ('executable', 'writable'):
+                    leaf.chmod(0o755 if kind == 'executable' else 0o666)
+                elif kind == 'symlink':
+                    leaf.unlink()
+                    leaf.symlink_to(existing)
+                elif kind == 'hardlink':
+                    leaf.unlink()
+                    os.link(existing, leaf)
+                elif kind == 'existing-bytes':
+                    existing.write_bytes(b'changed')
+                elif kind == 'existing-inode':
+                    existing.rename(self.root / ('retired-' + uuid.uuid4().hex))
+                    existing.write_bytes(b'previous acquired bytes\n')
+                elif kind == 'deleted-input':
+                    existing.unlink()
+                original = Path.lstat
+                def stat_result(path):
+                    info = original(path)
+                    if kind == 'foreign-owner' and path == leaf:
+                        values = list(info)
+                        values[4] = os.getuid() + 1
+                        return os.stat_result(values)
+                    return info
+                with mock.patch.object(Path, 'lstat', stat_result):
+                    if kind == 'native':
+                        after = workflow.execution_snapshot(root)
+                        self.assertEqual(workflow.validated_lock_cache(before, after), after)
+                        self.assertEqual(after[leaf.relative_to(root).as_posix()][-1],
+                                         approval.digest(leaf.read_bytes()))
+                    else:
+                        with self.assertRaises(approval.Stop):
+                            workflow.validated_lock_cache(before, workflow.execution_snapshot(root))
+
+    def test_creation_permission_covers_only_lock_command_once_after_python(self):
+        for kind in ('lock', 'python-probe', 'uv-version', 'lock-failure', 'second-leaf',
+                     'source-change', 'uv-change', 'interpreter-change', 'authority-change',
+                     'later-replacement'):
+            with self.subTest(kind=kind):
+                f = Fixture(self.root, synthetic=True)
+                controller = synthetic_controller(f)
+                original = workflow.verification_command
+                lock_count = 0
+                saved_proof = None
+                def injected(argv, *args, **kwargs):
+                    nonlocal lock_count, saved_proof
+                    result = original(argv, *args, **kwargs)
+                    if not hasattr(controller, 'workspace'):
+                        return result
+                    python = str(controller.workspace / '.venv/bin/python')
+                    uv = str(controller.workspace / '.tools/uv/0.12.5/uv')
+                    lock = argv == [uv, 'lock', '--check', '--offline']
+                    selected = (lock and kind not in ('python-probe', 'uv-version') or
+                                kind == 'python-probe' and argv[0] == python or
+                                kind == 'uv-version' and argv == [uv, '--version'])
+                    if selected:
+                        leaf = controller.workspace / '.tools/cache/interpreter-v4/0123456789abcdef/fedcba9876543210.msgpack'
+                        if not leaf.exists():
+                            leaf.parent.mkdir(parents=True)
+                            leaf.write_bytes(b'bounded synthetic validation cache\n')
+                        if lock:
+                            lock_count += 1
+                            if lock_count == 1:
+                                saved_proof = dict(controller.proof)
+                            if kind == 'lock-failure':
+                                return subprocess.CompletedProcess(argv, 1, b'', b'fixed failure')
+                            if kind == 'second-leaf' and lock_count == 2:
+                                leaf.with_name('0123456789abcdef.msgpack').write_bytes(b'extra')
+                            if kind == 'later-replacement' and lock_count == 2:
+                                leaf.rename(f.root / 'retired-msgpack')
+                                leaf.write_bytes(b'bounded synthetic validation cache\n')
+                            if kind == 'authority-change':
+                                f.write('revoked.json', approval.canonical({
+                                    'schema_version': 1, 'ids': [controller.auth.payload['id']]}))
+                            relative = {'source-change': 'model_integrity.py',
+                                        'uv-change': '.tools/uv/0.12.5/uv',
+                                        'interpreter-change': '.tools/python/bin/python'}.get(kind)
+                            if relative:
+                                (controller.workspace / relative).write_bytes(b'replaced input\n')
+                    return result
+                with mock.patch.object(workflow, 'verification_command', injected):
+                    if kind == 'lock':
+                        self.assertEqual(controller.execute(), 'ARTIFACT_RECORDED_C1_ONLY')
+                        self.assertEqual(controller.events, list(workflow.EVENTS))
+                        self.assertGreaterEqual(lock_count, 4)
+                    else:
+                        with self.assertRaises(approval.Stop):
+                            controller.execute()
+                        self.assertEqual(controller.events, ['before:python', 'after:python']
+                                         if kind in ('second-leaf', 'later-replacement') else ['before:python'])
+                        if saved_proof is not None and kind not in ('second-leaf', 'later-replacement'):
+                            self.assertEqual(controller.proof, saved_proof)
+                self.assertTrue(controller.lock_cache_acquisition_started)
+                with self.assertRaises(approval.Stop) as failure:
+                    controller.verify_environment(acquire_lock_cache=True)
+                self.assertEqual(failure.exception.code, 'VALIDATION_CACHE_UNEXPECTED')
+
+    def test_verifier_timeout_and_background_descendant_stop_and_clear_owned_group(self):
+        root = Path(tempfile.mkdtemp(prefix='owned-verifier-', dir=self.root))
+        env = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'TMPDIR': str(root)}
+        self.assertEqual(workflow.verification_command(
+            [sys.executable, '-I', '-c', 'print("verified")'], cwd=root, env=env,
+            timeout=5).stdout, b'verified\n')
+        for kind in ('timeout', 'background'):
+            with self.subTest(kind=kind):
+                marker = root / (kind + '.json')
+                source = ('import json,os,subprocess,sys,time; '
+                          'child=subprocess.Popen([sys.executable,"-I","-c","import time; time.sleep(60)"],'
+                          'stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); '
+                          'open(sys.argv[1],"w").write(json.dumps({"leader":os.getpid(),"child":child.pid})); '
+                          + ('time.sleep(60)' if kind == 'timeout' else 'print("done")'))
+                with self.assertRaises(approval.Stop) as failure:
+                    workflow.verification_command([sys.executable, '-I', '-c', source, str(marker)],
+                                                  cwd=root, env=env, timeout=1)
+                self.assertEqual(failure.exception.code,
+                                 'ENVIRONMENT_VERIFY_TIMEOUT' if kind == 'timeout' else 'ENVIRONMENT_VERIFY_CHILDREN')
+                owned = json.loads(marker.read_text())
+                for pid in owned.values():
+                    # A transient reparented zombie is stopped, not writable.
+                    result = subprocess.run(['/bin/ps', '-p', str(pid), '-o', 'stat='],
+                                            capture_output=True, check=False)
+                    self.assertTrue(not result.stdout.strip() or result.stdout.strip().startswith(b'Z'))
+
+    def test_original_fresh_python_bootstrap_lock_check_controller_and_six_checkpoints(self):
+        f = Fixture(self.root, synthetic=True, full_source=True, stage_overrides={
+            'bootstrap_python_env.sh': (REPO / 'scripts/bootstrap_python_env.sh').read_text()})
+        controller = synthetic_controller(f)
+        timings = []
+        original = controller.checkpoint
+        def timed(event):
+            start = time.monotonic()
+            original(event)
+            elapsed = time.monotonic() - start
+            timings.append({'event': event, 'seconds': elapsed})
+            self.assertLess(elapsed, 30, 'Original shell has a 30s acknowledgement deadline')
+        controller.checkpoint = timed
+        self.assertEqual(controller.execute(), 'ARTIFACT_RECORDED_C1_ONLY')
+        self.assertEqual(controller.events, list(workflow.EVENTS))
+        value = controller.store.inspect()
+        build_log = Path(value['artifact']['evidence']['build']['path'])
+        self.assertIn(b'[python-bootstrap] smoke PASS', build_log.read_bytes())
+        records = {name: item for name, item in controller.proof.items()
+                   if name.startswith(workflow.VALIDATION_CACHE_ROOT + '/') and item[0] == 'file'}
+        self.assertTrue(records, 'Fresh original acquisition must cover real interpreter msgpack records')
+        self.assertEqual(workflow.execution_snapshot(controller.workspace), controller.proof)
+        (f.root / 'native-python-validation-report.json').write_text(json.dumps({
+            'scope': 'Original SHA-verified uv/Python acquisition, frozen sync and original 5-test smoke; '
+                     'actual controller/original shell/ZIP; signed synthetic Runtime/App only, no formal build',
+            'events': controller.events, 'checkpoint_timings': timings, 'state': value['state'],
+            'workspace': str(controller.workspace), 'proof_entries': len(controller.proof),
+            'interpreter_cache_records': records, 'build_log': value['artifact']['evidence']['build'],
+            'package_log': value['artifact']['evidence']['package']}, indent=2) + '\n')
 
 
 class WorkflowTests(unittest.TestCase):
