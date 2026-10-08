@@ -7,7 +7,7 @@
 | Repository | `smter6626/live_subtitle_generator` (Classroom Live Transcriber) |
 | Branch | Historical `main`/`codex/clean-toolbar-rename-v1` baseline plus `codex/release-1-1-0-automation`; real feature/main integration remains pending |
 | Structural baseline | Original full scan at `4d2059d273d0ba94373b1969b8236ef462b6acae`; affected architecture ownership/flows updated through Product Polish Step 1F, session clipboard UI commit `cb4261825b7d51d3ec33a97e083683c50e6b9e82`, window-layout commit `569e5c551c101811ed80fca23bd5708d6ac880cf`, and final Clean full-text recovery R2 commit `fb317ea4a2b1db557133e91590e852c0241a3cd8`. |
-| Updated | 2026-10-03; accepted REL1A/REL1B/C1 and C2/C3 publication/pipeline candidate architecture |
+| Updated | 2026-10-07; explicit lightweight entry/local decisions/native authentication over retained release controllers |
 | Scan scope | 65 Git-tracked files at the original map baseline; later structural syncs update affected ownership/flows without re-running a full-file recount |
 | Document role | A derived architecture and change-navigation aid, not a product contract or API reference |
 
@@ -60,6 +60,26 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 ## File and module map
 
 ### REL1C control ownership
+
+The current Human-authorized entry is `release_lightweight.py --approval <absolute
+local record> status|integrate|prepare|resume|human-gate|publish`. It selects an exact,
+independent `LightweightPolicy` and ordinary purpose-specific Reviewer/Human audit
+records in `release_lightweight_approval.py`. This new implementation awaits its own
+independent review; it does not establish a formal package or published release.
+
+The entry reuses Integration, BuildController, artifact/state and Publisher/pipeline,
+not a second Agent loop. Native Git/gh authentication is scoped to this explicit
+policy; caller token/config/import overrides are not inherited, legacy or different
+nested policies are rejected, and the context always resets. Source/build/ZIP and
+fixed remote-object checks remain unchanged. `artifact-human` additionally requires
+explicit `publish_allowed: true`; ordinary references record actual decisions,
+without a signing key or same-uid cryptographic anti-forgery promise. Legacy root/
+signature entries below remain compatible but are not current deployment gates.
+
+| New module | Responsibility / boundary | Direct regression |
+| --- | --- | --- |
+| `scripts/release_lightweight.py` | Explicit local-approval CLI and scoped native transport; routes only to the original controllers. No CLI fixture/fake-origin switch or automatic Human PASS. | `test_release_lightweight.py`; exact CLI refusal, local Git/checkpoints/ZIP/fake-gh and read-only status. |
+| `scripts/release_lightweight_approval.py` | Strict ordinary local approval/decision-reference/complete tool-contract input identities; validates purpose-specific source, Human allow, plan and exact-ID reconciliation records. No config epoch, signer, signature, key or production auth deployment. | `test_release_lightweight.py`; schema/path/reference/tool drift, missing or wrong Human decision/allow and changed artifact rejection. |
 
 C1's synchronous inherited-pipe build/package controller was independently accepted.
 C2/C3 adds fixed publication and routing candidates awaiting independent review.

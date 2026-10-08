@@ -273,6 +273,39 @@ mkdir -p "$HOME/Downloads/classroom-transcriber-release/artifacts"
 
 Do not treat this short section as a replacement for the packaging and deployment contracts.
 
+### Current lightweight release workflow
+
+The current Owner-authorized path is [`scripts/release_lightweight.py`](scripts/release_lightweight.py),
+not deployment of the legacy protected/signature entry. It uses ordinary local
+Reviewer/Human decision references and the existing native Git/gh login:
+
+```bash
+.venv/bin/python -B scripts/release_lightweight.py \
+  --approval /absolute/Downloads/task/decisions/approval.json status
+```
+
+Commands are `status|integrate|prepare|resume|human-gate|publish`. The Reviewer
+supplies the local records after actual review; the Executor must not manufacture
+Human PASS. `prepare` reuses the original divergent integration and strict gate,
+stops for exact final-main review, then on a later call reuses the original fresh
+six-checkpoint build and ZIP verifier. It stops again for Human testing of that
+exact retained App/ZIP. `publish` requires both PASS and explicit
+`publish_allowed: true`; changed bytes, a missing decision, or FAIL stops before
+tag/draft/upload. A rebuild requires new Human testing. See the field examples in
+[`PACKAGING.md`](PACKAGING.md#current-lightweight-release-workflow).
+
+No root-owned entry, signing key, dedicated group, copied credentials or custom
+authentication bridge is required. Prompt-based role separation is the authority;
+local hashes fix inputs but do not cryptographically prevent same-uid forgery.
+The fixed repository, source/ZIP identities, no-force/no-clobber behavior and
+actual remote/download reconciliation remain enforced. Logs/metadata stay local;
+terminal output is a short stage or fixed STOP code. This new implementation still
+requires independent review and does not claim that a formal 1.1.0 package exists.
+
+The following REL1B/C1/C2 sections describe retained legacy compatibility, not
+current deployment requirements. Their root/signature gates are superseded for
+the explicit lightweight entry, not silently removed from the old entry.
+
 ### REL1B integration controller
 
 REL1A's version/App/ZIP identity foundation and REL1B's integration controller

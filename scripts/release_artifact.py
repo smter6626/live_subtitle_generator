@@ -18,6 +18,7 @@ from release_integration import (
     audit_git, check_remote, check_source, clean, git, run_git, worktree_bytes,
 )
 from release_identity import app_tree_sha256, validate_build_provenance
+from release_approval import LIGHTWEIGHT_PURPOSE, LIGHTWEIGHT_REQUIRED_TOOLS
 from build_release_zip import BundleEntry, ReleaseMetadata, snapshot_bundle, validate_archive, verify_round_trip
 
 APP = 'ClassroomTranscriber.app'
@@ -40,7 +41,9 @@ def verify_implementation(auth: Authorization):
 
 
 def verify_tools(repo: Path, auth: Authorization, revision=None):
-    for relative in WORKFLOW_REQUIRED_TOOLS:
+    required = (LIGHTWEIGHT_REQUIRED_TOOLS if auth.payload.get('purpose') == LIGHTWEIGHT_PURPOSE
+                else WORKFLOW_REQUIRED_TOOLS)
+    for relative in required:
         if revision is None:
             data = read_file(repo / relative)
         else:

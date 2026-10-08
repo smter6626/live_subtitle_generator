@@ -246,6 +246,7 @@ def validate_payload(value, policy: Policy, config: dict, config_bytes: bytes, s
 
 
 def authorize(policy: Policy, *, entry: bool = True) -> Authorization:
+    _check_transport_scope(policy)
     policy.check_fixture()
     try:
         inspect_path(policy.root, owner=0 if policy.fixture_root is None else os.getuid(),
@@ -400,6 +401,10 @@ def _workflow_entry(policy: WorkflowPolicy, config):
 
 
 def authorize_workflow(policy: WorkflowPolicy) -> Authorization:
+    _check_transport_scope(policy)
+    if type(policy) is LightweightPolicy:
+        from release_lightweight_approval import local_authorization
+        return local_authorization(policy)
     config_raw, config, signers, revoked_raw, revoked = _workflow_trust(policy)
     _workflow_entry(policy, config)
     raw = _verify_workflow_signature(policy, 'workflow-approval', policy.namespace)
@@ -435,6 +440,9 @@ def authorize_workflow(policy: WorkflowPolicy) -> Authorization:
 
 def authenticated_receipt(policy: WorkflowPolicy, auth: Authorization, kind: str, names):
     """Read a separately signed, purpose-specific external decision; never sign it."""
+    if type(policy) is LightweightPolicy:
+        from release_lightweight_approval import local_receipt
+        return local_receipt(policy, auth, kind, names)
     require(kind in RECEIPT_PURPOSES, 'RECEIPT_PURPOSE')
     require(authorize_workflow(policy) == auth, 'APPROVAL_CHANGED')
     config_raw, config, signers, _, revoked = _workflow_trust(policy)
@@ -464,5 +472,53 @@ def authenticated_receipt(policy: WorkflowPolicy, auth: Authorization, kind: str
 
 def authorize_integration(policy: Policy) -> Authorization:
     """Code-defined scope selection, never selected by a payload or CLI flag."""
-    require(type(policy) in (Policy, WorkflowPolicy), 'APPROVAL_POLICY')
-    return authorize_workflow(policy) if type(policy) is WorkflowPolicy else authorize(policy)
+    require(type(policy) in (Policy, WorkflowPolicy, LightweightPolicy), 'APPROVAL_POLICY')
+    return authorize(policy) if type(policy) is Policy else authorize_workflow(policy)
+
+
+# Explicit, prompt-authorized mode, not a fixture subclass or signature bypass.
+LIGHTWEIGHT_PURPOSE = 'release-lightweight-control'
+LIGHTWEIGHT_REQUIRED_TOOLS = WORKFLOW_REQUIRED_TOOLS + (
+    'scripts/release_lightweight.py', 'scripts/release_lightweight_approval.py')
+
+
+@dataclass(frozen=True)
+class LightweightPolicy:
+    approval_path: Path
+    fixture_root: Path | None = None  # Python-only hermetic test seam; no CLI flag.
+
+    @property
+    def root(self):
+        return self.approval_path.parent
+
+    @property
+    def contracts(self):
+        if self.fixture_root is None:
+            return {'parent': WORKLOAD / 'workload_static.md', 'rel1c': WORKLOAD / 'rel1c_static.md'}
+        return {name: self.fixture_root / (name + '.md') for name in ('parent', 'rel1c')}
+
+    def check_fixture(self):
+        if self.fixture_root is None:
+            return
+        root = self.fixture_root
+        require(root.name.startswith('case-') and root.parent.name.startswith('rel1c-lightweight-fixtures.') and
+                root.is_relative_to(downloads()) and self.approval_path == root / 'decisions/approval.json',
+                'FIXTURE_BOUNDARY')
+        inspect_path(root, owner=os.getuid(), mode=0o700, directory=True)
+        inspect_path(root.parent, owner=os.getuid(), mode=0o700, directory=True)
+
+    def trust_file(self, name):
+        # Compatibility name only: these files are ordinary local audit records,
+        # not OS-protected or cryptographically independent authority.
+        require(name in ('integration-evidence.json',), 'LOCAL_RECORD_INVALID')
+        return read_file(self.root / name, owner=os.getuid(), mode=0o600)
+
+
+def _check_transport_scope(policy):
+    # Prevent accidental legacy/nested controller routing through an already
+    # selected lightweight native transport. No import or environment flag can
+    # select native mode for the legacy authorization path.
+    import sys
+    module = sys.modules.get('release_integration')
+    active = module._NATIVE_POLICY.get() if module is not None else None
+    require(active is None or type(policy) is LightweightPolicy and policy == active, 'TRANSPORT_POLICY')

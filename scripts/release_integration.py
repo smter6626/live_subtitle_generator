@@ -7,6 +7,8 @@ import pwd
 import stat
 import subprocess
 import uuid
+import contextlib
+import contextvars
 from pathlib import Path
 
 from release_approval import (Authorization, FEATURE, MAIN, ORIGINS, REQUIRED_TOOLS, Policy,
@@ -14,6 +16,40 @@ from release_approval import (Authorization, FEATURE, MAIN, ORIGINS, REQUIRED_TO
                               authorize_integration, decode, digest, hex_value,
                               inspect_path, read_file, require)
 from release_journal import Journal, fsync_directory
+from release_approval import LightweightPolicy, LIGHTWEIGHT_PURPOSE, LIGHTWEIGHT_REQUIRED_TOOLS
+
+_NATIVE_POLICY = contextvars.ContextVar('release_native_policy', default=None)
+
+
+@contextlib.contextmanager
+def native_authentication(policy):
+    """Explicit lightweight invocation, reset even on interruption; no env flag."""
+    require(type(policy) is LightweightPolicy and _NATIVE_POLICY.get() is None, 'TRANSPORT_POLICY')
+    authorize_integration(policy)
+    token = _NATIVE_POLICY.set(policy)
+    try:
+        yield
+    finally:
+        _NATIVE_POLICY.reset(token)
+
+
+def native_environment(policy):
+    require(type(policy) is LightweightPolicy, 'TRANSPORT_POLICY')
+    policy.check_fixture()
+    env = {'PATH': '/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+           'HOME': pwd.getpwuid(os.getuid()).pw_dir, 'LC_ALL': 'C',
+           'GIT_TERMINAL_PROMPT': '0', 'GIT_NO_REPLACE_OBJECTS': '1',
+           'GIT_ATTR_NOSYSTEM': '1', 'GIT_OPTIONAL_LOCKS': '0',
+           'GIT_AUTHOR_NAME': 'Classroom Release Controller', 'GIT_AUTHOR_EMAIL': 'release-controller@localhost',
+           'GIT_COMMITTER_NAME': 'Classroom Release Controller', 'GIT_COMMITTER_EMAIL': 'release-controller@localhost'}
+    if policy.fixture_root is None:
+        if 'SSH_AUTH_SOCK' in os.environ:
+            env['SSH_AUTH_SOCK'] = os.environ['SSH_AUTH_SOCK']
+    else:
+        env.update({'HOME': str(policy.fixture_root), 'GIT_CONFIG_NOSYSTEM': '1',
+                    'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_CONFIG_SYSTEM': '/dev/null',
+                    'GIT_SSH_COMMAND': '/usr/bin/false'})
+    return env
 
 GIT = '/usr/bin/git'
 MESSAGE = 'Integrate independently accepted Classroom Transcriber release implementation'
@@ -27,6 +63,8 @@ ENV_PROBE = (
 
 
 def environment():
+    if _NATIVE_POLICY.get() is not None:
+        return native_environment(_NATIVE_POLICY.get())
     # Do not inherit GIT_*, DYLD_*, PYTHON*, credential helpers or UV_*.
     return {
         'PATH': '/usr/bin:/bin:/usr/sbin:/sbin',
@@ -56,6 +94,13 @@ def run_git(repo: Path | None, *args: str, env=None, allow_failure=False):
                '-c', 'protocol.ssh.allow=always', '-c', 'protocol.https.allow=always',
                '-c', 'http.followRedirects=false', '-c', 'maintenance.auto=false',
                '-c', 'gc.auto=0']
+    if _NATIVE_POLICY.get() is not None:
+        # Let native Git consult its existing normal login, never extract keys
+        # or copy credentials. Hook/ref/object checks remain in force.
+        index = command.index('credential.helper=')
+        del command[index - 1:index + 1]
+        if _NATIVE_POLICY.get().fixture_root is not None:
+            command += ['-c', 'protocol.ssh.allow=never', '-c', 'protocol.https.allow=never']
     if repo is not None:
         command += ['-C', str(repo)]
     result = subprocess.run([*command, *args], capture_output=True, env=env or environment(), check=False)
@@ -146,7 +191,8 @@ def clean(repo: Path):
 
 def tools(repo: Path, auth: Authorization, revision: str | None = None):
     # Workflow authorization has a fixed larger closure; legacy remains exact.
-    required = WORKFLOW_REQUIRED_TOOLS if auth.payload.get('purpose') == 'release-workflow-control' else REQUIRED_TOOLS
+    required = (LIGHTWEIGHT_REQUIRED_TOOLS if auth.payload.get('purpose') == LIGHTWEIGHT_PURPOSE else
+                WORKFLOW_REQUIRED_TOOLS if auth.payload.get('purpose') == 'release-workflow-control' else REQUIRED_TOOLS)
     for relative in required:
         if revision is None:
             data = read_file(repo / relative)

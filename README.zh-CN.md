@@ -267,6 +267,34 @@ mkdir -p "$HOME/Downloads/classroom-transcriber-release/artifacts"
 
 本节只是快速入口，不能代替 packaging 和 deployment contracts。
 
+### 当前轻量发布流程
+
+当前 Owner 授权使用 [`scripts/release_lightweight.py`](scripts/release_lightweight.py)，
+不部署下文保留兼容的 protected/signature 入口。批准来自真实 Reviewer/Human
+对话 reference，普通本地记录固定输入，Git/gh 使用本机既有原生登录:
+
+```bash
+.venv/bin/python -B scripts/release_lightweight.py \
+  --approval /absolute/Downloads/task/decisions/approval.json status
+```
+
+命令为 `status|integrate|prepare|resume|human-gate|publish`。主 Reviewer 复核后
+提供对应记录；Executor 不能制造人工 PASS。`prepare` 复用原真实分叉集成和
+完整 strict gate，停在精确最终 main 审核；得到记录后再次调用，复用原 fresh
+六 checkpoint 构建及 ZIP 验证，再停在该精确保留 App/ZIP 的人工测试。
+`publish` 同时要求 PASS 和明确的 `publish_allowed: true`。缺决定、FAIL、换包
+或 App 字节改变都会在 tag/draft/upload 前停止；重建必须重新人工测试。
+字段及制作示例见 [`PACKAGING.md`](PACKAGING.md#current-lightweight-release-workflow)。
+
+不需要 root entry、签署私钥、专属 group、凭据复制或新认证桥。角色权限由
+prompt 分工约束，hash 只绑定事实，不保证同 UID 恶意写入者不能伪造批准。
+固定仓库/source/ZIP、no-force/no-clobber 和真实远端/下载对账继续生效。
+详细日志/元数据只留本地，终端显示简短阶段或固定 STOP code。新实现仍待独立
+审核，不声称已经存在正式 1.1.0 包。
+
+下列 REL1B/C1/C2 段落是旧入口兼容说明，不是当前部署待办。轻量入口明确替代
+旧 root/signature gate；旧入口本身的拒绝规则没有被静默取消。
+
 ### REL1B 集成控制器
 
 REL1A 的版本、App/ZIP 身份基础层及 REL1B 集成控制器均已在各自有界实现范围内独立接受。

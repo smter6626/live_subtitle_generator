@@ -9,6 +9,7 @@ import signal
 import stat
 import subprocess
 import uuid
+import shutil
 from pathlib import Path
 
 from release_approval import (SHA, Stop, absolute, authenticated_receipt,
@@ -19,6 +20,7 @@ import release_human_gate as human
 import release_integration as integration
 from release_publication_state import PublicationStore
 from release_journal import fsync_directory
+from release_approval import LightweightPolicy
 
 REPOSITORY = 'smter6626/live_subtitle_generator'
 HOST = 'github.com'
@@ -71,6 +73,12 @@ class GhTransport:
     """Exact signed executable/config directory; never extract or pass tokens."""
     def __init__(self, policy, transport, *, revalidate):
         self.policy, self.value, self.revalidate = policy, transport, revalidate
+        if type(policy) is LightweightPolicy:
+            fields(transport, ('executable', 'sha256'))
+            self.executable = absolute(transport['executable'])
+            hex_value(transport['sha256'])
+            self.check()
+            return
         fields(transport, ('executable', 'sha256', 'config_dir', 'config_gid'))
         self.executable = absolute(transport['executable'])
         self.config = absolute(transport['config_dir'])
@@ -91,6 +99,15 @@ class GhTransport:
         inspect_path(self.executable)
         require(os.access(self.executable, os.X_OK) and self.executable.resolve(strict=True) == self.executable and
                 digest(read_file(self.executable, limit=128 * 1024 * 1024)) == self.value['sha256'], 'TRANSPORT_CHANGED')
+        if type(self.policy) is LightweightPolicy:
+            self.policy.check_fixture()
+            if self.policy.fixture_root is not None:
+                require(self.executable == self.policy.fixture_root / 'fake-gh', 'FIXTURE_BOUNDARY')
+            else:
+                found = shutil.which('gh', path=integration.native_environment(self.policy)['PATH'])
+                require(found is not None and Path(found).resolve(strict=True) == self.executable,
+                        'TRANSPORT_UNAVAILABLE')
+            return
         if self.policy.fixture_root is not None:
             inspect_path(self.config, owner=os.getuid(), mode=0o700, directory=True)
             require(self.value['config_gid'] == os.getgid(), 'FIXTURE_BOUNDARY')
@@ -110,6 +127,11 @@ class GhTransport:
                 require(path.lstat().st_gid == gid and os.access(path, os.R_OK), 'TRANSPORT_UNAVAILABLE')
 
     def environment(self):
+        if type(self.policy) is LightweightPolicy:
+            env = integration.native_environment(self.policy)
+            env.update({'GH_HOST': HOST, 'GH_PROMPT_DISABLED': '1', 'GH_NO_UPDATE_NOTIFIER': '1',
+                        'GH_NO_EXTENSION_UPDATE_NOTIFIER': '1', 'NO_COLOR': '1'})
+            return env
         return {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'GH_CONFIG_DIR': str(self.config),
                 'GH_HOST': HOST, 'GH_PROMPT_DISABLED': '1', 'GH_NO_UPDATE_NOTIFIER': '1',
                 'GH_NO_EXTENSION_UPDATE_NOTIFIER': '1', 'NO_COLOR': '1'}

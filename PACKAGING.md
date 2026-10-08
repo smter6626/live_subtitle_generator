@@ -149,7 +149,149 @@ Models, `.venv`, `.tools`, `external`, source-tree files, build caches, and user
 
 The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. REL1A/REL1B/C1 were independently accepted for their bounded implementation scopes. C2/C3 publication/routing is an implementation candidate awaiting independent review. A real 1.1.0 integration, fresh build, Human artifact review and publication remain pending.
 
+## Current lightweight release workflow
+
+The Owner selected the explicit lightweight entry instead of deploying the old
+protected-entry/signature scheme. This is prompt-based Reviewer/Executor control:
+the Reviewer records real decisions, the agent prepares the exact final package,
+the Human tests it and explicitly permits publication, then the agent publishes
+those same bytes. It does not promise cryptographic approval independence from a
+malicious same-uid writer. The legacy sections below remain compatibility history,
+not a requirement to install root-owned tools, signing keys, groups or auth bridges.
+
+```bash
+.venv/bin/python -B scripts/release_lightweight.py \
+  --approval /absolute/Downloads/task/decisions/approval.json status
+```
+
+The same prefix accepts `integrate`, `prepare`, `resume`, `human-gate`, and `publish`.
+Only `status` is a local read-only hint. `integrate` runs the original isolated
+two-parent Integration and live full strict gate, including ordinary feature/main
+push, then stops for independent final-main review. `prepare` runs that stage if
+no source decision exists; with a valid source decision it calls the original
+BuildController and stops at exact-artifact Human review. Six inherited-pipe
+checkpoints, fresh pinned environments, Runtime verification, canonical provenance,
+ZIP CRC/boundary/bytes/modes/symlink correspondence and retained extraction are
+unchanged. No existing artifact is rebuilt by `prepare`. `resume` starts no missing
+work, never restores an environment proof from a hash, and uses the original
+conservative unknown-build and publication reconciliation routes.
+
+### Ordinary local records
+
+Use a dedicated 0700 `decisions/` outside the source and workflow output roots.
+JSON records are canonical JSON (sorted keys, compact separators, ASCII escapes,
+one final newline), 0600 regular single-link files, with no symlink ancestors.
+These are audit records, not secrets or signing keys. The Reviewer creates them
+only when the referenced decision actually exists; they are never tracked in Git.
+
+`approval.json` has exactly the fields defined in
+`release_lightweight_approval.APPROVAL_FIELDS`. A schematic example follows;
+angle-bracket values must be replaced by independently checked actual facts:
+
+```json
+{
+  "schema_version": 1,
+  "mode": "lightweight",
+  "id": "release-1-1-0-reviewed-attempt",
+  "accepted_commit": "<full implementation SHA>",
+  "tools": {"<every LIGHTWEIGHT_REQUIRED_TOOLS path>": "<actual SHA-256>"},
+  "contracts": {"parent": "<current Static SHA-256>", "rel1c": "<current C Static SHA-256>"},
+  "reviewer_reference": "conversation-implementation-review-ACCEPT",
+  "integration_authorization_reference": "conversation-owner-integration-authorized",
+  "repository": "smter6626/live_subtitle_generator",
+  "origin": "git@github.com:smter6626/live_subtitle_generator.git",
+  "main_ref": "refs/heads/main",
+  "feature_ref": "refs/heads/codex/release-1-1-0-automation",
+  "main": "<fresh remote main SHA>",
+  "feature_prior": null,
+  "baseline": "<actual sole merge-base SHA>",
+  "implementation": "/absolute/Downloads/implementation",
+  "managed": "/absolute/Downloads/task/integration",
+  "workflow": "/absolute/Downloads/task/workflow",
+  "uid": 501
+}
+```
+
+The UID is the actual executing UID, not necessarily 501. `feature_prior` is null
+only if a fresh remote check proves the fixed feature ref absent. The tools map
+must cover the code-defined complete `LIGHTWEIGHT_REQUIRED_TOOLS` set, including
+both new entry/approval helpers, with actual reviewed bytes, not arbitrary caller
+subsets. Parent/REL1C Static hashes and all source/ref/path identities are rechecked.
+No config epoch, signer list, revocation registry or `.sig` is used in this mode.
+Existing state key `trust_sha256` holds only the contract-input hash for schema
+compatibility; it is not an independently protected trust root.
+
+Each subsequent record uses the same five common fields:
+
+```json
+{
+  "schema_version": 1,
+  "id": "unique-local-decision-id",
+  "purpose": "<fixed purpose for this file>",
+  "authorization_sha256": "<SHA-256 of exact approval.json bytes>",
+  "decision_reference": "conversation-real-independent-decision-reference"
+}
+```
+
+IDs/references are 1..80 ASCII letters, digits, `_` or `-`; keep a readable link
+from this compact reference to the actual conversation/evidence in the task audit.
+Do not replace a missing Human response with an invented reference.
+
+| File and fixed purpose | Additional exact fields / preparation |
+| --- | --- |
+| `integration.json`: `independent-final-main-source` | `decision: "ACCEPT"`, `source_repository`, `source_commit`, `source_tree`, ordered `parents`, `baseline`, `main_ref`, `feature_ref`, `final_main`, `final_feature`, `evidence_sha256`. The Reviewer derives these from actual Git/strict results and puts compact independent evidence in adjacent `integration-evidence.json`; its bytes are hashed. Source must be the managed `clone`, with actual parents `[original main, accepted implementation]`, both ancestors, verified tree/tools and current refs. |
+| `artifact-human.json`: `owner-exact-artifact-decision` | `decision: "PASS"` or `"FAIL"`, `publish_allowed: true` only after explicit Human permission, `integration_receipt_sha256`, `artifact`. Copy the entire exact validated artifact object from workflow state, including source, ZIP path/size/hash, retained App tree/path and build/package log hashes. PASS without explicit allow is insufficient. A failed test must never set PASS. |
+| `publication-plan.json`: `owner-fixed-publication-plan` | `artifact_id`, `human_receipt_sha256`, `source_commit`, `source_tree`, fixed `notes_sha256`, explicit integer `tag_timestamp`, deterministic `tag_oid`, `transport`. Native transport is exactly `{"executable": "<resolved existing gh path>", "sha256": "<actual executable hash>"}`. It is not a credential directory or token. The annotated tag object is computed from the exact source/timestamp using `release_publication.tag_identity`. |
+| `publication-reconciliation.json`: `owner-exact-publication-reconciliation` | Needed only for cross-invocation remote objects/unknown results. `plan_sha256`, `artifact_id`, `human_receipt_sha256`, `source_commit`, `tag_oid`, observed positive integer `release_id`, positive integer/null `asset_id`, `phase: "DRAFT"`, `"UPLOADED"` or `"PUBLISHED"`. The main Reviewer explicitly verifies observed IDs, full metadata, ownership history and package bindings before recording the real reference. Matching names/fields or rehashing advanced state alone never grant adoption. |
+
+For example, after the Human tests the exact retained App and explicitly permits
+release, the ordinary artifact record combines those five common fields with:
+
+```json
+{
+  "decision": "PASS",
+  "publish_allowed": true,
+  "integration_receipt_sha256": "<exact integration.json SHA-256>",
+  "artifact": "<complete current validated artifact object, not a Boolean>"
+}
+```
+
+These are schema illustrations, not ready-made PASS records. The agent must not
+pre-create Human PASS, use synthetic fixture records in production, or fabricate
+a decision. Missing/wrong-purpose/changed records, FAIL, no explicit allow, changed
+source, ZIP or retained App stop before tag/draft/upload. Every publication write
+revalidates actual source and package bytes. Rebuilds use new attempts and need
+new Human testing; historical 1.0.0 or source/offscreen PASS is not artifact PASS.
+
+### Native authentication and recovery
+
+Only the explicit `LightweightPolicy` entry selects scoped native transport;
+legacy/nested mixed-policy routing is rejected and the context resets in `finally`.
+Git uses its normal existing login/config/SSH agent, gh uses its normal login and
+resolved executable hash. The controller never reads private keys or token/config
+contents, extracts tokens, copies credentials, runs auth login/setup-git, or changes
+global config. Caller Git/Python/dyld/UV/token overrides are not inherited. Fixed
+repo/origin/refs and repository-local config/hooks/object audits still apply.
+
+The original Publisher supplies fixed tag/title/notes/one asset, UTF-8 JSON stdin,
+binary upload, exact draft download before publication, formal/latest verification
+and a new public download with the same size/SHA. No force, overwrite, clobber,
+foreign same-name adoption or automatic history deletion is added. Unknown effects
+first reconcile actual remote facts, then stop for a genuine Reviewer reference
+where ownership cannot be established; no blind duplicate create/upload occurs.
+No log or notification contains credentials or a complete environment dump.
+
+Tests use a distinct Python-only `LightweightPolicy` seam limited to new 0700
+`Downloads/rel1c-lightweight-fixtures.*/case-*` roots, exact local `remote.git`,
+case-local fake gh and an isolated HOME. Production CLI cannot select this seam,
+test root, fake origin or callback/synthetic build. Fixture Runtime/App/strict
+gates are labelled synthetic and do not count as real delivery or Human PASS.
+
 ## REL1B approval, integration, and recovery
+
+This section and the legacy C1/C2 sections below describe the retained protected
+entries. Their deployment/signature/auth-bridge requirements are superseded for
+the current lightweight entry above, not outstanding Owner approval requests.
 
 The accepted REL1B controller accepts exactly one positional command:
 
