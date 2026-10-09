@@ -365,7 +365,7 @@ class BuildController:
         require(source == self.source and checksum == self.source_hash, 'SOURCE_RECEIPT_CHANGED')
         if hasattr(self, 'workspace'):
             repo = self.workspace
-            release_integration.audit_git(repo, self.auth.payload['origin'])
+            release_integration.audit_git(repo, self.auth.payload['origin'], allow_pinned_cmake=True)
             release_integration.clean(repo)
             release_integration.worktree_bytes(repo)
             release_artifact.verify_tools(repo, self.auth)

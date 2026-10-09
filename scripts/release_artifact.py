@@ -246,7 +246,7 @@ def fix_metadata(metadata: ReleaseMetadata, *, auth: Authorization, source,
     root = absolute(auth.payload['workflow'])
     require(workspace == root / 'attempts' / attempt / 'source', 'ARTIFACT_PATH')
     inspect_path(workspace, owner=os.getuid(), mode=0o700, directory=True)
-    audit_git(workspace, auth.payload['origin'])
+    audit_git(workspace, auth.payload['origin'], allow_pinned_cmake=True)
     clean(workspace)
     verify_tools(workspace, auth)
     worktree_bytes(workspace)
