@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "product_version": "1.1.0",
+  "tag": "1.1.0",
+  "title": "Classroom Transcriber 1.1.0",
+  "asset_name": "ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip",
+  "app_name": "ClassroomTranscriber.app",
+  "release_notes_path": "RELEASE_NOTES_1.1.0.md",
+  "release_notes_sha256": "69013bcae2de876202b3c6d2633fcb75a659b1f5f413cd905295eb6431a12703",
+  "repository": "smter6626/live_subtitle_generator",
+  "canonical_origins": [
+    "git@github.com:smter6626/live_subtitle_generator.git",
+    "https://github.com/smter6626/live_subtitle_generator.git"
+  ],
+  "models": "external",
+  "signing": "ad-hoc",
+  "notarized": false,
+  "status": "candidate-unbuilt-unpublished"
+}

@@ -21,9 +21,14 @@ import ui_app as ui_module  # noqa: E402
 from model_manager import load_app_settings, save_app_settings  # noqa: E402
 from settings import (  # noqa: E402
     DEFAULT_UI_LANGUAGE,
+    ORIGINAL_LANGUAGE_AUTO_DETECT,
     ORIGINAL_LANGUAGE_CHINESE,
     ORIGINAL_LANGUAGE_ENGLISH,
-    ORIGINAL_LANGUAGE_MIXED,
+    ORIGINAL_LANGUAGE_FRENCH,
+    ORIGINAL_LANGUAGE_GERMAN,
+    ORIGINAL_LANGUAGE_JAPANESE,
+    ORIGINAL_LANGUAGE_KOREAN,
+    ORIGINAL_LANGUAGE_SPANISH,
     UI_LANGUAGE_EN,
     UI_LANGUAGE_ZH,
     whisper_language_code_for_label,
@@ -75,7 +80,7 @@ class UiLanguageContractTests(unittest.TestCase):
             for key, value in self.translations[language].items():
                 self.assertTrue(value.strip(), f"empty {language} translation for {key}")
 
-        self.assertEqual(self.translations["zh"]["ui_language"], "界面语言")
+        self.assertEqual(self.translations["zh"]["ui_language"], "语言/Language")
         self.assertEqual(
             self.translations["zh"]["original_language"],
             "音频原始语言",
@@ -91,18 +96,33 @@ class UiLanguageContractTests(unittest.TestCase):
             UI_LANGUAGE_ZH: {
                 ORIGINAL_LANGUAGE_ENGLISH: "英语",
                 ORIGINAL_LANGUAGE_CHINESE: "中文",
-                ORIGINAL_LANGUAGE_MIXED: "中英混合",
+                ORIGINAL_LANGUAGE_JAPANESE: "日语",
+                ORIGINAL_LANGUAGE_FRENCH: "法语",
+                ORIGINAL_LANGUAGE_SPANISH: "西班牙语",
+                ORIGINAL_LANGUAGE_GERMAN: "德语",
+                ORIGINAL_LANGUAGE_KOREAN: "韩语",
+                ORIGINAL_LANGUAGE_AUTO_DETECT: "自动检测",
             },
             UI_LANGUAGE_EN: {
                 ORIGINAL_LANGUAGE_ENGLISH: "English",
                 ORIGINAL_LANGUAGE_CHINESE: "Chinese",
-                ORIGINAL_LANGUAGE_MIXED: "Mixed Chinese/English",
+                ORIGINAL_LANGUAGE_JAPANESE: "Japanese",
+                ORIGINAL_LANGUAGE_FRENCH: "French",
+                ORIGINAL_LANGUAGE_SPANISH: "Spanish",
+                ORIGINAL_LANGUAGE_GERMAN: "German",
+                ORIGINAL_LANGUAGE_KOREAN: "Korean",
+                ORIGINAL_LANGUAGE_AUTO_DETECT: "Auto Detect",
             },
         }
         expected_codes = {
             ORIGINAL_LANGUAGE_ENGLISH: "en",
             ORIGINAL_LANGUAGE_CHINESE: "zh",
-            ORIGINAL_LANGUAGE_MIXED: "auto",
+            ORIGINAL_LANGUAGE_JAPANESE: "ja",
+            ORIGINAL_LANGUAGE_FRENCH: "fr",
+            ORIGINAL_LANGUAGE_SPANISH: "es",
+            ORIGINAL_LANGUAGE_GERMAN: "de",
+            ORIGINAL_LANGUAGE_KOREAN: "ko",
+            ORIGINAL_LANGUAGE_AUTO_DETECT: "auto",
         }
         for ui_language, labels in expectations.items():
             ui_module.set_current_language(ui_language)
@@ -200,6 +220,8 @@ class UiLanguageContractTests(unittest.TestCase):
             "stop_button",
             "ui_language_title_label",
             "original_language_title_label",
+            "copy_clean_path_button",
+            "copy_clean_text_button",
             "model_group",
             "output_group",
             "session_group",
@@ -245,6 +267,10 @@ class UiLanguageContractTests(unittest.TestCase):
 
             controller = window.controller
             original_language = window.language_combo.currentData()
+            chinese_original_language_labels = [
+                window.language_combo.itemText(index)
+                for index in range(window.language_combo.count())
+            ]
             beam = window.beam_combo.currentData()
             output_base = window.app_settings.output_base_dir
             english_index = window.ui_language_combo.findData(UI_LANGUAGE_EN)
@@ -253,6 +279,10 @@ class UiLanguageContractTests(unittest.TestCase):
 
             self.assertEqual(window.windowTitle(), "Whisper Classroom Transcriber")
             self.assertEqual(window.start_button.text(), "Start Recording")
+            self.assertEqual(window.ui_language_title_label.text(), "Interface Language")
+            self.assertEqual(window.copy_clean_path_button.text(), "Copy Clean Path")
+            self.assertEqual(window.copy_clean_text_button.text(), "Copy New Text")
+            self.assertEqual(window.rename_clean_button.text(), "Rename Clean TXT")
             self.assertEqual(
                 window.original_language_title_label.text(),
                 "Audio / Original Language",
@@ -260,6 +290,22 @@ class UiLanguageContractTests(unittest.TestCase):
             self.assertEqual(window.clean_table.table.horizontalHeaderItem(1).text(), "Text")
             self.assertIs(window.controller, controller)
             self.assertEqual(window.language_combo.currentData(), original_language)
+            self.assertEqual(
+                [
+                    window.language_combo.itemText(index)
+                    for index in range(window.language_combo.count())
+                ],
+                [
+                    "English",
+                    "Chinese",
+                    "Japanese",
+                    "French",
+                    "Spanish",
+                    "German",
+                    "Korean",
+                    "Auto Detect",
+                ],
+            )
             self.assertEqual(window.beam_combo.currentData(), beam)
             self.assertEqual(window.app_settings.output_base_dir, output_base)
 
@@ -268,8 +314,16 @@ class UiLanguageContractTests(unittest.TestCase):
             app.processEvents()
             self.assertEqual(window.windowTitle(), "Whisper 课堂实时转写")
             self.assertEqual(window.start_button.text(), "开始录音")
+            self.assertEqual(window.ui_language_title_label.text(), "语言/Language")
+            self.assertEqual(window.copy_clean_path_button.text(), "复制 Clean 路径")
+            self.assertEqual(window.copy_clean_text_button.text(), "复制新增文本")
+            self.assertEqual(window.rename_clean_button.text(), "重命名 Clean TXT")
             self.assertEqual(window.original_language_title_label.text(), "音频原始语言")
             self.assertEqual(window.clean_table.table.horizontalHeaderItem(1).text(), "正文")
+            self.assertEqual(
+                chinese_original_language_labels,
+                ["英语", "中文", "日语", "法语", "西班牙语", "德语", "韩语", "自动检测"],
+            )
             window.safe_shutdown()
 
 

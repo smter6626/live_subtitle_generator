@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,16 +53,38 @@ MAX_BEAM_SIZE = 8
 
 ORIGINAL_LANGUAGE_ENGLISH = "English"
 ORIGINAL_LANGUAGE_CHINESE = "Chinese"
-ORIGINAL_LANGUAGE_MIXED = "Mixed Chinese/English"
+ORIGINAL_LANGUAGE_JAPANESE = "Japanese"
+ORIGINAL_LANGUAGE_FRENCH = "French"
+ORIGINAL_LANGUAGE_SPANISH = "Spanish"
+ORIGINAL_LANGUAGE_GERMAN = "German"
+ORIGINAL_LANGUAGE_KOREAN = "Korean"
+ORIGINAL_LANGUAGE_AUTO_DETECT = "Auto Detect"
+# Retained for source compatibility with callers that used the former constant.
+ORIGINAL_LANGUAGE_MIXED = ORIGINAL_LANGUAGE_AUTO_DETECT
+
+# This tuple is the authoritative ordered list for selectors and configuration.
+ORIGINAL_LANGUAGE_CHOICES = (
+    ORIGINAL_LANGUAGE_ENGLISH,
+    ORIGINAL_LANGUAGE_CHINESE,
+    ORIGINAL_LANGUAGE_JAPANESE,
+    ORIGINAL_LANGUAGE_FRENCH,
+    ORIGINAL_LANGUAGE_SPANISH,
+    ORIGINAL_LANGUAGE_GERMAN,
+    ORIGINAL_LANGUAGE_KOREAN,
+    ORIGINAL_LANGUAGE_AUTO_DETECT,
+)
 ORIGINAL_LANGUAGE_OPTIONS = {
     ORIGINAL_LANGUAGE_ENGLISH: "en",
     ORIGINAL_LANGUAGE_CHINESE: "zh",
-    ORIGINAL_LANGUAGE_MIXED: "auto",
+    ORIGINAL_LANGUAGE_JAPANESE: "ja",
+    ORIGINAL_LANGUAGE_FRENCH: "fr",
+    ORIGINAL_LANGUAGE_SPANISH: "es",
+    ORIGINAL_LANGUAGE_GERMAN: "de",
+    ORIGINAL_LANGUAGE_KOREAN: "ko",
+    ORIGINAL_LANGUAGE_AUTO_DETECT: "auto",
 }
 ORIGINAL_LANGUAGE_PROMPTS = {
-    ORIGINAL_LANGUAGE_ENGLISH: "",
-    ORIGINAL_LANGUAGE_CHINESE: "",
-    ORIGINAL_LANGUAGE_MIXED: "",
+    label: "" for label in ORIGINAL_LANGUAGE_CHOICES
 }
 ORIGINAL_LANGUAGE_ALIASES = {
     "en": ORIGINAL_LANGUAGE_ENGLISH,
@@ -72,11 +95,28 @@ ORIGINAL_LANGUAGE_ALIASES = {
     "zh-cn": ORIGINAL_LANGUAGE_CHINESE,
     "chinese": ORIGINAL_LANGUAGE_CHINESE,
     "中文": ORIGINAL_LANGUAGE_CHINESE,
-    "auto": ORIGINAL_LANGUAGE_MIXED,
-    "mixed": ORIGINAL_LANGUAGE_MIXED,
-    "mixed chinese/english": ORIGINAL_LANGUAGE_MIXED,
-    "mixed chinese english": ORIGINAL_LANGUAGE_MIXED,
-    "中英混合": ORIGINAL_LANGUAGE_MIXED,
+    "ja": ORIGINAL_LANGUAGE_JAPANESE,
+    "japanese": ORIGINAL_LANGUAGE_JAPANESE,
+    "日语": ORIGINAL_LANGUAGE_JAPANESE,
+    "fr": ORIGINAL_LANGUAGE_FRENCH,
+    "french": ORIGINAL_LANGUAGE_FRENCH,
+    "法语": ORIGINAL_LANGUAGE_FRENCH,
+    "es": ORIGINAL_LANGUAGE_SPANISH,
+    "spanish": ORIGINAL_LANGUAGE_SPANISH,
+    "西班牙语": ORIGINAL_LANGUAGE_SPANISH,
+    "de": ORIGINAL_LANGUAGE_GERMAN,
+    "german": ORIGINAL_LANGUAGE_GERMAN,
+    "德语": ORIGINAL_LANGUAGE_GERMAN,
+    "ko": ORIGINAL_LANGUAGE_KOREAN,
+    "korean": ORIGINAL_LANGUAGE_KOREAN,
+    "韩语": ORIGINAL_LANGUAGE_KOREAN,
+    "auto": ORIGINAL_LANGUAGE_AUTO_DETECT,
+    "auto detect": ORIGINAL_LANGUAGE_AUTO_DETECT,
+    "mixed": ORIGINAL_LANGUAGE_AUTO_DETECT,
+    "mixed chinese/english": ORIGINAL_LANGUAGE_AUTO_DETECT,
+    "mixed chinese english": ORIGINAL_LANGUAGE_AUTO_DETECT,
+    "中英混合": ORIGINAL_LANGUAGE_AUTO_DETECT,
+    "自动检测": ORIGINAL_LANGUAGE_AUTO_DETECT,
 }
 DEFAULT_ORIGINAL_LANGUAGE_LABEL = ORIGINAL_LANGUAGE_ENGLISH
 TRANSCRIPTION_TASK = "transcribe"
@@ -133,6 +173,35 @@ def whisper_language_code_for_label(language_label: str) -> str:
 def prompt_for_original_language_label(language_label: str) -> str:
     normalized_label = normalize_original_language_label(language_label)
     return ORIGINAL_LANGUAGE_PROMPTS[normalized_label]
+
+
+_ENGLISH_ONLY_MODEL_NAME = re.compile(r"(?:^|[._-])en(?:[._-]|$)", re.IGNORECASE)
+
+
+def is_english_only_whisper_model(model_identity=None, model_path=None) -> bool:
+    """Recognize Whisper's conventional English-only ``.en`` model names."""
+    candidates = (model_identity, model_path)
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        filename = Path(str(candidate)).name.strip()
+        if filename and _ENGLISH_ONLY_MODEL_NAME.search(filename):
+            return True
+    return False
+
+
+def validate_model_language_compatibility(settings) -> list[str]:
+    """Return user-facing errors for invalid model and source-language pairs."""
+    if not is_english_only_whisper_model(settings.model, settings.whisper_cpp_model):
+        return []
+    if settings.whisper_language_code == ORIGINAL_LANGUAGE_OPTIONS[ORIGINAL_LANGUAGE_ENGLISH]:
+        return []
+    return [
+        "Cannot start transcription: English-only .en Whisper models support only "
+        "English (en). "
+        f"Selected language: {settings.original_language_label} "
+        f"({settings.whisper_language_code}). Select English or a multilingual model."
+    ]
 
 
 @dataclass(frozen=True)
@@ -278,6 +347,8 @@ def validate_runtime_paths(settings: TranscriptionSettings):
 
     if settings.whisper_language_code != whisper_language_code_for_label(settings.original_language_label):
         errors.append("Whisper language code does not match original language selection.")
+
+    errors.extend(validate_model_language_compatibility(settings))
 
     if settings.task != TRANSCRIPTION_TASK:
         errors.append("Only task='transcribe' is supported.")

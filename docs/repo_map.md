@@ -5,9 +5,9 @@
 | Field | Value |
 | --- | --- |
 | Repository | `smter6626/live_subtitle_generator` (Classroom Live Transcriber) |
-| Branch | `main` |
-| Structural baseline | Original full scan at `4d2059d273d0ba94373b1969b8236ef462b6acae`; affected architecture ownership/flows updated through Product Polish Step 1F; documentation ownership synced through the 1.0.0 README refresh. |
-| Updated | 2026-08-24 |
+| Branch | Historical `main`/`codex/clean-toolbar-rename-v1` baseline plus `codex/release-1-1-0-automation`; real feature/main integration remains pending |
+| Structural baseline | Original full scan at `4d2059d273d0ba94373b1969b8236ef462b6acae`; affected architecture ownership/flows updated through Product Polish Step 1F, session clipboard UI commit `cb4261825b7d51d3ec33a97e083683c50e6b9e82`, window-layout commit `569e5c551c101811ed80fca23bd5708d6ac880cf`, and final Clean full-text recovery R2 commit `fb317ea4a2b1db557133e91590e852c0241a3cd8`. |
+| Updated | 2026-10-07; explicit lightweight entry/local decisions/native authentication over retained release controllers |
 | Scan scope | 65 Git-tracked files at the original map baseline; later structural syncs update affected ownership/flows without re-running a full-file recount |
 | Document role | A derived architecture and change-navigation aid, not a product contract or API reference |
 
@@ -51,21 +51,68 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | Model discovery, selection/import/download UI support, app settings | `model_manager.py`, `ui_app.py` |
 | Downloadable-model integrity transaction | `model_integrity.py`, `packaging/model_manifest.json` |
 | Reproducible source runtime and App packaging | `scripts/`, `packaging/runtime_manifest.json`, `packaging/icons/`, PyInstaller specs |
-| Release artifact creation and validation | `scripts/build_release_zip.py` |
+| Release identity, App provenance, artifact creation and validation | `packaging/release_contract.json`, `scripts/release_identity.py`, `scripts/build_release_zip.py` |
+| Independent integration approval, recovery hints and live Git/test gate | `scripts/release_approval.py`, `scripts/release_journal.py`, `scripts/release_integration.py`, `scripts/release_controller.py` |
+| C1 workflow, exact-source receipt, artifact facts and independent Human decision | `scripts/release_workflow.py`, `release_workflow_state.py`, `release_artifact.py`, `release_human_gate.py`; independent workflow scope in `release_approval.py` |
 | Contract and regression coverage | `testCodes/` |
 | Governance, current state, user/build documentation | `README.md`, `README.zh-CN.md`, `PACKAGING.md`, `docs/` |
 
 ## File and module map
 
+### REL1C control ownership
+
+The current Human-authorized entry is `release_lightweight.py --approval <absolute
+local record> status|integrate|prepare|resume|human-gate|publish`. It selects an exact,
+independent `LightweightPolicy` and ordinary purpose-specific Reviewer/Human audit
+records in `release_lightweight_approval.py`. This new implementation awaits its own
+independent review; it does not establish a formal package or published release.
+
+The entry reuses Integration, BuildController, artifact/state and Publisher/pipeline,
+not a second Agent loop. Native Git/gh authentication is scoped to this explicit
+policy; caller token/config/import overrides are not inherited, legacy or different
+nested policies are rejected, and the context always resets. Source/build/ZIP and
+fixed remote-object checks remain unchanged. `artifact-human` additionally requires
+explicit `publish_allowed: true`; ordinary references record actual decisions,
+without a signing key or same-uid cryptographic anti-forgery promise. Legacy root/
+signature entries below remain compatible but are not current deployment gates.
+
+| New module | Responsibility / boundary | Direct regression |
+| --- | --- | --- |
+| `scripts/release_lightweight.py` | Explicit local-approval CLI and scoped native transport; routes only to the original controllers. No CLI fixture/fake-origin switch or automatic Human PASS. | `test_release_lightweight.py`; exact CLI refusal, local Git/checkpoints/ZIP/fake-gh and read-only status. |
+| `scripts/release_lightweight_approval.py` | Strict ordinary local approval/decision-reference/complete tool-contract input identities; validates purpose-specific source, Human allow, plan and exact-ID reconciliation records. No config epoch, signer, signature, key or production auth deployment. | `test_release_lightweight.py`; schema/path/reference/tool drift, missing or wrong Human decision/allow and changed artifact rejection. |
+
+C1's synchronous inherited-pipe build/package controller was independently accepted.
+C2/C3 adds fixed publication and routing candidates awaiting independent review.
+Production deployment, authenticated Git transport and real integration/build/Human/
+publication remain pending. Local implementation acceptance does not accept new App bytes.
+
+| Module | Responsibility / boundary | Direct regression |
+| --- | --- | --- |
+| `release_workflow.py` | Fixed status/build/resume/human-gate/prepare/pipeline-status/pipeline-resume/publish CLI, complete protected pre-import closure, unchanged C1 fresh source/build/ZIP boundaries and routing to separately gated publication. | `test_release_workflow.py`, `test_release_pipeline.py`; actual CLI refusal and snapshots. |
+| `release_workflow_state.py` | Strict separate C1 recovery hints, 0700/0600 atomic persistence, unique attempts, intent/outcome and conservative stop after partial/unknown storage. Does not enlarge the REL1B journal. | `test_release_workflow_state.py`; fsync/replace crashes, schema/path refusal. |
+| `release_artifact.py` | Independently authenticated exact main source plus audited Git/byte facts; validated `ReleaseMetadata`, canonical provenance, exact ZIP/App/retained-directory identities and rechecks. Every consultation also compares actual ZIP members to retained App bytes/modes/types/links; package facts alone do not prove a fresh build. | `test_release_artifact.py`; real local Git/signatures/ZIP and synthetic App verifier. |
+| `release_human_gate.py` | Callable separately signed exact-artifact Owner PASS/FAIL validator. Cannot sign decisions; every consultation reauthenticates and checks current files. | `test_release_human_gate.py`; valid signed fixture PASS and adversarial receipts/replacements. |
+| `release_approval.py` C1 scope | Fixed complete loaded control/helper closure and relevant protected data, complete build/C1 tools and parent/REL1B/REL1C contracts; distinct workflow configuration and purpose-specific receipts through existing trust/signature route. Legacy entry/default checks remain intact. | `test_release_approval.py` legacy and C1 scope tests. |
+| `release_publication.py` | Signed fixed plan/transport/Human/source validation, deterministic annotated tag, actual gh API UTF-8/binary requests, draft/public downloads and formal/latest checks. Cross-invocation remote IDs require independent signed reconciliation, not journal adoption. | `test_release_publication.py`; actual fake-gh subprocess and local bare tag, malformed/drift/crash cases. |
+| `release_publication_state.py` | Separate 0700/0600 atomic publication hints with strict stage/intent/ID/download schemas; checksum never grants ownership or PASS. | `test_release_publication_state.py`; rehash/permissions/atomic/read-only tests. |
+| `release_pipeline.py` | Reuses Integration, BuildController and Publisher; stops for independent final-main and exact-artifact decisions, never signs them or invents a second implementation loop. | `test_release_pipeline.py`; local two-parent/real original Python/six-checkpoint/ZIP/fake-gh chain with explicit synthetic limits. |
+
+The separate workflow layout retains `attempts`, `artifacts`, `human`, `evidence`, `tmp`,
+`state.json` and the optional fixed `publication` directory. None grants acceptance.
+Publication is a gated candidate; production deployment/authentication remain absent.
+Build proof is invocation-local and cannot
+be recovered from checksummed state. See PACKAGING for exact CLI, checkpoint paths,
+receipt fields, retained-App Human procedure and recovery boundaries.
+
 ### Runtime application modules
 
 | Path | Responsibility and important interface | Dependencies / primary users | State, side effects, and likely change impact |
 | --- | --- | --- | --- |
-| `ui_app.py` | PySide6 entry point (`main`), `MainWindow`, `ModelManagerDialog`, `TranscriptTable`, translation lookup, and `EventBridge`. Owns visible controls, transcript/log widgets, dialog lifecycle, Start/Stop requests, UI refresh, transient model-selection feedback, model-download busy feedback, output-base choice, and live UI-language switching. | Uses `TranscriptionController`, model-manager functions, settings constants, transcript parsers, crash logging. It is the PyInstaller entry. | Persists model/beam/output-base/UI-language choices through `AppSettings`; opens Finder with `open`; starts a non-Qt stop thread; receives worker events through a Qt signal. Explicit user actions own transient feedback while generic state restoration does not. Changes can affect UI responsiveness, controller state gating, persistence, transcript display, and UI contract tests. |
-| `transcription_controller.py` | Session state machine (`EngineState`) and public `start(...)` / `stop()`. Creates normalized runtime settings, validates them, creates the session store, then owns the engine instance. Converts engine events to controller/UI events. | Uses `default_settings` and `validate_runtime_paths`, `TranscriptStore`, `TranscriptionEngine`; constructed by `MainWindow`. | Owns in-memory state, current settings/store/engine. Creates a session before starting capture and emits its file locations. A change can alter Start/Stop semantics, error transitions, evidence initialization, and UI event behavior. |
+| `ui_app.py` | PySide6 entry point (`main`), `MainWindow`, `ModelManagerDialog`, `TranscriptTable`, translation lookup, and `EventBridge`. Owns visible controls, screen-aware main-window height bounds, the left controls scroll surface, transcript/log widgets, dialog lifecycle, Start/Stop requests, UI refresh, live UI-language switching, current-session display reset, and Clean rename/recovery/path/text actions. | Uses Qt screen available geometry plus `TranscriptionController`, model-manager functions, settings constants, transcript parsers, and crash logging. It is the PyInstaller entry. | Reveal/Copy Path share a left-controls row; Rename/Copy New Text sit in the Clean toolbar before Jump to Live. Raw/Logs have no rename or Clean-copy actions. Clean path actions request current writer identity verification from the Store; conclusive path absence can offer bilingual complete-history recovery, while uncertain inspection fails closed. Rename/recovery does not clear rows, counts, scroll, or copy cursor. |
+| `transcription_controller.py` | Session state machine (`EngineState`) and public `start(...)` / `stop()` / `rename_clean(...)` / `recover_clean(...)`. Creates normalized runtime settings, validates them, creates the session store, assigns UUID plus monotonic generation ownership, then owns the engine instance. Converts owned engine events to controller/UI events. | Uses `default_settings` and `validate_runtime_paths`, `TranscriptStore`, `TranscriptionEngine`; constructed by `MainWindow`. | Rename and recovery check current session ID and generation, then delegate to the current store. Stop never holds the controller's session lock while joining workers, avoiding a lock-order deadlock. File-operation validation never changes engine state. |
 | `transcription_engine.py` | Stable live-ASR implementation: capture loop, worker loop, 48 kHz capture / 16 kHz resample, 10 s chunks with 3 s overlap, final partial handling, clean-layer hallucination filter, queue events, and `stop()` drain/close behavior. | Uses `sounddevice`, `numpy`, `TranscriptionSettings`, `WhisperCppBackend` and dedup/resample helpers from `stream_transcribe.py`, and `TranscriptStore`. Created only by the controller. | Owns audio ring buffer, task queue, worker/capture threads, stop event, prior clean text. Opens the microphone; creates temporary WAVs indirectly through the backend; invokes subprocess inference; appends evidence and emits events. Changes have high ASR, microphone, evidence, timing, and UI-thread impact. |
 | `stream_transcribe.py` | Shared ASR helpers: exact/fuzzy boundary dedup, resampling, PCM WAV writer, whisper.cpp command creation/output parsing, and `WhisperCppBackend`. It also retains a separate legacy console streaming runner and optional `FasterWhisperBackend`. | Imported by settings and the production engine; directly exercised by ASR tests. The standalone `main()` is not the normal UI path. | `WhisperCppBackend.transcribe_chunk()` creates a temporary WAV and runs `whisper-cli`; legacy `main()` opens a microphone and appends timestamped root-level raw/clean files. Editing shared helpers affects both UI runtime and legacy CLI/regression cases. |
-| `transcript_store.py` | Creates one timestamp-named session directory; writes/flushes `raw.txt`, `clean.txt`, `session.log`, and `config.json`; parses displayable transcript lines. | Uses `settings.write_config_json`; used by controller, engine, UI, and tests. | Owns open file handles and evidence-file lifecycle. `TranscriptStore(output_root)` treats its argument as the actual `outputs` directory and creates `<output_root>/<timestamp>/...`. Any change can break evidence semantics, Stop finalization, or session tooling. |
+| `transcript_store.py` | Creates one timestamp-named session directory; writes/flushes `raw.txt`, `clean.txt`, `session.log`, and `config.json`; validates stems; atomically renames Clean without replacement; captures exact Clean-writer bytes and can publish a verified no-clobber recovery when the writer has no Session `.txt` path; parses displayable transcript lines. | Uses `settings.write_config_json`; used by controller, engine, UI, and tests. | The Clean lock coordinates append, inspection/snapshot, rename, recovery/writer switch, and close. Close retains a trusted exact snapshot for post-Stop recovery. Directory and writer identities gate every path result; uncertain I/O fails closed. New Sessions still start at `clean.txt`. Unsupported no-replace platforms fail closed. |
 | `settings.py` | Defines transcriber defaults, UI/original-language normalization and mapping, output-base-to-`outputs` resolution, `TranscriptionSettings`, preflight of CLI/model/output/beam/task, and config JSON serialization. | Reads path choices from `resource_paths.py` and chunk constants from `stream_transcribe.py`; used by controller, engine, model manager, UI, and tests. | Establishes source-vs-frozen defaults. `TranscriptionSettings.to_config()` becomes session `config.json`; `validate_runtime_paths()` validates executable/model/runtime values and output writability before session creation. Changes reach command arguments, saved evidence, UI labels, and test fixtures. |
 | `resource_paths.py` | Detects frozen App mode and resolves project resources, bundled resources, writable config/output/model directories, model scan roots, and source/frozen CLI/downloader/manifest paths. | Used by settings, model integrity, crash diagnostics, and model-download resource tests. | Selects source-tree versus user Library/Documents/App bundle paths; no writes itself. A path change affects settings persistence, packaged resource discovery, source mode, and Model Manager scanning. |
 | `model_manager.py` | Defines `ModelInfo` and persisted `AppSettings`; scans/deduplicates model files, computes availability, validates imports, selects defaults, builds the vendored downloader command, and delegates safe download/publish. | Loads the model contract from `model_integrity.py`; consumes settings/path defaults; called by UI and tests. | Reads/writes `config/settings.json` in source mode or Application Support in frozen mode, including output base and UI language; creates/checks model directories; launches the downloader subprocess through an injectable runner. `ModelInfo.current_summary_label` provides concise current summaries, while `display_label` retains path information for combo/log presentation; tooltips/table keep full paths accessible. |
@@ -78,16 +125,21 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | Path | Role / interface | Dependencies and side effects | Change impact / related tests |
 | --- | --- | --- | --- |
 | `Build ClassroomTranscriber.command` | Finder-facing, thin formal build entry. | Resolves the repo root and `exec`s `scripts/bootstrap_and_build.sh`. | Must remain portable and thin. `test_build_orchestration.py`. |
-| `scripts/bootstrap_and_build.sh` | Formal one-entry build orchestrator. | Requires macOS arm64; calls the Python bootstrap, Runtime bootstrap, then injects `.venv/bin/python` into the Release build; checks the produced `.app`. | The main developer-build boundary. `test_build_orchestration.py`, packaging/runtime tests. |
+| `scripts/bootstrap_and_build.sh` | Formal one-entry build orchestrator. | Requires macOS arm64; calls the Python bootstrap, Runtime bootstrap, then injects `.venv/bin/python` into the Release build; checks the produced `.app`; the C1 inherited-pipe mode synchronously authorizes before/after each stage and stops on parent lifetime EOF. | The main developer-build boundary. `test_build_orchestration.py`, packaging/runtime tests. |
 | `scripts/bootstrap_python_env.sh` | Creates or, with `--recreate`, removes/rebuilds the project `.venv` from pinned uv/Python/lock metadata. | Downloads and SHA-checks uv when needed; writes ignored `.tools/` and `.venv/`; runs environment contract tests. | Dependency lock, formal interpreter, and destructive recreate behavior are sensitive. `test_python_environment.py`, `test_runtime_manifest.py`. |
 | `scripts/bootstrap_whisper_runtime.sh` | Rebuilds or verifies (`--verify-only`) the pinned ignored whisper.cpp Runtime. | Uses manifest values through `whisper_runtime_contract.py`; may download CMake and clone/build `external/whisper.cpp`; refuses dirty/unexpected third-party state. | Controls third-party Runtime provenance and generated binary closure. `test_whisper_runtime_bootstrap.py`, `test_runtime_manifest.py`. |
 | `scripts/whisper_runtime_contract.py` | Manifest reader and source-Runtime verifier; commands: `get`, `cmake-arguments`, `artifact-records`, `verify-runtime`. | Reads `runtime_manifest.json`; invokes Git, `file`, `otool`, and the CLI smoke during verification. | Centralizes build-profile/data interpretation. Do not duplicate manifest facts in bootstrap code. Bootstrap/manifest tests protect it. |
 | `scripts/build_app_icon.py` | Manifest-driven macOS icon generator. | Validates the tracked source SHA/canvas, removes its edge-connected light matte, renders a 1024 px RGBA master and complete iconset with locked PySide6/NumPy, then calls macOS `iconutil`; writes only ignored temporary/`build/` output. | Reproducible icon quality and generated ICNS boundary. `test_app_icon.py`, manifest/packaging tests. |
-| `scripts/build_macos.sh` | Formal Release App build and hard gate. | Validates sources, deletes generated `build/` and `dist/`, generates the Manifest App icon, runs PyInstaller, normalizes App Runtime, ad-hoc signs, then verifies. | Build success semantics and generated artifacts. `test_app_icon.py`, `test_packaged_runtime.py`, `test_build_orchestration.py`. |
+| `scripts/build_macos.sh` | Formal Release App build and hard gate. | Requires clean canonical source and this clone's Python 3.12.14 `.venv`, deletes generated `build/` and `dist/`, generates the icon, runs PyInstaller, normalizes, ad-hoc signs, verifies, then writes non-clobbering canonical App provenance. | Build success semantics and generated artifacts. `test_release_identity.py`, `test_app_icon.py`, `test_packaged_runtime.py`, `test_build_orchestration.py`. |
 | `scripts/build_macos_debug.sh` | Separate console/debug PyInstaller build. | Deletes its generated debug outputs and applies permissive debug RPath adjustments. | Not the formal Release gate; changes should be checked against the Debug spec and manual debug use. |
 | `scripts/package_runtime.py` | Manifest-driven source preflight and post-PyInstaller App Runtime normalizer; subcommands `validate-sources` and `normalize-app`. | Reads manifest and model contract; modifies copied App binaries with `install_name_tool`, permissions, and resource checks. | High-risk package closure boundary; `test_packaged_runtime.py`. |
-| `scripts/verify_packaged_runtime.py` | Read-only packaged-App verifier. | Checks the Manifest App icon resource/ICNS structure/`CFBundleIconFile`, required Runtime files, arm64, RPaths/dependency closure, downloader/model manifest, codesign, bundled CLI smoke, and isolated Runtime smoke. | Formal build and Release ZIP trust boundary; `test_packaged_runtime.py` and `test_release_zip.py`. |
-| `scripts/build_release_zip.py` | Formal Release ZIP entry (`--version` required). | Requires formal Python, macOS arm64, clean Git source, and a verified App; writes a staged/final ZIP under `dist/`, extracts outside the repo, compares bytes/modes/symlinks, and re-verifies. | Release payload and provenance boundary. `test_release_zip.py`. |
+| `scripts/verify_packaged_runtime.py` | Read-only packaged-App verifier. | Checks both App plist versions equal 1.1.0, the icon resource/ICNS/`CFBundleIconFile`, required Runtime files, arm64, RPaths/dependency closure, downloader/model manifest, codesign, bundled CLI smoke, and isolated Runtime smoke. | Formal build and Release ZIP trust boundary; `test_packaged_runtime.py` and `test_release_zip.py`. |
+| `scripts/release_identity.py` | Fixed REL1A identity and canonical build-provenance helper. | Validates project/lock/App/notes/contract identity and repository origin; hashes the complete App tree, release contract, and a code-defined complete REL1A tool set; writes and validates exact canonical provenance. | Does not integrate, approve, tag, upload, publish, or control a release. `test_release_identity.py`. |
+| `scripts/release_controller.py` | Closed `status` / `integrate` / `resume` argparse and fixed-code reporting. | Uses approval, journal and integration helpers; production has no input/trust/fixture overrides. | Status is local read-only; missing independent production trust disables execution. Build/package/Human-pass/tag/draft/upload/publish remain REL1C and unavailable. |
+| `scripts/release_approval.py` | Fixed protected external trust root, code-defined tool set, detached OpenSSH signature, exact schema and no-follow path checks. | Binds implementation SHA, all tools, contracts, independent review/owner evidence, exact Git refs/origin and managed paths; validates config and revocation each stage. | Root-owned protected entry deployment and production keys/approval are pending Human decisions, not installed by this candidate. `test_release_approval.py`. |
+| `scripts/release_journal.py` | Atomic 0600 journal in a 0700 Downloads managed root, closed stages/intents and evidence validation. | fsync file, atomic replace, fsync directory; approval-bound recovery hints only. | A checksum, PASS log or push receipt is not authority. Partial/unsafe persistence stops; no automatic repair. `test_release_journal.py`. |
+| `scripts/release_integration.py` | Audited isolated clone, exact object acquisition, divergent two-parent merge, feature/main ordinary pushes and live environment/full strict gate. | Revalidates approval/source/Git config/refs at stage boundaries; uses original pinned bootstrap from absent environment and invocation-local byte/identity snapshots of uv, Python, environment code and worktree. | Existing environments stop before execution, including resume. Replacements invalidate the gate; exact feature ref avoids repeated pushes; already-updated main requires read-only Human reconciliation. Transport isolation does not establish production authentication. `test_release_controller.py`. |
+| `scripts/build_release_zip.py` | Formal fixed-1.1.0 Release ZIP entry. | Requires formal Python, macOS arm64, clean HEAD equal to an explicit commit, this clone's canonical Runtime Manifest/App/provenance, and absent artifact/extraction paths beneath one explicit Downloads task root; stages, verifies, retains extraction, and publishes with atomic no-clobber semantics. | Release payload boundary only. `test_release_zip.py`. |
 | `scripts/clean_build.sh` | Developer cleanup tool. | Deletes generated `build/`, `dist/`, and selected caches while preserving models, outputs, external Runtime, and historical `venv/`. | Destructive only for generated locations; not called by formal build. |
 | `run_long_test.sh` | Legacy long-running console transcription and system-monitoring helper. | Starts the legacy stream runner, writes ignored test-run logs, samples macOS system tools, and contains a machine-specific developer path. | It is not portable and not part of the formal build/release path; its current maintenance status is not established by source. |
 
@@ -96,6 +148,7 @@ Build wrapper -> Python bootstrap -> whisper.cpp bootstrap -> App-icon generator
 | Path / group | Responsibility | Used by / change impact |
 | --- | --- | --- |
 | `packaging/runtime_manifest.json` | Machine-readable frozen Runtime/build/bundle/release contract plus observed/pending metadata. Enumerates the seven required Runtime components, vendored downloader, model-manifest location, App-icon source/hash/generated/bundle paths, formal build entry, and release filename template. | Consumed by bootstrap/icon helpers, PyInstaller specs, Runtime normalizer/verifier, Release ZIP code, and manifest tests. It is the packaging data source of truth. |
+| `packaging/release_contract.json`, `RELEASE_NOTES_1.1.0.md` | Compact fixed 1.1.0 product/repository/candidate identity and its exact bilingual candidate notes. | Consumed and byte-bound by `release_identity.py`; describes an unbuilt, unpublished, ad-hoc-signed, non-notarized candidate with external models. |
 | `packaging/model_manifest.json` | Frozen five-model download metadata: filename, exact byte count, SHA-256, upstream revision/provenance, staging and receipt policy. | Loaded by `model_integrity.py`; indirectly drives Model Manager availability/download list; bundled and verified in the App. `test_model_integrity.py`, `test_model_download_resources.py`, packaging tests. |
 | `packaging/icons/ClassroomTranscriber.png` | Tracked, user-approved square source artwork for the formal App icon; the Manifest freezes its SHA-256. | Read only by `build_app_icon.py`; the source is normalized/generated during formal build, never loaded from a developer Downloads path. `test_app_icon.py`, `test_runtime_manifest.py`. |
 | `packaging/ClassroomTranscriber.spec` | Release PyInstaller spec; entry is `ui_app.py`, data list and generated icon path are manifest-derived, microphone usage string is declared, and `BUNDLE` receives the generated `ClassroomTranscriber.icns`. | Called by Release build; PyInstaller writes the ICNS resource and `CFBundleIconFile`. `test_packaged_runtime.py`. |
@@ -114,6 +167,8 @@ Tests are a mix of `unittest` contract suites and directly executable regression
 | `test_backends.py` | `stream_transcribe.py` backends/helpers | whisper.cpp command building/parsing, WAV writing, backend availability/smoke pathways; optional faster-whisper checks when requested. |
 | `test_dedup_cases.py`, `test_dedup_expanded_cases.py`, `test_dedup_uncovered_cases.py`, `test_pseudo_real_chunk_sequences.py`, `test_pseudo_real_boundary_sequences.py`, `test_pseudo_real_boundary_sequences_v3.py` | Stable `simple_dedup()` / `fuzzy_boundary_dedup()` behavior | Exact, fuzzy, and pseudo-real overlap sequences. Run before touching dedup thresholds, tokenization, or transcript boundary handling. |
 | `test_ui_support.py` | `resource_paths.py`, `settings.py`, `model_manager.py`, `transcript_store.py`, `transcription_engine.py`, shared backend helpers | Path/model/settings serialization, language command mapping, evidence append, hallucination filtering, final-partial/queue/Stop worker behavior. It is the broad source-runtime safety regression suite. |
+| `test_window_layout.py` | `ui_app.py` main-window layout and Qt event ownership | Injected available geometries, show/resize/screen handlers, minimum-height behavior, controls scrollbar/wheel/focus reachability, independent Clean/Raw/Logs scrolling, and bilingual retranslation. |
+| `test_clean_rename.py` | `transcript_store.py`, `transcription_controller.py`, `ui_app.py` | Active/stopped rename and recovery, exact byte order, append serialization, current Session ownership, no-clobber collisions/races, unsafe and uncertain paths, failure cleanup/writer preservation, bilingual confirmation/No/retry, Finder/clipboard failure closure, toolbar location, and path/cursor/layout behavior. |
 | `test_model_download_resources.py` | `resource_paths.py`, `model_manager.py`, vendor resource, model manifest | Source/frozen downloader and manifest selection, executable vendor script, supported models, and independence from ignored `external/`. |
 | `test_model_integrity.py` | `model_integrity.py`, `model_manager.py`, model manifest | Manifest validity, staging/publish/receipt behavior, size/SHA failures, corrupt/existing files, retry, custom import distinction, and receipt invalidation. |
 | `test_model_manager_ui_contract.py` | `ui_app.py` Model Manager orchestration and model presentation/selection/download-feedback contracts | Guards concise summaries/full-path access, explicit-selection confirmation source/timer semantics, automatic no-confirm paths, and indeterminate download busy state/cleanup while preserving worker/integrity boundaries. |
@@ -124,7 +179,11 @@ Tests are a mix of `unittest` contract suites and directly executable regression
 | `test_whisper_runtime_bootstrap.py` | Runtime bootstrap/helper and manifest | CMake acquisition, manifest-derived CMake profile, component/smoke completeness, and repo-relative bootstrap facts. |
 | `test_build_orchestration.py` | `.command`, orchestrator, formal build metadata | Executable/syntax requirements, thin wrapper, formal stage order, formal Python injection, expected App checks, and portability. |
 | `test_packaged_runtime.py` | specs, `build_macos.sh`, package normalizer, packaged verifier | Manifest-driven collection/icon wiring; order of icon generation/preflight/normalize/sign/verify; missing component/dependency/downloader/manifest/icon failures; architecture and smoke gates. |
-| `test_release_zip.py` | `build_release_zip.py` and packaged verifier handoff | Explicit version/locked Python/clean source, deterministic ZIP round-trip including ICNS bytes, payload exclusions, path/symlink safety, verifier failure handling, and reported digest. |
+| `test_release_identity.py` | Fixed project/release identity and App build provenance | Project/lock/spec/notes/asset agreement, unchanged schema/dependency pins, wrong identity/App versions/notes, non-clobber provenance, and stale App/source/contract/required-tool bindings. |
+| `test_release_approval.py` | Independent fixture signature/protected production entry | Complete tool binding, signer/namespace, contract/config/evidence/revocation/schema/path tampering; no production fixture authority. |
+| `test_release_journal.py` | Durable recovery hints | Permissions, no-follow/hard-link/schema/checksum rejection, rehashed authority changes, atomic write/fsync failures and incomplete persistence. |
+| `test_release_controller.py` | Actual argparse/Integration/local Git pipeline | True divergent merge and docs/ancestry/tree, callback-gate state-machine/crash tests, counterfeit environment rejection without execution, synthetic environment replacement faults, content conflict, URL/hook/config/ref drift, read-only status, actual ref plus operation-count reconciliation. Callback/synthetic gates do not prove production bootstrap/full-suite success; an independent full-source real-gate launcher belongs outside discovery. |
+| `test_release_zip.py` | `build_release_zip.py` and packaged verifier handoff | Fixed identity/locked Python/clean expected source/canonical manifest-App-provenance inputs, Downloads task-root and no-clobber targets, durable extraction, deterministic ZIP round-trip, exclusions, path/symlink safety, verifier failure handling, and exact digest. |
 
 ### Documentation and historical material
 
@@ -138,7 +197,7 @@ Tests are a mix of `unittest` contract suites and directly executable regression
 | `README.zh-CN.md` | Complete Simplified Chinese user-facing equivalent of `README.md`. |
 | `PACKAGING.md` | Developer packaging, reproducible build, Runtime verification, and Release ZIP documentation. |
 | `docs/工程细节.md` | Detailed explanatory engineering narrative; useful orientation, but secondary to current source/manifests/static/runtime. |
-| `docs/LLM_POSTPROCESSING_DESIGN.md`, `docs/LLMsteps.md`, `docs/goalForNextLevel.md`, `docs/user_understand.md` | Design/backlog material for an LLM sidecar and later directions. It does not describe a tracked LLM implementation on current `main`. |
+| `docs/LLM_POSTPROCESSING_DESIGN.md`, `docs/LLMsteps.md`, `docs/goalForNextLevel.md`, `docs/user_understand.md` | Design/backlog material for an LLM sidecar and later directions. It does not describe a tracked LLM implementation on current `main`; its input path is gated on a not-yet-implemented trusted current-Clean resolver. |
 | `docs/Yeming_Dai_Audio_Transcription_Portfolio.md` | Portfolio-oriented description; it includes an externally referenced local image and is not an application asset or build input. |
 | `docs/whisper历史记录.pdf` | Historical archive (8-page PDF); not parsed as an active architecture authority. |
 
@@ -168,7 +227,7 @@ The current engine creates one backend in its worker loop and calls the CLI once
 
 ### B. UI/control and thread path
 
-`MainWindow` owns widget state and uses `TranscriptionController` as its session boundary. Start is synchronous only through validation/session initialization; capture and inference are background engine threads. Engine events travel through `EventBridge.event_received`, a Qt signal, before `MainWindow.handle_event()` mutates widgets.
+`MainWindow` owns widget state and uses `TranscriptionController` as its session boundary. Start is synchronous only through validation/session initialization; capture and inference are background engine threads. Engine events travel through `EventBridge.event_received`, a Qt signal, before `MainWindow.handle_event()` mutates widgets. Every successful Session has a UUID plus monotonic generation; the controller rejects stale callbacks before state mutation and MainWindow rechecks the identity after queued Qt delivery. A valid newer Session resets displayed Clean/Raw rows, counters, queue display, and the successful-copy cursor, while Stop and Start failure before Session creation preserve the previous display.
 
 Stop is deliberately initiated from `MainWindow.stop_recording()` on a separate `ui-stop-controller` thread because `TranscriptionEngine.stop()` waits for capture closure and queued inference drain. Controller states (`Idle`, `Starting`, `Recording`, `Stopping`, `Error`) decide button/combo enablement. `safe_shutdown()` stops timers, protects dialog shutdown, and either waits for that stop thread or calls controller stop during application exit.
 
@@ -236,15 +295,43 @@ controller.start()
 -> TranscriptStore(settings.output_root)
 -> <actual-outputs-dir>/<timestamp>/
    -> raw.txt          (engine appends parsed backend evidence)
-   -> clean.txt        (engine appends conservative dedup/filter result)
+   -> clean.txt        (engine appends conservative dedup/filter result; current Session may rename or recover it)
    -> session.log      (controller/engine lifecycle and error records)
    -> config.json      (settings snapshot written at session creation)
 -> engine.stop() drains queued work, logs Stop complete, then closes all handles
 ```
 
-The store owns directory creation, open handles, append counters, flushes, and close. The controller owns session creation; the engine owns continued evidence writes while running; the UI owns only current-session paths for Finder reveal and display. No tracked component moves or rewrites a completed session.
+The Clean writer continues appending to the same inode after a current-Session rename. If that inode conclusively has no `.txt` path in the verified original Session, recovery copies its exact flushed history to a no-clobber file and, while active, switches later appends to the verified new writer; Stop preserves an exact snapshot for the same operation. A new Session always creates its own initial `clean.txt`. The UI path buttons follow only the Store's currently verified path.
+
+The Store owns directory creation, open handles, append counters, flushes, current-writer identity, rename/recovery and close. The Controller owns Session creation and ID + generation ownership; the engine owns continued evidence writes while running; the UI owns no independent file authority. A completed Session is normally immutable, but an explicit post-Stop Rename or full-history recovery may rename the verified writer or create a new current Clean `.txt`. No persistent current-Clean locator exists across App restart yet. Future LLM/Session Browser work must first implement a trusted resolver or manifest and must fail closed if identity cannot be proven; scanning a directory and choosing an arbitrary `.txt` is not acceptable.
 
 ### F. Build, package, and Release path
+
+The REL1B candidate precedes future real packaging with this separate flow:
+
+```text
+protected release_controller status|integrate|resume
+-> release_approval: independent signature/config/contracts/review/owner/ref/path binding
+-> release_journal: durable intent (never execution authority)
+-> release_integration: audited isolated clone -> exact fetch -> feature push -> divergent merge
+-> absent ignored environment -> original pinned bootstrap -> memory-only environment/source proof
+-> clone-local Python 3.12.14 + full strict tests -> proof/approval/clean/refs recheck
+-> ordinary main push -> exact remote ref reconciliation
+```
+
+Production trust/entry deployment is only a proposed fixed-root scheme awaiting
+Human decision. The repository entry fails closed without it. Tests restrict a
+Python-only fixture policy to newly created Downloads repositories/local bare
+remotes and an independent fixture namespace; no production CLI switch enables
+it. Resume after environment creation stops because no journal establishes its
+trusted origin. Main already present without trusted completion enters Human
+reconciliation without repeat push or rollback. See `PACKAGING.md` for precise
+interfaces and current SSH/HTTPS authentication isolation limits. This legacy
+entry does not accept the entire Step 1 or perform real production integration.
+The separate workflow entry composes Integration -> independent final-main
+receipt -> BuildController -> exact-artifact Human receipt -> signed publication
+plan -> Publisher. Its candidate release/asset recovery additionally requires
+external exact-ID reconciliation; deployment/authentication remain unavailable.
 
 ```text
 Build ClassroomTranscriber.command
@@ -260,13 +347,17 @@ Build ClassroomTranscriber.command
       -> package_runtime normalize-app
       -> ad-hoc codesign
       -> verify_packaged_runtime
+      -> release_identity write-build-provenance
       -> dist/ClassroomTranscriber.app
 
-.venv/bin/python scripts/build_release_zip.py --version <version>
--> clean source + formal-Python checks
--> verify source App -> archive only App -> extract outside repo
+.venv/bin/python scripts/build_release_zip.py --version 1.1.0 \
+  --expected-source-commit <commit> --task-root <Downloads-managed-root> \
+  --artifact <task-root/artifacts/release.zip> \
+  --human-review-extraction <task-root/human-review>
+-> clean expected source + formal-Python + canonical manifest/App/provenance checks
+-> verify source App -> archive only App -> extract under the managed task root
 -> compare bundle structure/bytes/modes/symlinks -> verify extracted App
--> dist/ClassroomTranscriber-<version>-macOS-AppleSilicon.zip
+-> atomically publish the no-clobber ZIP and retain the verified extraction
 ```
 
 The ignored `external/whisper.cpp` is a build input reconstructed by bootstrap, not a tracked source dependency to copy. The resulting App bundles CLI/dylibs, the vendored downloader, model-integrity manifest, and generated ICNS; it deliberately does not bundle model binaries or user settings.
@@ -283,7 +374,8 @@ The ignored `external/whisper.cpp` is a build input reconstructed by bootstrap, 
 | Settings/resource split | Source versus frozen mode resolves different resource and writable paths; app settings and session config have distinct scopes. | `resource_paths.py`, `settings.py`, `model_manager.py`, controller | `test_ui_support.py`, `test_model_download_resources.py`; packaging tests if a bundled resource changes. |
 | Packaged Runtime closure | Manifest-driven resource collection, dylib/RPath normalization, signing, and bundled/isolated smoke form a fail-fast chain. A valid UI alone is insufficient. | runtime manifest, specs, bootstrap/helper/build/package/verifier scripts | `test_runtime_manifest.py`, `test_whisper_runtime_bootstrap.py`, `test_build_orchestration.py`, `test_packaged_runtime.py`; formal build/verifier for implementation changes. |
 | Packaged App icon | A tracked approved source must produce the ICNS referenced by `Info.plist`, survive signing and ZIP round-trip, and never depend on an external developer path. | `packaging/icons/ClassroomTranscriber.png`, runtime manifest, icon generator, Release spec/build/verifier | `test_app_icon.py`, `test_runtime_manifest.py`, `test_packaged_runtime.py`, `test_release_zip.py`; formal App/ZIP verification. |
-| Release ZIP closure | Release script rejects dirty source and unsafe contents, then validates a round trip and extracted App Runtime. | `build_release_zip.py`, runtime verifier, release manifest fields | `test_release_zip.py` plus actual formal Release ZIP flow when release code/specs change. |
+| Release ZIP closure | Release script rejects wrong/dirty source, noncanonical or stale manifest/App/provenance inputs, unsafe contents, targets outside the explicit Downloads task root, and existing targets; it then validates a complete round trip and retains the verified App extraction before atomic no-clobber ZIP publication. | `release_identity.py`, `build_release_zip.py`, runtime verifier, release contract/manifest fields | `test_release_identity.py`, `test_release_zip.py`, plus a future real formal 1.1.0 App/ZIP flow. |
+| Integration authorization and environment provenance | External approval and actual Git facts must precede each mutation. Version reports and journal hashes cannot trust ignored code; only this invocation's fresh pinned bootstrap/full suite can gate main. | Four `release_*` control modules; independent external trust and managed Downloads paths | Three `test_release_*` control suites plus a separate full-source real-gate smoke; no production trust installation or real remote mutation. |
 
 ## Product Polish architecture impact index
 
@@ -306,7 +398,7 @@ After Step 1A, the model-presentation boundary is explicitly split: concise curr
 These notes are observations from the baseline, not requests to change unrelated tracked files during Repo Map work.
 
 1. `packaging/runtime_manifest.json` still records several observed compatibility statuses as pending clean-machine E2E, while `docs/deployment_runtime.md` records Deployment Steps 8/9 and M4 Max/M5 ordinary-user acceptance as PASS. The manifest's frozen build/component data is actively consumed by code; its observed acceptance-status metadata appears historically lagged relative to the deployment runtime.
-2. `PACKAGING.md` retains a “Work still pending” paragraph saying clean-machine acceptance/real transcription E2E has not yet occurred, while `docs/deployment_runtime.md` records those acceptances as complete. This is documentation-state drift, not a source implementation discrepancy.
+2. `PACKAGING.md` now distinguishes completed historical 1.0.0 clean-machine acceptance from the still-future gate for exact 1.1.0 App/ZIP bytes; it does not treat the historical result as acceptance of the unbuilt, unpublished 1.1.0 candidate.
 3. The historical Deployment UX backlog says the current-model path cannot be accessed in full. Current `ui_app.py` sets full-path tooltips on both current-model summaries; the Model Manager table independently exposes Path. The Product Polish runtime's more precise description matches current source better.
 4. The legacy `run_long_test.sh` contains a machine-specific path, unlike the formal build scripts' repo-relative design. It is not part of the formal developer-build or Release path.
 

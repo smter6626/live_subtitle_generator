@@ -8,6 +8,7 @@ import hashlib
 import os
 import platform
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -18,14 +19,25 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from verify_packaged_runtime import (
-    DEFAULT_MANIFEST_PATH,
     VerificationError,
     load_manifest,
     verify_packaged_runtime,
 )
+from release_identity import (
+    IdentityError,
+    PRODUCT_VERSION,
+    load_contract as load_product_contract,
+    validate_build_provenance,
+    validate_release_identity,
+    validate_repository_identity,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_APP_PATH = REPO_ROOT / "dist" / "ClassroomTranscriber.app"
+CANONICAL_PROVENANCE_PATH = REPO_ROOT / "dist" / "ClassroomTranscriber.app.provenance.json"
+CANONICAL_MANIFEST_PATH = REPO_ROOT / "packaging" / "runtime_manifest.json"
+DOWNLOADS_ROOT = Path.home() / "Downloads"
 ZIP_TOOL = Path("/usr/bin/zip")
 DITTO_TOOL = Path("/usr/bin/ditto")
 VERSION_PATTERN = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._+-]*$")
@@ -80,6 +92,8 @@ def validate_version(version: str) -> str:
             "version must be an explicit filename-safe value containing only "
             "ASCII letters, digits, '.', '_', '+', or '-'"
         )
+    if version != PRODUCT_VERSION:
+        raise ReleaseError(f"formal Release version must be exactly {PRODUCT_VERSION}")
     return version
 
 
@@ -167,7 +181,118 @@ def validate_clean_source(repo_root: Path = REPO_ROOT) -> str:
             "the listed changes first:\n"
             + result.stdout.rstrip()
         )
-    return source_commit(repo_root)
+    commit = source_commit(repo_root)
+    try:
+        validate_repository_identity(repo_root)
+    except IdentityError as exc:
+        raise ReleaseError(str(exc)) from exc
+    return commit
+
+
+def validate_expected_source_commit(actual: str, expected: str) -> str:
+    if not SOURCE_COMMIT_PATTERN.fullmatch(expected):
+        raise ReleaseError("expected source commit must be a 40-character lowercase Git SHA")
+    if actual != expected:
+        raise ReleaseError("source HEAD differs from the explicit expected source commit")
+    return actual
+
+
+def validate_formal_source_paths(
+    app_path: Path,
+    build_provenance_path: Path,
+    *,
+    repo_root: Path = REPO_ROOT,
+) -> tuple[Path, Path]:
+    try:
+        canonical_repo = repo_root.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseError("canonical source repository must exist") from exc
+    if not canonical_repo.is_dir():
+        raise ReleaseError("canonical source repository must be a directory")
+
+    canonical_dist_path = canonical_repo / "dist"
+    canonical_app_path = canonical_dist_path / "ClassroomTranscriber.app"
+    canonical_provenance_path = (
+        canonical_dist_path / "ClassroomTranscriber.app.provenance.json"
+    )
+    app_candidate = Path(os.path.abspath(app_path))
+    provenance_candidate = Path(os.path.abspath(build_provenance_path))
+    if app_candidate != canonical_app_path:
+        raise ReleaseError(
+            "formal Release ZIP must consume this clone's dist/ClassroomTranscriber.app"
+        )
+    if provenance_candidate != canonical_provenance_path:
+        raise ReleaseError(
+            "formal Release ZIP must consume the App-adjacent canonical provenance"
+        )
+    try:
+        dist_mode = canonical_dist_path.stat(follow_symlinks=False).st_mode
+        resolved_dist = canonical_dist_path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseError("canonical dist must already exist") from exc
+    if not stat.S_ISDIR(dist_mode) or resolved_dist != canonical_dist_path:
+        raise ReleaseError("canonical dist must be this clone's real directory")
+    try:
+        app_mode = canonical_app_path.stat(follow_symlinks=False).st_mode
+        provenance_mode = canonical_provenance_path.stat(follow_symlinks=False).st_mode
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseError("canonical App and provenance must already exist") from exc
+    if not stat.S_ISDIR(app_mode):
+        raise ReleaseError("canonical App must be a real directory, not a symbolic link")
+    if not stat.S_ISREG(provenance_mode):
+        raise ReleaseError(
+            "canonical provenance must be a real regular file, not a symbolic link"
+        )
+    try:
+        resolved_app = canonical_app_path.resolve(strict=True)
+        resolved_provenance = canonical_provenance_path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseError("canonical App and provenance must resolve strictly") from exc
+    if (
+        resolved_app != canonical_app_path
+        or resolved_provenance != canonical_provenance_path
+        or resolved_app.parent != resolved_dist
+        or resolved_provenance.parent != resolved_dist
+    ):
+        raise ReleaseError(
+            "canonical App and provenance must remain directly inside this clone's dist"
+        )
+    return resolved_app, resolved_provenance
+
+
+def validate_managed_output_paths(
+    task_root: Path,
+    artifact_path: Path,
+    extraction_dir: Path,
+    *,
+    downloads_root: Path = DOWNLOADS_ROOT,
+) -> tuple[Path, Path, Path]:
+    try:
+        downloads = downloads_root.resolve(strict=True)
+        managed_root = task_root.resolve(strict=True)
+        artifact_parent = artifact_path.parent.resolve(strict=True)
+        extraction_parent = extraction_dir.parent.resolve(strict=True)
+    except OSError as exc:
+        raise ReleaseError(
+            "Downloads, task root, and output parent directories must already exist"
+        ) from exc
+    if not downloads.is_dir():
+        raise ReleaseError("current user's Downloads path is not a directory")
+    if (
+        not managed_root.is_dir()
+        or managed_root == downloads
+        or not managed_root.is_relative_to(downloads)
+    ):
+        raise ReleaseError(
+            "task root must be an explicit managed directory under the current user's Downloads"
+        )
+    final_artifact = artifact_parent / artifact_path.name
+    extract_root = extraction_parent / extraction_dir.name
+    if final_artifact == managed_root or not final_artifact.is_relative_to(managed_root):
+        raise ReleaseError("Release artifact must be a descendant of the task root")
+    if extract_root == managed_root or not extract_root.is_relative_to(managed_root):
+        raise ReleaseError("Human-review extraction must be a descendant of the task root")
+    return managed_root, final_artifact, extract_root
 
 
 def validate_payload_path(relative: PurePosixPath) -> None:
@@ -296,25 +421,81 @@ def create_release_zip(
     *,
     version: str,
     app_path: Path,
-    output_dir: Path,
+    artifact_path: Path,
+    extraction_dir: Path,
+    task_root: Path,
+    build_provenance_path: Path,
     manifest: dict[str, Any],
     verifier: ReleaseVerifier = verify_packaged_runtime,
-    commit: str | None = None,
+    commit: str,
+    tag: str | None = None,
+    title: str | None = None,
+    notes_path: Path | None = None,
+    repo_root: Path = REPO_ROOT,
+    downloads_root: Path = DOWNLOADS_ROOT,
+    enforce_formal_source_paths: bool = True,
 ) -> ReleaseMetadata:
     validate_host()
+    product_contract = load_product_contract(
+        repo_root / "packaging" / "release_contract.json"
+    )
     template, payload_name = release_contract(manifest)
     version = validate_version(version)
-    app_path = app_path.resolve()
-    output_dir = output_dir.resolve()
+    repo_root = repo_root.resolve()
+    if enforce_formal_source_paths:
+        app_path, build_provenance_path = validate_formal_source_paths(
+            app_path, build_provenance_path, repo_root=repo_root
+        )
+    else:
+        app_path = app_path.resolve()
+    _managed_root, final_artifact, extract_root = validate_managed_output_paths(
+        task_root,
+        artifact_path,
+        extraction_dir,
+        downloads_root=downloads_root,
+    )
     if app_path.name != payload_name:
         raise ReleaseError(
             f"Release App must be named {payload_name}, got {app_path.name}"
         )
-    output_dir.mkdir(parents=True, exist_ok=True)
-    final_artifact = output_dir / template.replace("<version>", version)
-    commit = commit or source_commit()
+    if final_artifact.is_relative_to(repo_root):
+        raise ReleaseError("Release artifact path must be outside the source tree")
+    if extract_root.is_relative_to(repo_root):
+        raise ReleaseError("Human-review extraction path must be outside the source tree")
+    if extraction_dir.name in {"", ".", ".."}:
+        raise ReleaseError("Human-review extraction must name a new directory")
+    if os.path.lexists(final_artifact):
+        raise ReleaseError("Release artifact target already exists; clobber is forbidden")
+    if os.path.lexists(extract_root):
+        raise ReleaseError("Human-review extraction target already exists")
     if not SOURCE_COMMIT_PATTERN.fullmatch(commit):
         raise ReleaseError("source commit must be a 40-character lowercase Git SHA")
+    tag = tag or product_contract["tag"]
+    title = title or product_contract["title"]
+    notes_path = notes_path or repo_root / product_contract["release_notes_path"]
+    expected_asset = template.replace("<version>", version)
+    if final_artifact.name != expected_asset:
+        raise ReleaseError("Release artifact filename disagrees with fixed identity")
+    try:
+        validate_release_identity(
+            repo_root=repo_root,
+            app_path=app_path,
+            manifest=manifest,
+            version=version,
+            tag=tag,
+            title=title,
+            asset_name=final_artifact.name,
+            notes_path=notes_path,
+            contract=product_contract,
+        )
+        validate_build_provenance(
+            build_provenance_path,
+            app_path,
+            commit,
+            repo_root=repo_root,
+        )
+    except IdentityError as exc:
+        raise ReleaseError(str(exc)) from exc
 
     print(f"[release-zip] verify source App: {app_path}")
     verifier(app_path, manifest)
@@ -322,60 +503,67 @@ def create_release_zip(
     source_snapshot = snapshot_bundle(app_path)
 
     extracted_app_path: Path | None = None
-    with tempfile.TemporaryDirectory(
-        prefix=".classroom-release-stage-", dir=output_dir
-    ) as stage_temp, tempfile.TemporaryDirectory(
-        prefix="classroom-release-extract-"
-    ) as extract_temp:
-        stage_root = Path(stage_temp)
-        extract_root = Path(extract_temp).resolve()
-        if extract_root.is_relative_to(REPO_ROOT.resolve()):
-            raise ReleaseError("Release ZIP must be extracted outside the source tree")
-        staged_artifact = stage_root / final_artifact.name
-        checked_command(
-            [
-                str(ZIP_TOOL),
-                "-q",
-                "-r",
-                "-y",
-                "-X",
-                str(staged_artifact),
-                app_path.name,
-            ],
-            cwd=app_path.parent,
-        )
-        validate_archive(staged_artifact, payload_name)
-        print("[release-zip] archive content boundary and CRC PASS")
-
-        checked_command(
-            [
-                str(DITTO_TOOL),
-                "-x",
-                "-k",
-                "--norsrc",
-                str(staged_artifact),
-                str(extract_root),
-            ]
-        )
-        top_level = sorted(path.name for path in extract_root.iterdir())
-        if top_level != [payload_name]:
-            raise ReleaseError(
-                f"extracted ZIP must contain only {payload_name}, got {top_level}"
+    artifact_size: int | None = None
+    artifact_digest: str | None = None
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix=".classroom-release-stage-", dir=final_artifact.parent
+        ) as stage_temp:
+            stage_root = Path(stage_temp)
+            extract_root.mkdir(parents=False, exist_ok=False)
+            staged_artifact = stage_root / final_artifact.name
+            checked_command(
+                [
+                    str(ZIP_TOOL),
+                    "-q",
+                    "-r",
+                    "-y",
+                    "-X",
+                    str(staged_artifact),
+                    app_path.name,
+                ],
+                cwd=app_path.parent,
             )
-        extracted_app = extract_root / payload_name
-        verify_round_trip(source_snapshot, extracted_app)
-        print("[release-zip] bundle structure, bytes, permissions, and symlinks PASS")
-        print(f"[release-zip] verify extracted App: {extracted_app}")
-        verifier(extracted_app, manifest)
-        print("[release-zip] extracted App Runtime verification PASS")
-        extracted_app_path = extracted_app
+            validate_archive(staged_artifact, payload_name)
+            print("[release-zip] archive content boundary and CRC PASS")
 
-        os.replace(staged_artifact, final_artifact)
+            checked_command(
+                [
+                    str(DITTO_TOOL),
+                    "-x",
+                    "-k",
+                    "--norsrc",
+                    str(staged_artifact),
+                    str(extract_root),
+                ]
+            )
+            top_level = sorted(path.name for path in extract_root.iterdir())
+            if top_level != [payload_name]:
+                raise ReleaseError(
+                    f"extracted ZIP must contain only {payload_name}, got {top_level}"
+                )
+            extracted_app = extract_root / payload_name
+            verify_round_trip(source_snapshot, extracted_app)
+            print("[release-zip] bundle structure, bytes, permissions, and symlinks PASS")
+            print(f"[release-zip] verify extracted App: {extracted_app}")
+            verifier(extracted_app, manifest)
+            print("[release-zip] extracted App Runtime verification PASS")
+            extracted_app_path = extracted_app
+            artifact_size = staged_artifact.stat().st_size
+            artifact_digest = sha256_file(staged_artifact)
+            try:
+                os.link(staged_artifact, final_artifact)
+            except FileExistsError as exc:
+                raise ReleaseError(
+                    "Release artifact appeared during publication; clobber is forbidden"
+                ) from exc
+    except Exception:
+        if extract_root.is_dir():
+            shutil.rmtree(extract_root)
+        raise
 
-    if extracted_app_path is None:
+    if extracted_app_path is None or artifact_size is None or artifact_digest is None:
         raise ReleaseError("extracted App verification did not run")
-    artifact_size = final_artifact.stat().st_size
-    artifact_digest = sha256_file(final_artifact)
     return ReleaseMetadata(
         version=version,
         source_commit=commit,
@@ -389,23 +577,14 @@ def create_release_zip(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True, help="explicit Release version")
+    parser.add_argument("--task-root", type=Path, required=True)
+    parser.add_argument("--artifact", type=Path, required=True)
+    parser.add_argument("--human-review-extraction", type=Path, required=True)
+    parser.add_argument("--expected-source-commit", required=True)
+    parser.add_argument("--tag", default=PRODUCT_VERSION)
+    parser.add_argument("--title", default="Classroom Transcriber 1.1.0")
     parser.add_argument(
-        "--app-path",
-        type=Path,
-        default=REPO_ROOT / "dist" / "ClassroomTranscriber.app",
-        help="already-built App that passed the packaged Runtime gate",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=REPO_ROOT / "dist",
-        help="directory for the verified Release ZIP",
-    )
-    parser.add_argument(
-        "--manifest",
-        type=Path,
-        default=DEFAULT_MANIFEST_PATH,
-        help="Runtime Manifest path",
+        "--notes", type=Path, default=REPO_ROOT / "RELEASE_NOTES_1.1.0.md"
     )
     return parser
 
@@ -413,17 +592,24 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     try:
-        manifest = load_manifest(arguments.manifest)
+        manifest = load_manifest(CANONICAL_MANIFEST_PATH)
         validate_formal_python(manifest)
         commit = validate_clean_source()
+        validate_expected_source_commit(commit, arguments.expected_source_commit)
         metadata = create_release_zip(
             version=arguments.version,
-            app_path=arguments.app_path,
-            output_dir=arguments.output_dir,
+            app_path=CANONICAL_APP_PATH,
+            artifact_path=arguments.artifact,
+            extraction_dir=arguments.human_review_extraction,
+            task_root=arguments.task_root,
+            build_provenance_path=CANONICAL_PROVENANCE_PATH,
             manifest=manifest,
             commit=commit,
+            tag=arguments.tag,
+            title=arguments.title,
+            notes_path=arguments.notes,
         )
-    except (KeyError, OSError, ReleaseError, VerificationError) as exc:
+    except (KeyError, OSError, ReleaseError, VerificationError, IdentityError) as exc:
         print(f"[release-zip] ERROR: {exc}", file=sys.stderr)
         return 1
 
@@ -435,6 +621,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"artifact_bytes: {metadata.artifact_bytes}")
     print(f"sha256: {metadata.sha256}")
     print("extracted_app_verification: PASS")
+    print(f"human_review_extraction: {metadata.extracted_app_path.parent}")
     return 0
 
 

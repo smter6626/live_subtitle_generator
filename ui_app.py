@@ -20,6 +20,7 @@ try:
         QAbstractItemView,
         QComboBox,
         QDialog,
+        QDialogButtonBox,
         QFileDialog,
         QFrame,
         QGridLayout,
@@ -27,11 +28,14 @@ try:
         QHeaderView,
         QHBoxLayout,
         QLabel,
+        QLineEdit,
+        QLayout,
         QMainWindow,
         QMessageBox,
         QPlainTextEdit,
         QProgressBar,
         QPushButton,
+        QScrollArea,
         QTableWidget,
         QTableWidgetItem,
         QTabWidget,
@@ -50,7 +54,7 @@ from settings import (
     DEFAULT_UI_LANGUAGE,
     MAX_BEAM_SIZE,
     MIN_BEAM_SIZE,
-    ORIGINAL_LANGUAGE_OPTIONS,
+    ORIGINAL_LANGUAGE_CHOICES,
     UI_LANGUAGE_LABELS,
     UI_LANGUAGE_OPTIONS,
     UI_LANGUAGE_ZH,
@@ -70,6 +74,11 @@ from model_manager import (
     validate_import_model,
 )
 from transcript_store import format_runtime, parse_transcript_line
+from transcript_store import (
+    CleanPathUnavailableError,
+    CleanRenameError,
+    CleanRenameVerificationError,
+)
 from transcription_controller import EngineState, TranscriptionController
 
 
@@ -81,11 +90,16 @@ TEXT = {
         "model": "模型",
         "beam": "候选数（Beam）",
         "language": "音频语言",
-        "ui_language": "界面语言",
+        "ui_language": "语言/Language",
         "original_language": "音频原始语言",
         "original_language_english": "英语",
         "original_language_chinese": "中文",
-        "original_language_mixed": "中英混合",
+        "original_language_japanese": "日语",
+        "original_language_french": "法语",
+        "original_language_spanish": "西班牙语",
+        "original_language_german": "德语",
+        "original_language_korean": "韩语",
+        "original_language_auto_detect": "自动检测",
         "runtime": "运行时长",
         "queue": "队列",
         "output_folder": "输出目录",
@@ -137,7 +151,34 @@ TEXT = {
         "models_found": "已发现模型数量",
         "no_startable_model": "无法开始转写：未选择可用模型。",
         "open_output_folder": "打开输出目录",
-        "export_clean_txt": "定位 Clean TXT",
+        "export_clean_txt": "定位 Clean",
+        "copy_clean_path": "复制 Clean 路径",
+        "copy_clean_text": "复制新增文本",
+        "rename_clean_txt": "重命名 Clean TXT",
+        "reveal_clean_tip": "在访达中定位当前 Session 的 Clean TXT 文件。",
+        "copy_clean_path_tip": "复制当前 Session 的 Clean TXT 绝对路径。",
+        "copy_clean_text_tip": "复制上次成功复制后新增的 Clean 行；新 Session 重置进度。",
+        "rename_clean_tip": "仅修改当前 Session 的 Clean TXT 文件名，转写继续写入同一文件。",
+        "rename_title": "重命名 Clean TXT",
+        "rename_prompt": "文件名",
+        "rename_success": "Clean TXT 已重命名为：{name}",
+        "recovery_success": "已从完整 Clean 历史恢复并创建：{name}",
+        "rename_verification_warning": "无法验证 Clean TXT 重命名结果或当前文件路径：{error}",
+        "rename_error_title": "无法重命名 Clean TXT",
+        "recovery_title": "恢复 Clean TXT？",
+        "recovery_question": "原路径提示（当前不可用）：{path}\n\n选择“是”将在已验证的原 Session 目录中创建 {name}.txt，并写入完整 Clean 历史；如果录音仍在进行，之后的内容只会继续写入新文件。\n\n选择“否”或取消不会创建或切换任何文件。继续向已打开的文件句柄写入，并不能保证存在安全路径，也不能保证在关闭文件或退出 App 后仍有持久保存的输出。",
+        "name_empty": "请输入文件名。",
+        "name_invalid": "文件名不能是 . 或 ..，不能包含路径分隔符、控制字符或首尾空格。",
+        "name_suffix": "只输入文件名，不要输入 .txt 后缀。",
+        "source_missing": "当前 Clean TXT 文件不存在。",
+        "source_unsafe": "当前 Clean TXT 文件不是安全的普通文件。",
+        "source_unverified": "无法验证当前 Clean TXT 文件路径。",
+        "source_unavailable": "已确认写入中的 Clean 文件在原 Session 目录内没有可用的 .txt 路径。",
+        "source_available": "Clean TXT 路径已重新可用，请重试重命名。",
+        "destination_exists": "目标文件已存在。",
+        "rename_unavailable": "此系统不支持安全的原子无覆盖重命名。",
+        "stale_session": "Session 已变化，请重试。",
+        "rename_io_error": "文件重命名失败：{error}",
         "session": "本次 Session",
         "start_time": "开始时间",
         "raw_lines": "Raw 行数",
@@ -167,7 +208,12 @@ TEXT = {
         "original_language": "Audio / Original Language",
         "original_language_english": "English",
         "original_language_chinese": "Chinese",
-        "original_language_mixed": "Mixed Chinese/English",
+        "original_language_japanese": "Japanese",
+        "original_language_french": "French",
+        "original_language_spanish": "Spanish",
+        "original_language_german": "German",
+        "original_language_korean": "Korean",
+        "original_language_auto_detect": "Auto Detect",
         "runtime": "Runtime",
         "queue": "Queue",
         "output_folder": "Output folder",
@@ -219,7 +265,34 @@ TEXT = {
         "models_found": "Models found",
         "no_startable_model": "Cannot start transcription: no available model is selected.",
         "open_output_folder": "Open Output Folder",
-        "export_clean_txt": "Reveal Clean TXT",
+        "export_clean_txt": "Reveal Clean",
+        "copy_clean_path": "Copy Clean Path",
+        "copy_clean_text": "Copy New Text",
+        "rename_clean_txt": "Rename Clean TXT",
+        "reveal_clean_tip": "Reveal this Session's current Clean TXT file in Finder.",
+        "copy_clean_path_tip": "Copy the absolute path of this Session's current Clean TXT file.",
+        "copy_clean_text_tip": "Copy Clean rows added since the last successful copy; a new Session resets progress.",
+        "rename_clean_tip": "Rename this Session's Clean TXT file while transcription continues in the same file.",
+        "rename_title": "Rename Clean TXT",
+        "rename_prompt": "Filename",
+        "rename_success": "Clean TXT renamed to: {name}",
+        "recovery_success": "Created from the complete Clean history: {name}",
+        "rename_verification_warning": "Cannot verify the Clean TXT rename result or current file path: {error}",
+        "rename_error_title": "Cannot Rename Clean TXT",
+        "recovery_title": "Recover Clean TXT?",
+        "recovery_question": "Unavailable path hint: {path}\n\nYes creates {name}.txt in the verified original Session directory with the complete Clean history. If recording is active, all later appends go only to the new file.\n\nNo or cancel creates and switches nothing. Continued writes to an open file handle do not guarantee a safe path or durable saved output after the file is closed or the app exits.",
+        "name_empty": "Enter a filename.",
+        "name_invalid": "Use a name without . or .., path separators, control characters, or surrounding spaces.",
+        "name_suffix": "Enter the filename only, without the .txt suffix.",
+        "source_missing": "The current Clean TXT file is missing.",
+        "source_unsafe": "The current Clean TXT file is not a safe regular file.",
+        "source_unverified": "The current Clean TXT file path cannot be verified.",
+        "source_unavailable": "The Clean writer conclusively has no available .txt path in the original Session directory.",
+        "source_available": "The Clean TXT path is available again. Retry the rename.",
+        "destination_exists": "The destination file already exists.",
+        "rename_unavailable": "This system does not support atomic no-replace rename.",
+        "stale_session": "The Session changed. Try again.",
+        "rename_io_error": "File rename failed: {error}",
         "session": "Session",
         "start_time": "Start time",
         "raw_lines": "Raw lines",
@@ -266,7 +339,12 @@ def tr(key):
 ORIGINAL_LANGUAGE_TEXT_KEYS = {
     "English": "original_language_english",
     "Chinese": "original_language_chinese",
-    "Mixed Chinese/English": "original_language_mixed",
+    "Japanese": "original_language_japanese",
+    "French": "original_language_french",
+    "Spanish": "original_language_spanish",
+    "German": "original_language_german",
+    "Korean": "original_language_korean",
+    "Auto Detect": "original_language_auto_detect",
 }
 
 
@@ -297,6 +375,7 @@ class TranscriptTable(QWidget):
 
         layout = QVBoxLayout(self)
         toolbar = QHBoxLayout()
+        self.toolbar = toolbar
         toolbar.addStretch()
         self.jump_button = QPushButton(tr("jump_to_live"))
         self.jump_button.clicked.connect(self.jump_to_live)
@@ -729,10 +808,15 @@ class ModelManagerDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, available_geometry_provider=None):
         super().__init__()
         crash_log("MainWindow init entered")
         self.resize(1200, 800)
+        self._available_geometry_provider = (
+            available_geometry_provider or self._qt_available_geometry
+        )
+        self._bound_screen = None
+        self._bound_window_handle = None
         self._shutdown_started = False
         self._shutdown_complete = False
         self._stop_thread = None
@@ -766,6 +850,9 @@ class MainWindow(QMainWindow):
 
         self.current_output_dir = None
         self.current_clean_path = None
+        self.active_session_id = None
+        self.active_session_generation = 0
+        self.clean_copy_row_cursor = 0
         self.session_started_at = None
         self.queue_size = 0
         self.raw_count = 0
@@ -777,6 +864,7 @@ class MainWindow(QMainWindow):
         self._populate_model_combo()
         self._update_model_labels()
         self._set_status(EngineState.IDLE.value)
+        self._apply_available_geometry_bounds()
 
         self.runtime_timer = QTimer(self)
         self.runtime_timer.timeout.connect(self._update_runtime_labels)
@@ -786,17 +874,103 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         root = QWidget()
         root_layout = QVBoxLayout(root)
+        root_layout.setSizeConstraint(QLayout.SetNoConstraint)
         root_layout.setContentsMargins(12, 12, 12, 12)
         root_layout.setSpacing(10)
-        root_layout.addWidget(self._build_status_strip())
+        self.status_strip = self._build_status_strip()
+        root_layout.addWidget(self.status_strip)
 
         body = QHBoxLayout()
         body.setSpacing(12)
-        body.addWidget(self._build_controls())
+        body.addWidget(self._build_controls_scroll_area())
         body.addWidget(self._build_tabs(), stretch=1)
         root_layout.addLayout(body, stretch=1)
 
         self.setCentralWidget(root)
+
+    def _build_controls_scroll_area(self):
+        self.controls_scroll_area = QScrollArea()
+        self.controls_scroll_area.setObjectName("controlsScrollArea")
+        self.controls_scroll_area.setWidgetResizable(True)
+        self.controls_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarAlwaysOff
+        )
+        self.controls_scroll_area.setFrameShape(QFrame.NoFrame)
+        self.controls_scroll_area.setFixedWidth(310)
+        self.controls_panel = self._build_controls()
+        self.controls_scroll_area.setWidget(self.controls_panel)
+        return self.controls_scroll_area
+
+    def _qt_available_geometry(self):
+        screen = self._effective_screen()
+        return screen.availableGeometry() if screen is not None else None
+
+    def _effective_screen(self):
+        handle = self.windowHandle()
+        if handle is not None and handle.screen() is not None:
+            return handle.screen()
+        screen = self.screen()
+        if screen is not None:
+            return screen
+        return QApplication.primaryScreen()
+
+    def _apply_available_geometry_bounds(self):
+        available = self._available_geometry_provider()
+        if available is None or available.height() <= 0:
+            return
+
+        frame_overhead = max(
+            0,
+            self.frameGeometry().height() - self.geometry().height(),
+        )
+        client_height_limit = max(1, available.height() - frame_overhead)
+        self.setMinimumHeight(0)
+        self.setMaximumHeight(client_height_limit)
+        if self.height() > client_height_limit:
+            self.resize(self.width(), client_height_limit)
+
+    def _bind_screen_geometry(self, screen):
+        if screen is self._bound_screen:
+            return
+        if self._bound_screen is not None:
+            for signal in (
+                self._bound_screen.availableGeometryChanged,
+                self._bound_screen.geometryChanged,
+            ):
+                try:
+                    signal.disconnect(self._on_available_geometry_changed)
+                except (RuntimeError, TypeError):
+                    pass
+        self._bound_screen = screen
+        if screen is not None:
+            screen.availableGeometryChanged.connect(
+                self._on_available_geometry_changed
+            )
+            screen.geometryChanged.connect(self._on_available_geometry_changed)
+
+    def _on_effective_screen_changed(self, screen):
+        self._bind_screen_geometry(screen)
+        self._apply_available_geometry_bounds()
+
+    def _on_available_geometry_changed(self, *_args):
+        self._apply_available_geometry_bounds()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        handle = self.windowHandle()
+        if handle is not None and handle is not self._bound_window_handle:
+            if self._bound_window_handle is not None:
+                try:
+                    self._bound_window_handle.screenChanged.disconnect(
+                        self._on_effective_screen_changed
+                    )
+                except (RuntimeError, TypeError):
+                    pass
+            self._bound_window_handle = handle
+            handle.screenChanged.connect(self._on_effective_screen_changed)
+        self._bind_screen_geometry(self._effective_screen())
+        self._apply_available_geometry_bounds()
+        QTimer.singleShot(0, self._apply_available_geometry_bounds)
 
     def _build_status_strip(self):
         strip = QFrame()
@@ -851,7 +1025,6 @@ class MainWindow(QMainWindow):
 
     def _build_controls(self):
         panel = QWidget()
-        panel.setFixedWidth(310)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
@@ -884,7 +1057,7 @@ class MainWindow(QMainWindow):
         self.beam_combo.setCurrentText(str(default_beam))
 
         self.language_combo = QComboBox()
-        for label in ORIGINAL_LANGUAGE_OPTIONS:
+        for label in ORIGINAL_LANGUAGE_CHOICES:
             self.language_combo.addItem(display_original_language(label), label)
         self.language_combo.setCurrentIndex(
             self.language_combo.findData(DEFAULT_ORIGINAL_LANGUAGE_LABEL)
@@ -901,6 +1074,28 @@ class MainWindow(QMainWindow):
         self.export_clean_button = QPushButton(tr("export_clean_txt"))
         self.export_clean_button.clicked.connect(lambda: self._safe_slot(self.reveal_clean_file))
         self.export_clean_button.setEnabled(False)
+        self.export_clean_button.setToolTip(tr("reveal_clean_tip"))
+
+        self.copy_clean_path_button = QPushButton(tr("copy_clean_path"))
+        self.copy_clean_path_button.clicked.connect(
+            lambda: self._safe_slot(self.copy_clean_path)
+        )
+        self.copy_clean_path_button.setEnabled(False)
+        self.copy_clean_path_button.setToolTip(tr("copy_clean_path_tip"))
+
+        self.copy_clean_text_button = QPushButton(tr("copy_clean_text"))
+        self.copy_clean_text_button.clicked.connect(
+            lambda: self._safe_slot(self.copy_clean_text)
+        )
+        self.copy_clean_text_button.setEnabled(False)
+        self.copy_clean_text_button.setToolTip(tr("copy_clean_text_tip"))
+
+        self.rename_clean_button = QPushButton(tr("rename_clean_txt"))
+        self.rename_clean_button.clicked.connect(
+            lambda: self._safe_slot(self.rename_clean_file)
+        )
+        self.rename_clean_button.setEnabled(False)
+        self.rename_clean_button.setToolTip(tr("rename_clean_tip"))
 
         controls_layout.addWidget(self.start_button)
         controls_layout.addWidget(self.stop_button)
@@ -963,7 +1158,10 @@ class MainWindow(QMainWindow):
 
         controls_layout.addWidget(self.mark_button)
         controls_layout.addWidget(self.open_folder_button)
-        controls_layout.addWidget(self.export_clean_button)
+        clean_path_row = QHBoxLayout()
+        clean_path_row.addWidget(self.export_clean_button)
+        clean_path_row.addWidget(self.copy_clean_path_button)
+        controls_layout.addLayout(clean_path_row)
         layout.addWidget(self.controls_group)
 
         self.session_group = QGroupBox(tr("session"))
@@ -1012,6 +1210,8 @@ class MainWindow(QMainWindow):
     def _build_tabs(self):
         self.tabs = QTabWidget()
         self.clean_table = TranscriptTable(tr("clean_transcript"))
+        self.clean_table.toolbar.insertWidget(0, self.rename_clean_button)
+        self.clean_table.toolbar.insertWidget(2, self.copy_clean_text_button)
         self.raw_table = TranscriptTable(tr("raw_transcript"))
         self.logs_text = QPlainTextEdit()
         self.logs_text.setReadOnly(True)
@@ -1223,6 +1423,13 @@ class MainWindow(QMainWindow):
         self.mark_button.setToolTip(tr("mark_tooltip"))
         self.open_folder_button.setText(tr("open_output_folder"))
         self.export_clean_button.setText(tr("export_clean_txt"))
+        self.export_clean_button.setToolTip(tr("reveal_clean_tip"))
+        self.copy_clean_path_button.setText(tr("copy_clean_path"))
+        self.copy_clean_path_button.setToolTip(tr("copy_clean_path_tip"))
+        self.copy_clean_text_button.setText(tr("copy_clean_text"))
+        self.copy_clean_text_button.setToolTip(tr("copy_clean_text_tip"))
+        self.rename_clean_button.setText(tr("rename_clean_txt"))
+        self.rename_clean_button.setToolTip(tr("rename_clean_tip"))
         self.model_group.setTitle(tr("model_group"))
         self.current_model_title_label.setText(tr("current_model"))
         self.model_dropdown_title_label.setText(tr("model_dropdown"))
@@ -1416,7 +1623,7 @@ class MainWindow(QMainWindow):
             return
 
         self.current_output_dir = Path(session_dir)
-        self.current_clean_path = self.current_output_dir / "clean.txt"
+        self.current_clean_path = self.controller.store.clean_path
         self.session_started_at = time.time()
         self.session_start_label.setText(time.strftime("%Y-%m-%d %H:%M:%S"))
         self.output_folder_label.setText(str(self.current_output_dir))
@@ -1433,6 +1640,9 @@ class MainWindow(QMainWindow):
         )
         self.open_folder_button.setEnabled(True)
         self.export_clean_button.setEnabled(True)
+        self.copy_clean_path_button.setEnabled(True)
+        self.copy_clean_text_button.setEnabled(True)
+        self.rename_clean_button.setEnabled(True)
         crash_log(f"start recording completed: session_dir={session_dir}")
 
     def stop_recording(self):
@@ -1457,12 +1667,35 @@ class MainWindow(QMainWindow):
             self.controller.stop()
         except Exception as exc:
             log_exception("_stop_controller failed", exc)
-            self.bridge.event_received.emit({"type": "error", "message": str(exc)})
+            self.bridge.event_received.emit(
+                {
+                    "type": "error",
+                    "message": str(exc),
+                    "session_id": self.controller.active_session_id,
+                    "session_generation": self.controller.active_session_generation,
+                }
+            )
         finally:
             crash_log("_stop_controller completed")
 
     def handle_event(self, event):
         event_type = event.get("type")
+        session_id = event.get("session_id")
+        session_generation = event.get("session_generation")
+
+        if event_type == "session":
+            if (
+                not session_id
+                or not isinstance(session_generation, int)
+                or session_generation <= self.active_session_generation
+            ):
+                return
+        elif session_id is not None or session_generation is not None:
+            if (
+                session_id != self.active_session_id
+                or session_generation != self.active_session_generation
+            ):
+                return
 
         if event_type == "state":
             self._set_status(event.get("state", EngineState.IDLE.value))
@@ -1470,10 +1703,28 @@ class MainWindow(QMainWindow):
             if message:
                 self._append_log(message, level="ERROR")
         elif event_type == "session":
+            self.active_session_id = session_id
+            self.active_session_generation = session_generation
             self.current_output_dir = Path(event["session_dir"])
             self.current_clean_path = Path(event["clean_path"])
+            self.clean_table.table.setRowCount(0)
+            self.raw_table.table.setRowCount(0)
+            self.clean_table.live_mode = True
+            self.raw_table.live_mode = True
+            self.raw_count = event.get("raw_count", 0)
+            self.clean_count = event.get("clean_count", 0)
+            self.raw_lines_label.setText(str(self.raw_count))
+            self.clean_lines_label.setText(str(self.clean_count))
+            self.clean_copy_row_cursor = 0
+            self.queue_size = 0
+            self.queue_label.setText("0")
             self.output_folder_label.setText(str(self.current_output_dir))
             self.output_folder_label.setToolTip(str(self.current_output_dir))
+            self.open_folder_button.setEnabled(True)
+            self.export_clean_button.setEnabled(True)
+            self.copy_clean_path_button.setEnabled(True)
+            self.copy_clean_text_button.setEnabled(True)
+            self.rename_clean_button.setEnabled(True)
             config = event.get("config", {})
             original_language_label = config.get("original_language_label")
             if original_language_label:
@@ -1581,10 +1832,134 @@ class MainWindow(QMainWindow):
             subprocess.run(["open", str(self.current_output_dir)], check=False)
 
     def reveal_clean_file(self):
-        if self.current_clean_path and self.current_clean_path.exists():
-            subprocess.run(["open", "-R", str(self.current_clean_path)], check=False)
-        else:
-            self.open_output_folder()
+        try:
+            path = self.controller.verified_clean_path(
+                self.active_session_id, self.active_session_generation
+            )
+        except (CleanRenameError, ValueError, OSError):
+            self.current_clean_path = None
+            return
+        self.current_clean_path = path
+        subprocess.run(["open", "-R", str(path)], check=False)
+
+    def copy_clean_path(self):
+        try:
+            path = self.controller.verified_clean_path(
+                self.active_session_id, self.active_session_generation
+            )
+        except (CleanRenameError, ValueError, OSError):
+            self.current_clean_path = None
+            return
+        self.current_clean_path = path
+        QApplication.clipboard().setText(str(path.absolute()))
+
+    def copy_clean_text(self):
+        row_count = self.clean_table.table.rowCount()
+        if row_count <= self.clean_copy_row_cursor:
+            return
+
+        copied_rows = []
+        for row in range(self.clean_copy_row_cursor, row_count):
+            item = self.clean_table.table.item(row, 1)
+            copied_rows.append(item.text() if item is not None else "")
+
+        QApplication.clipboard().setText("\n".join(copied_rows))
+        self.clean_copy_row_cursor = row_count
+
+    def rename_clean_file(self, stem=None):
+        session_id = self.active_session_id
+        generation = self.active_session_generation
+        path_hint = self.current_clean_path
+        if stem is None:
+            try:
+                current_path = self.controller.verified_clean_path(session_id, generation)
+            except CleanPathUnavailableError as exc:
+                self.current_clean_path = None
+                path_hint = exc.path_hint or path_hint
+                current_path = path_hint
+            except (CleanRenameError, ValueError, OSError) as exc:
+                self.current_clean_path = None
+                self._show_clean_rename_error(exc)
+                return
+            else:
+                self.current_clean_path = current_path
+                path_hint = current_path
+            dialog = QDialog(self)
+            dialog.setWindowTitle(tr("rename_title"))
+            layout = QVBoxLayout(dialog)
+            layout.addWidget(QLabel(tr("rename_prompt")))
+            row = QHBoxLayout()
+            name_edit = QLineEdit(current_path.stem if current_path else "clean")
+            row.addWidget(name_edit)
+            suffix = QLabel(".txt")
+            row.addWidget(suffix)
+            layout.addLayout(row)
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+            if dialog.exec() != QDialog.Accepted:
+                return
+            stem = name_edit.text()
+        try:
+            path = self.controller.rename_clean(stem, session_id, generation)
+        except CleanPathUnavailableError as exc:
+            self.current_clean_path = None
+            path_hint = exc.path_hint or path_hint
+            answer = QMessageBox.question(
+                self,
+                tr("recovery_title"),
+                tr("recovery_question").format(
+                    path=path_hint or tr("source_unavailable"), name=stem
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            try:
+                path = self.controller.recover_clean(stem, session_id, generation)
+            except (CleanRenameError, ValueError, OSError) as recovery_exc:
+                self.current_clean_path = None
+                self._show_clean_rename_error(recovery_exc)
+                return
+            self.current_clean_path = path
+            QMessageBox.information(
+                self, tr("recovery_title"), tr("recovery_success").format(name=path.name)
+            )
+            return
+        except CleanRenameVerificationError as exc:
+            self.current_clean_path = exc.verified_path
+            QMessageBox.warning(
+                self, tr("rename_title"),
+                tr("rename_verification_warning").format(
+                    error=exc.__cause__ or tr("source_unverified")
+                ),
+            )
+            return
+        except (CleanRenameError, ValueError) as exc:
+            try:
+                self.current_clean_path = self.controller.verified_clean_path(session_id, generation)
+            except (CleanRenameError, ValueError, OSError):
+                self.current_clean_path = None
+            self._show_clean_rename_error(exc)
+            return
+        except OSError as exc:
+            self._show_clean_rename_error(exc)
+            return
+        self.current_clean_path = path
+        QMessageBox.information(
+            self, tr("rename_title"), tr("rename_success").format(name=path.name)
+        )
+
+    def _show_clean_rename_error(self, error):
+        key = str(error)
+        message = (
+            tr(key)
+            if key in TEXT[current_language()]
+            else tr("rename_io_error").format(error=error)
+        )
+        QMessageBox.warning(self, tr("rename_error_title"), message)
 
     def closeEvent(self, event):
         crash_log(f"closeEvent entered: controller_state={self.controller.state.value}")

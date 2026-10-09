@@ -22,6 +22,7 @@
 - 不覆盖 `raw.txt` / `clean.txt`。
 - API key 不写入仓库、不写入 session 输出、不写入 request/response log。
 - API 失败、断网、超时、取消任务，都不得影响 Start/Stop、麦克风释放、session 文件关闭和 UI 主线程。
+- 当前 feature branch 中 `clean.txt` 只是初始名称。任何 LLM 实现必须先通过尚未实现的 trusted current-Clean resolver/manifest 找到准确输入；不得扫描目录后随便选择 `.txt`，也不得把同名 decoy 当成输入。
 
 ---
 
@@ -31,7 +32,7 @@
 |---|---|---|---|
 | 使用 DeepSeek V4 API | 已有方向 | 一致 | provider 层做成 DeepSeek / OpenAI-compatible；模型名可配置 |
 | 每一分钟输出一次对话的中文翻译 | 新增需求 | 条件性兼容 | 必须是可选 sidecar job；不能阻塞实时转写；不能默认逐 chunk 调 LLM |
-| 录音结束且转文字结束后输出详细总结 | 已有 P0 | 完全一致 | Stop 完成、clean.txt 完整后再运行 summary pipeline |
+| 录音结束且转文字结束后输出详细总结 | 已有 P0 | 完全一致 | Stop 完成、trusted resolver 验证 current Clean artifact 后再运行 summary pipeline |
 | 总结按“阶段1、阶段2...”组织 | 已有 timeline/section summary 的具体化 | 一致 | section chunker 按时间段输出中文阶段标题和时间戳 |
 | 输出中文翻译/中文总结 | goal 中未确认项的决策 | 属于补充确认 | 第一版默认中文，后续保留 output_language 配置 |
 
@@ -43,7 +44,7 @@
 
 第一版必须实现：
 
-1. 从已有 session 读取 `clean.txt`、`config.json`，必要时读取 `session.log` 元数据。
+1. 先用可信 current-Clean resolver 证明当前 transcript artifact 的 Session ownership，再只读该文件、`config.json`，必要时读取 `session.log` 元数据。
 2. 将 transcript 按时间戳和字符/token 预算切分。
 3. 调用 DeepSeek provider 生成分段结构化结果。
 4. 用 map-reduce 方式生成全局总结。
@@ -62,7 +63,7 @@ DeepSeek 可以承担的任务：
 - 英文课堂 transcript → 每 60 秒一段中文翻译/解释性翻译。
 - 提取 key terms、assignment、deadline、project instruction、professor emphasized points。
 - 生成 review questions。
-- 标记疑似 ASR 错误，但只能作为 possible correction，不能改写 clean.txt。
+- 标记疑似 ASR 错误，但只能作为 possible correction，不能改写 current Clean artifact。
 - 对长课做 map-reduce summary。
 
 DeepSeek 不应该承担的任务：
@@ -120,7 +121,7 @@ DEEPSEEK_API_KEY=... venv/bin/python llm_postprocess.py --session outputs/<SESSI
 
 ### Step 1：冻结 LLM 第一版范围
 
-**当前步骤目标**  
+**当前步骤目标**
 把“必须做”和“后续做”切开，避免 Codex 直接把每分钟翻译接进实时主链路。
 
 **当前步骤具体干什么**
@@ -128,7 +129,7 @@ DEEPSEEK_API_KEY=... venv/bin/python llm_postprocess.py --session outputs/<SESSI
 - 确认第一版目标是 after-stop summary。
 - 把每分钟中文翻译列为 Phase 2 sidecar，不进入初始 UI 主流程。
 - 明确默认输出语言为中文。
-- 明确 `clean.txt` 是第一输入源，`raw.txt` 只作为可选 evidence，不参与第一版 summary。
+- 明确 resolver-bound current Clean artifact 是第一输入源，`raw.txt` 只作为可选 evidence，不参与第一版 summary。
 
 **如果要用 Codex 应该写什么**
 
@@ -146,7 +147,7 @@ DEEPSEEK_API_KEY=... venv/bin/python llm_postprocess.py --session outputs/<SESSI
 
 ### Step 2：建立 LLM 设计文档
 
-**当前步骤目标**  
+**当前步骤目标**
 先做设计文档，减少 Codex 直接乱改 UI 和主链路的风险。
 
 **当前步骤具体干什么**
@@ -182,6 +183,30 @@ docs/LLM_POSTPROCESSING_DESIGN.md
 - 新文档存在。
 - 文档包含 provider、chunker、pipeline、writer、UI、tests 六部分。
 - 文档明确 `DEEPSEEK_API_KEY` 只从环境变量读取。
+
+---
+
+### Step 2A：实现并迁移 trusted current-Clean resolver
+
+**当前步骤目标**
+
+在任何 parser、CLI 或 UI summary 代码读取 transcript 前，先建立跨 App restart 仍可验证的 current-Clean identity。当前运行中 Store 能按 inode 验证路径，但 Session 关闭并重启 App 后没有持久 locator。
+
+**当前步骤具体干什么**
+
+- 设计 Session-local、可持久化且可版本迁移的 current-Clean manifest/locator。
+- 普通 rename、active recovery 和 post-Stop recovery 成功后，以事务方式更新 locator；失败事务不能发布半状态。
+- resolver 必须验证 Session ownership、普通文件类型和 locator identity，不跟随 symlink，不靠文件名排序或“唯一 `.txt`”猜测。
+- 为旧 Session 定义显式迁移规则。无法唯一证明时返回 unavailable/ambiguous，并阻止 LLM 运行。
+- LLM 输出 metadata 记录所解析 artifact 的安全身份摘要，但不改写 transcript。
+
+**验收信号**
+
+- 初始 `clean.txt`、普通 rename、active recovery、Stop 后 recovery 和 App restart 都能解析到准确 artifact。
+- 同名 decoy、多个 `.txt`、symlink、stale locator、缺失文件和不完整事务全部 fail closed。
+- resolver 失败时不创建 `session_dir/llm/`，也不调用 provider。
+
+在该 gate 完成前，后续 Step 3-10 只能做不读取真实 Session transcript 的接口/mock 工作，不能宣称可用于生产 Session。
 
 ---
 
@@ -237,7 +262,7 @@ PASS
 ### Step 4：实现 transcript parser 与 chunker
 
 **当前步骤目标**  
-把 `clean.txt` 解析成带 start/end/text 的结构，并按时间/字符预算切块。
+把 resolver 已验证的 current Clean artifact 解析成带 start/end/text 的结构，并按时间/字符预算切块。
 
 **当前步骤具体干什么**
 
@@ -290,7 +315,7 @@ outputs/<SESSION_ID>/llm/
 约束：
 
 - 不修改 `raw.txt`。
-- 不修改 `clean.txt`。
+- 不修改 resolver-bound current Clean artifact。
 - 不写 API key。
 - 写文件失败时记录错误并返回失败状态。
 
@@ -486,7 +511,7 @@ summary: outputs/<SESSION_ID>/llm/summary.md
 并且：
 
 ```bash
-git diff -- raw.txt clean.txt
+比较运行前后 `raw.txt` 与 resolver-bound current Clean artifact 的 bytes/hash
 ```
 
 预期：无 raw/clean 改动。
@@ -546,7 +571,7 @@ venv/bin/python testCodes/test_ui_support.py
 ```text
 LLM Live Translation Sidecar
 interval_seconds = 60
-input = clean.txt 增量内容或 UI clean line buffer snapshot
+input = resolver-bound current Clean 增量内容或 UI clean line buffer snapshot
 output = llm/live_translation.md + llm/live_translation.jsonl
 ```
 
@@ -707,17 +732,18 @@ Add optional LLM post-processing pipeline
 ## 5. 推荐执行顺序压缩版
 
 1. 先写 `docs/LLM_POSTPROCESSING_DESIGN.md`。
-2. 建 `llm/` 模块骨架。
-3. 做 parser/chunker。
-4. 做 output writer。
-5. 做 mock provider + summary pipeline。
-6. 做 CLI：`llm_postprocess.py --session ... --provider mock`。
-7. 接 DeepSeek provider。
-8. 做真实 API smoke test。
-9. 接 UI：Generate/Open/Cancel。
-10. 质量验收后再做每分钟中文翻译 sidecar。
-11. 文档更新。
-12. 测试全过后 commit/push。
+2. 实现并迁移 trusted current-Clean resolver；身份无法证明就 fail closed。
+3. 建 `llm/` 模块骨架。
+4. 做 parser/chunker。
+5. 做 output writer。
+6. 做 mock provider + summary pipeline。
+7. 做 CLI：`llm_postprocess.py --session ... --provider mock`。
+8. 接 DeepSeek provider。
+9. 做真实 API smoke test。
+10. 接 UI：Generate/Open/Cancel。
+11. 质量验收后再做每分钟中文翻译 sidecar。
+12. 文档更新。
+13. 测试全过后 commit/push。
 
 ---
 

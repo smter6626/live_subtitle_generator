@@ -1,5 +1,7 @@
 # goalForNextLevel.md
 
+> 2026-09-25 supersession note: 当前 feature branch 中，每个 Session 仍以 `clean.txt` 作为初始名称，但用户可重命名当前 Clean 文件，路径确定丢失时也可在录制中或 Stop 后创建包含完整历史的用户命名 `.txt`。因此本文后续出现的 `clean.txt` 应理解为“由可信 current-Clean resolver 解析出的当前 Clean artifact”，而不是永久固定文件名。该跨 App restart resolver/manifest 尚未实现；LLM 或 Session Browser 在实现前必须先完成这一 gate，身份无法证明时 fail closed，不能扫描目录后任意选择 `.txt`。详细边界见 [`LLM_POSTPROCESSING_DESIGN.md`](LLM_POSTPROCESSING_DESIGN.md) 和 [`repo_map.md`](repo_map.md)。
+
 ## 0. 文档目的
 
 本文档记录 Classroom Live Transcriber 后续“高价值功能”的开发目标、优先级、设计边界和验收标准。

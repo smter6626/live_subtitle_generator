@@ -105,5 +105,7 @@ app = BUNDLE(
         ),
         "CFBundleName": "ClassroomTranscriber",
         "CFBundleDisplayName": "ClassroomTranscriber",
+        "CFBundleShortVersionString": "1.1.0",
+        "CFBundleVersion": "1.1.0",
     },
 )
