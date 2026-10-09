@@ -750,18 +750,18 @@ class ValidationCacheTests(unittest.TestCase):
         root = Path(tempfile.mkdtemp(prefix='owned-verifier-', dir=self.root))
         env = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'TMPDIR': str(root)}
         self.assertEqual(workflow.verification_command(
-            [sys.executable, '-I', '-c', 'print("verified")'], cwd=root, env=env,
+            [sys.executable, '-B', '-I', '-c', 'import sys; assert sys.dont_write_bytecode; print("verified")'], cwd=root, env=env,
             timeout=5).stdout, b'verified\n')
         for kind in ('timeout', 'background'):
             with self.subTest(kind=kind):
                 marker = root / (kind + '.json')
-                source = ('import json,os,subprocess,sys,time; '
-                          'child=subprocess.Popen([sys.executable,"-I","-c","import time; time.sleep(60)"],'
+                source = ('import json,os,subprocess,sys,time; assert sys.dont_write_bytecode; '
+                          'child=subprocess.Popen([sys.executable,"-B","-I","-c","import sys,time; assert sys.dont_write_bytecode; time.sleep(60)"],'
                           'stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); '
                           'open(sys.argv[1],"w").write(json.dumps({"leader":os.getpid(),"child":child.pid})); '
                           + ('time.sleep(60)' if kind == 'timeout' else 'print("done")'))
                 with self.assertRaises(approval.Stop) as failure:
-                    workflow.verification_command([sys.executable, '-I', '-c', source, str(marker)],
+                    workflow.verification_command([sys.executable, '-B', '-I', '-c', source, str(marker)],
                                                   cwd=root, env=env, timeout=1)
                 self.assertEqual(failure.exception.code,
                                  'ENVIRONMENT_VERIFY_TIMEOUT' if kind == 'timeout' else 'ENVIRONMENT_VERIFY_CHILDREN')

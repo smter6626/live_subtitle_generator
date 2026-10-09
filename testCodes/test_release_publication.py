@@ -16,7 +16,7 @@ import release_publication as publication
 import release_publication_state as state
 import release_integration as integration
 
-FAKE_GH = r'''#!PYTHON
+FAKE_GH = r'''#!PYTHON -B
 import base64, json, os, pathlib, sys
 root = pathlib.Path(__file__).parent
 argv = sys.argv[1:]
@@ -27,7 +27,7 @@ stdin = sys.stdin.buffer.read() if '--input' in argv and argv[argv.index('--inpu
 uploaded = pathlib.Path(argv[argv.index('--input')+1]).read_bytes() if '--input' in argv and not stdin else None
 record = {'argv': argv, 'stdin': base64.b64encode(stdin).decode(),
           'upload': None if uploaded is None else base64.b64encode(uploaded).decode(),
-          'env_keys': sorted(os.environ)}
+          'env_keys': sorted(os.environ), 'dont_write_bytecode': sys.dont_write_bytecode}
 with (root/'fake-gh-calls.jsonl').open('a') as log: log.write(json.dumps(record)+'\n')
 path = root/'fake-remote.json'
 remote = json.loads(path.read_text())
@@ -141,6 +141,7 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(json.loads(base64.b64decode(writes[0]['stdin']))['body'], publication.Publisher(f.policy).notes_text)
         self.assertEqual(json.loads(base64.b64decode(writes[-1]['stdin']))['make_latest'], 'true')
         self.assertTrue(all('--repo' not in v['argv'] and '--clobber' not in v['argv'] for v in f.call_records()))
+        self.assertTrue(all(v['dont_write_bytecode'] is True for v in f.call_records()))
         store = f.publisher().store
         value = store.inspect()
         self.assertEqual(value['state'], 'COMPLETE')
