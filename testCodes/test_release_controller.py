@@ -220,6 +220,122 @@ class Fixture:
             yield
 
 
+class PinnedCMakeAttributesTests(unittest.TestCase):
+    """Exact inert CMake resource files, not an ignored-tree exception."""
+
+    CONTENTS = {
+        '.tools/cmake/4.2.3/CMake.app/Contents/share/cmake-4.2/Templates/.gitattributes':
+            b'CPack.GenericLicense.txt conflict-marker-size=79\n',
+        '.tools/cmake/4.2.3/CMake.app/Contents/share/cmake-4.2/Modules/Internal/CPack/.gitattributes':
+            b'# TODO Check if `CPack.distribution.dist.in` could use spaces\n'
+            b'CPack.distribution.dist.in tab-indent\n',
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.root = retained_root()
+
+    def repository(self):
+        repo = Path(tempfile.mkdtemp(prefix='cmake-attributes-', dir=self.root))
+        integration.git(None, 'init', '--template=', '--initial-branch=main', str(repo))
+        origin = str(self.root / 'attributes-remote.git')
+        integration.git(repo, 'remote', 'add', 'origin', origin)
+        (repo / '.gitignore').write_text('.tools/\n')
+        (repo / 'tracked.txt').write_bytes(b'actual tracked source\n')
+        integration.git(repo, 'add', '.gitignore', 'tracked.txt')
+        integration.git(repo, 'commit', '-m', 'CMake attribute scope fixture')
+        for relative, contents in self.CONTENTS.items():
+            path = repo / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(contents)
+            path.chmod(0o644)
+        return repo, origin
+
+    def test_build_opt_in_is_byte_exact_read_only_and_inert_for_tracked_source(self):
+        repo, origin = self.repository()
+        before = {str(path.relative_to(repo)): (
+            path.lstat().st_ino, path.lstat().st_mode, path.lstat().st_mtime_ns,
+            path.lstat().st_ctime_ns, approval.digest(path.read_bytes()) if path.is_file() else None)
+            for path in (repo, *repo.rglob('*'))}
+        with self.assertRaises(approval.Stop) as failure:
+            integration.audit_git(repo, origin)
+        self.assertEqual(failure.exception.code, 'GIT_ATTRIBUTES')
+        for _ in range(2):
+            integration.audit_git(repo, origin, allow_pinned_cmake=True)
+        self.assertEqual(integration.git(repo, 'check-attr', '--all', '--', 'tracked.txt', '.gitignore'), '')
+        self.assertEqual(integration.git(repo, 'status', '--porcelain=v1'), '')
+        self.assertEqual({str(path.relative_to(repo)): (
+            path.lstat().st_ino, path.lstat().st_mode, path.lstat().st_mtime_ns,
+            path.lstat().st_ctime_ns, approval.digest(path.read_bytes()) if path.is_file() else None)
+            for path in (repo, *repo.rglob('*'))}, before)
+
+    def test_build_opt_in_never_allows_other_attributes_or_submodules(self):
+        cases = ('root-attributes', 'ignored-attributes', 'cmake-other-attributes',
+                 'other-version', 'root-submodules', 'cmake-submodules', 'info-attributes',
+                 'wrong-bytes', 'mode-600', 'mode-666', 'mode-755', 'directory',
+                 'symlink', 'hardlink', 'ancestor-symlink', 'ancestor-writable', 'foreign-owner')
+        for kind in cases:
+            with self.subTest(kind=kind):
+                repo, origin = self.repository()
+                path = repo / next(iter(self.CONTENTS))
+                extra = {
+                    'root-attributes': '.gitattributes',
+                    'ignored-attributes': '.tools/.gitattributes',
+                    'cmake-other-attributes': '.tools/cmake/4.2.3/CMake.app/.gitattributes',
+                    'other-version': '.tools/cmake/4.2.4/CMake.app/Contents/share/cmake-4.2/Templates/.gitattributes',
+                    'root-submodules': '.gitmodules',
+                    'cmake-submodules': '.tools/cmake/4.2.3/CMake.app/.gitmodules',
+                    'info-attributes': '.git/info/attributes',
+                }.get(kind)
+                if extra:
+                    target = repo / extra
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(self.CONTENTS[next(iter(self.CONTENTS))])
+                elif kind == 'wrong-bytes':
+                    path.write_bytes(b'* filter=unapproved\n')
+                elif kind.startswith('mode-'):
+                    path.chmod(int(kind[5:], 8))
+                elif kind in ('directory', 'symlink', 'hardlink'):
+                    data = path.read_bytes()
+                    path.unlink()
+                    if kind == 'directory':
+                        path.mkdir()
+                    else:
+                        target = repo / 'attribute-target'
+                        target.write_bytes(data)
+                        if kind == 'symlink':
+                            path.symlink_to(target)
+                        else:
+                            os.link(target, path)
+                elif kind == 'ancestor-symlink':
+                    parent = path.parent
+                    retired = parent.with_name('Templates-retired')
+                    parent.rename(retired)
+                    parent.symlink_to(retired, target_is_directory=True)
+                elif kind == 'ancestor-writable':
+                    path.parent.chmod(0o777)
+                original = Path.lstat
+                def foreign(candidate):
+                    info = original(candidate)
+                    if kind == 'foreign-owner' and candidate == path:
+                        values = list(info)
+                        values[4] = os.getuid() + 1
+                        return os.stat_result(values)
+                    return info
+                with mock.patch.object(Path, 'lstat', foreign), self.assertRaises(approval.Stop):
+                    integration.audit_git(repo, origin, allow_pinned_cmake=True)
+
+    def test_opt_in_requires_literal_bool_and_is_not_available_for_bare_audit(self):
+        repo, origin = self.repository()
+        for value in (1, 'yes', None, {}):
+            with self.subTest(value=value), self.assertRaises(approval.Stop) as failure:
+                integration.audit_git(repo, origin, allow_pinned_cmake=value)
+            self.assertEqual(failure.exception.code, 'GIT_ATTRIBUTES')
+        with self.assertRaises(approval.Stop) as failure:
+            integration.audit_git(repo, None, bare=True, allow_pinned_cmake=True)
+        self.assertEqual(failure.exception.code, 'GIT_ATTRIBUTES')
+
+
 class ControllerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -227,6 +343,20 @@ class ControllerTests(unittest.TestCase):
 
     def fixture(self, **kwargs):
         return Fixture(self.root, **kwargs)
+
+    def test_integration_refuses_pinned_cmake_attributes_in_untrusted_implementation(self):
+        f = self.fixture()
+        for relative, contents in PinnedCMakeAttributesTests.CONTENTS.items():
+            path = f.source / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(contents)
+            path.chmod(0o644)
+        before = integration.git(f.remote, 'show-ref')
+        with self.assertRaises(approval.Stop) as failure:
+            integration.Integration(f.policy).execute()
+        self.assertEqual(failure.exception.code, 'GIT_ATTRIBUTES')
+        self.assertEqual(integration.git(f.remote, 'show-ref'), before)
+        self.assertFalse((f.root / 'managed').exists())
 
     def test_real_signed_cli_divergent_merge_preserves_history_and_docs(self):
         f = self.fixture(prior=True)

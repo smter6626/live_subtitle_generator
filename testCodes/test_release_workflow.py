@@ -808,6 +808,36 @@ class WorkflowTests(unittest.TestCase):
     def setUpClass(cls):
         cls.root = retained_root()
 
+    def test_original_checkpoint_acquires_and_freezes_only_pinned_cmake_attributes(self):
+        from testCodes.test_release_controller import PinnedCMakeAttributesTests
+        runtime = synthetic_stages()['bootstrap_whisper_runtime.sh']
+        for relative, contents in PinnedCMakeAttributesTests.CONTENTS.items():
+            runtime += ('mkdir -p ' + shlex.quote(str(Path(relative).parent)) + '\n'
+                        'printf %s ' + shlex.quote(contents.decode()) + ' > ' + shlex.quote(relative) + '\n'
+                        'chmod 644 ' + shlex.quote(relative) + '\n')
+        f = Fixture(self.root, synthetic=True, stage_overrides={'bootstrap_whisper_runtime.sh': runtime})
+        controller = synthetic_controller(f)
+        original = integration.audit_git
+        with mock.patch.object(integration, 'audit_git', wraps=original) as audits:
+            self.assertEqual(controller.execute(), 'ARTIFACT_RECORDED_C1_ONLY')
+        self.assertEqual(controller.events, list(workflow.EVENTS))
+        calls = [call for call in audits.call_args_list if call.args[0] == controller.workspace]
+        self.assertTrue(calls)
+        self.assertTrue(all(call.kwargs == {'allow_pinned_cmake': True} for call in calls[1:]))
+        for relative, contents in PinnedCMakeAttributesTests.CONTENTS.items():
+            self.assertEqual(controller.proof[relative][-1], approval.digest(contents))
+        self.assertEqual(workflow.execution_snapshot(controller.workspace), controller.proof)
+        self.assertFalse((f.policy.root / 'artifact-human.json').exists())
+        relative = next(iter(PinnedCMakeAttributesTests.CONTENTS))
+        path = controller.workspace / relative
+        retired = f.root / 'retired-cmake-attribute'
+        path.rename(retired)
+        shutil.copy2(retired, path)
+        original(controller.workspace, str(f.remote), allow_pinned_cmake=True)
+        with self.assertRaises(approval.Stop) as failure:
+            controller.check_environment_proof()
+        self.assertEqual(failure.exception.code, 'ENVIRONMENT_CHANGED')
+
     def test_actual_controller_original_entry_and_zip_chain_success_with_synthetic_children(self):
         f = Fixture(self.root, synthetic=True)
         (f.managed / 'journal.json').write_text('{"state":"COMPLETE","gate":"PASS"}\n')

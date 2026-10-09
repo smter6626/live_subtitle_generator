@@ -61,6 +61,17 @@ ENV_PROBE = (
     '"version":platform.python_version()}))'
 )
 
+# These two inert template attributes ship inside the manifest-pinned CMake
+# 4.2.3 archive (SHA-256 c2302d3e9c48daabee5ea7c4db4b2b93b989bcc89dae8b760880e00120641b5b).
+# Their scope is below ignored CMake resources, never the tracked source tree.
+# Only the fresh BuildController opts in; integration remains default-deny.
+PINNED_CMAKE_ATTRIBUTES = {
+    '.tools/cmake/4.2.3/CMake.app/Contents/share/cmake-4.2/Templates/.gitattributes':
+        '6a227c6503009644f6e21a557078543f99795f4b41da66a5fbdd6fd50b5f285b',
+    '.tools/cmake/4.2.3/CMake.app/Contents/share/cmake-4.2/Modules/Internal/CPack/.gitattributes':
+        '8653f74ed421f0a7dabf0f3eedfa2dea98c3540fc474710a8bf35625e37392a0',
+}
+
 
 def environment():
     if _NATIVE_POLICY.get() is not None:
@@ -116,13 +127,14 @@ def git(repo: Path | None, *args: str, env=None) -> str:
         raise Stop('GIT_OUTPUT_INVALID') from exc
 
 
-def audit_git(repo: Path, origin: str | None, *, bare=False):
+def audit_git(repo: Path, origin: str | None, *, bare=False, allow_pinned_cmake=False):
     """Inspect bytes before any repository command could interpret config.
 
     A small config allowlist also rejects includes, aliases, URL rewrites,
     filters, hooks, SSH commands, proxy/redirects, extra remotes and transports.
     No linked worktree, shared objects, replacements, grafts or partial clones.
     """
+    require(type(allow_pinned_cmake) is bool and not (bare and allow_pinned_cmake), 'GIT_ATTRIBUTES')
     inspect_path(repo, owner=os.getuid(), directory=True)
     gitdir = repo if bare else repo / '.git'
     inspect_path(gitdir, owner=os.getuid(), directory=True)
@@ -173,10 +185,17 @@ def audit_git(repo: Path, origin: str | None, *, bare=False):
             items.get('core.bare') == ('true' if bare else 'false'), 'GIT_CONFIG')
     if not bare:
         require(items.get('remote.origin.url') == origin, 'ORIGIN_INVALID')
-        # No attributes/submodules, including ignored working-tree attributes.
+        # No source attributes/submodules, including ignored attributes. The
+        # fresh build may retain only the two byte-pinned CMake resource files.
+        # Safe ancestry/type/owner/mode checks still precede reading each file;
+        # the build's full execution snapshot separately freezes its identity.
         for path in repo.rglob('*'):
             if path.name in ('.gitattributes', '.gitmodules') and not path.is_relative_to(gitdir):
-                raise Stop('GIT_ATTRIBUTES')
+                relative = path.relative_to(repo).as_posix()
+                require(allow_pinned_cmake and path.name == '.gitattributes' and
+                        relative in PINNED_CMAKE_ATTRIBUTES, 'GIT_ATTRIBUTES')
+                require(digest(read_file(path, owner=os.getuid(), mode=0o644)) ==
+                        PINNED_CMAKE_ATTRIBUTES[relative], 'GIT_ATTRIBUTES')
         require(git(repo, 'rev-parse', '--show-toplevel') == str(repo) and
                 git(repo, 'rev-parse', '--git-common-dir') == '.git', 'GIT_STANDALONE')
         require(git(repo, 'remote', 'get-url', '--all', 'origin') == origin and
