@@ -8,7 +8,7 @@ Classroom Live Transcriber is a local, near-real-time classroom transcription ap
 Microphone -> local Whisper transcription -> live transcript UI -> session files
 ```
 
-The current transcription path does not depend on a cloud LLM. Release 1.0.0 does not include an LLM summary, translation sidecar, semantic rewrite, or note-taking service.
+The current transcription path does not depend on a cloud LLM. Release 1.1.0 does not include an LLM summary, translation sidecar, semantic rewrite, or note-taking service.
 
 ## Features
 
@@ -31,19 +31,20 @@ The current transcription path does not depend on a cloud LLM. Release 1.0.0 doe
 
 ## Download
 
-The current formal release is **1.0.0**:
+The current formal release is **1.1.0**:
 
-- [Classroom Transcriber 1.0.0 GitHub Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.0.0)
-- Release asset: `ClassroomTranscriber-1.0.0-macOS-AppleSilicon.zip`
+- [Classroom Transcriber 1.1.0 GitHub Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.1.0)
+- [Download the macOS Apple Silicon ZIP](https://github.com/smter6626/live_subtitle_generator/releases/download/1.1.0/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip)
+- Release asset: `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip`
 
-Version 1.1.0 is an unbuilt, unpublished candidate on `codex/release-1-1-0-automation`. Its fixed candidate title is **Classroom Transcriber 1.1.0**, and its intended asset is `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip` containing `ClassroomTranscriber.app`. The downloadable 1.0.0 App does not contain these candidate changes. Prior clean-machine acceptance of 1.0.0 remains historical evidence only; it does not accept any new 1.1.0 App or ZIP bytes.
+Version 1.1.0 contains the language, Session, Clean file and window improvements listed above. The exact fresh-built ZIP passed automatic package checks, independent review and Owner testing before publication. Its SHA-256 is `fbe14de7d68c519ddb817ef1f45166f3e39a24f0a27d290cd82d9c2c20717bdb` (48,307,378 bytes). See [release details](docs/release_1_1_0.md) for the fixed source and verification scope. Version 1.0.0 remains available as a historical release.
 
 Ordinary users do **not** need to clone this repository, install Python, or compile `whisper.cpp`. Whisper models are not included in the ZIP; download or import one from Model Manager after opening the app.
 
 ## System Requirements
 
 - A Mac with Apple Silicon (`arm64`)
-- macOS; release acceptance was completed on Apple M4 Max and Apple M5 machines running macOS 27 Beta
+- macOS; historical 1.0.0 testing used Apple M4 Max and Apple M5 with macOS 27 Beta. That history is not a new 1.1.0 hardware compatibility matrix.
 - Permission to use the microphone
 - Enough free disk space for the selected model and its temporary download staging
 - An internet connection while Model Manager downloads a model
@@ -54,7 +55,7 @@ The project has not validated Intel Macs, Windows, M1/M2/M3 hardware, or older m
 
 No Terminal commands are required.
 
-1. Download `ClassroomTranscriber-1.0.0-macOS-AppleSilicon.zip` from the [1.0.0 Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.0.0).
+1. Download `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip` from the [1.1.0 Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.1.0).
 2. In Finder, double-click the ZIP to extract `ClassroomTranscriber.app`.
 3. Open `ClassroomTranscriber.app`.
 4. The release is not notarized. If macOS says Apple cannot verify the app, close the warning, open **System Settings → Privacy & Security**, choose **Open Anyway**, authenticate if asked, and open the app again.
@@ -67,9 +68,9 @@ No Terminal commands are required.
 11. If desired, use **Choose Output Location** to select where future sessions will be stored.
 12. Click **Start Recording**. The Clean Transcript view will update after the first audio chunk has been processed.
 13. Click **Stop Recording** when the class or recording is finished. The app stops capture and finishes audio already submitted for processing.
-14. If you are running the current feature branch, use the Clean file actions below. These controls are not present in the downloadable 1.0.0 app.
+14. Use the Clean file actions below; they are included in the 1.1.0 App.
 
-### Clean file actions on the current feature branch
+### Clean file actions
 
 - **Reveal Clean** and **Copy Clean Path** share one compact row in the left controls. Each use rechecks that the path still identifies the current Session's Clean writer. If verification fails, Finder and the clipboard remain unchanged.
 - **Rename Clean TXT** is at the left of the Clean table toolbar. Enter only a filename stem; the app owns the fixed `.txt` suffix. A normal rename is no-clobber, preserves the writer inode, and works while recording or after Stop.
@@ -167,7 +168,7 @@ Every session is stored under an `outputs` directory:
 ```
 
 - `raw.txt` — original timestamped transcript evidence from the backend
-- `clean.txt` -- the initial name of the current Clean transcript. On the feature branch, Rename Clean TXT may change it to a user-named `.txt` while preserving contents and continued appends, or may recover the complete writer history into a new no-clobber `.txt` when the original Session path is conclusively unavailable. Do not assume that every completed feature-branch Session still has a file literally named `clean.txt`.
+- `clean.txt` -- the initial name of the current Clean transcript. Rename Clean TXT may change it to a user-named `.txt` while preserving contents and continued appends, or may recover the complete writer history into a new no-clobber `.txt` when the original Session path is conclusively unavailable. Do not assume that every completed Session still has a file literally named `clean.txt`.
 - `session.log` — session, chunk, backend, warning, error, and stop events
 - `config.json` — the model, language, Beam, paths, and audio configuration for that session
 
@@ -178,7 +179,7 @@ Choosing a new Output Location changes the base for future sessions only. It doe
 - Microphone transcription and `whisper.cpp` inference run locally on the Mac.
 - Session transcripts are saved under the output location you choose.
 - Model downloads access the upstream `ggerganov/whisper.cpp` model repository over the network.
-- Release 1.0.0 does not send transcripts to a cloud LLM for summary, translation, or semantic rewriting.
+- Release 1.1.0 does not send transcripts to a cloud LLM for summary, translation, or semantic rewriting.
 
 These statements describe the current application path; they are not a claim about the behavior of macOS, your network, or third-party software on the computer.
 
@@ -214,7 +215,7 @@ After Start creates a session, click **Open Output Folder**. The main window als
 
 ### Reveal Clean or Copy Clean Path does nothing
 
-On the feature branch, these actions deliberately leave Finder or the clipboard unchanged when the Store cannot prove which Session-local `.txt` is the current writer. Retry after external file activity has stopped. If the path is conclusively absent, use **Rename Clean TXT** to choose whether to create a full-history recovery file.
+These actions deliberately leave Finder or the clipboard unchanged when the Store cannot prove which Session-local `.txt` is the current writer. Retry after external file activity has stopped. If the path is conclusively absent, use **Rename Clean TXT** to choose whether to create a full-history recovery file.
 
 ### Clean rename reports that the destination exists
 
@@ -226,14 +227,14 @@ Permission, I/O, Session-directory identity, or file-type uncertainty fails clos
 
 ## Known Limitations
 
-- The downloadable 1.0.0 artifact is macOS Apple Silicon only. There is no Intel Mac or Windows release.
-- Release acceptance was completed on Apple M4 Max and Apple M5 with macOS 27 Beta. Other Apple Silicon generations and older macOS versions were not project-validated, and a minimum macOS version is not yet defined.
+- The downloadable 1.1.0 artifact is macOS Apple Silicon only. There is no Intel Mac or Windows release.
+- Historical 1.0.0 acceptance on Apple M4 Max and Apple M5 with macOS 27 Beta does not establish coverage for every 1.1.0 hardware/OS combination. A minimum macOS version is not yet defined.
 - The release is ad-hoc signed and is not Developer ID notarized, so Gatekeeper may require **Open Anyway** on first launch.
 - Inference currently invokes the `whisper.cpp` CLI in overlapping audio chunks. Transcription is near-real-time, not zero-latency or latency-guaranteed.
-- Release 1.0.0 has no LLM summary, cloud translation sidecar, semantic correction, or structured classroom notes.
+- Release 1.1.0 has no LLM summary, cloud translation sidecar, semantic correction, or structured classroom notes.
 - Auto Detect uses automatic language detection, so results depend on the model and audio.
 - Clean Transcript applies conservative deduplication and limited high-confidence filtering; it is not a semantic rewrite.
-- Feature-branch Clean path verification is designed for this app's single-writer workflow. An uncooperative external process can still mutate the Session immediately after the final check; the app does not provide filesystem locking against other programs.
+- Clean path verification is designed for this app's single-writer workflow. An uncooperative external process can still mutate the Session immediately after the final check; the app does not provide filesystem locking against other programs.
 
 ## For Developers
 

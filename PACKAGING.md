@@ -1,5 +1,11 @@
 # Packaging and Deployment Contract
 
+## Current published artifact -- 1.1.0
+
+The formal release is [Classroom Transcriber 1.1.0](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.1.0). Its single ZIP is 48,307,378 bytes with SHA-256 `fbe14de7d68c519ddb817ef1f45166f3e39a24f0a27d290cd82d9c2c20717bdb`, built from source `014a609fcc7ab26be8820f4399cdaa19225498e1`. See [release details](docs/release_1_1_0.md) for package, Human-review and publication verification scope. Documentation-only commits after publication do not move that tag or rebuild the ZIP.
+
+The legacy implementation/candidate and signed-entry sections below preserve protocol history, not current release status. Current execution uses the Owner-authorized lightweight workflow. Release 1.1.0 does not require a user to modify Homebrew permissions or use Terminal: any maintainer-side transport preparation is outside the App and ZIP.
+
 ## Goal and delivery flows
 
 Classroom Live Transcriber targets macOS on Apple Silicon (`arm64`). A complete deployment must perform real local transcription; opening the UI or running `whisper-cli --help` alone is not acceptance.
@@ -126,7 +132,7 @@ The `.command` file only resolves the repository and transfers control. The orch
 
 ## Formal Release ZIP
 
-The fixed product identity is `1.1.0`, tag `1.1.0`, title `Classroom Transcriber 1.1.0`, App `ClassroomTranscriber.app`, and asset `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip`. This is an unbuilt, unpublished candidate; REL1A does not tag, upload, publish, or approve it. After a future real formal build passes, create one task-managed root under the current user's Downloads directory. The artifact and retained Human-review extraction must both be descendants of that root:
+The fixed product identity is `1.1.0`, tag `1.1.0`, title `Classroom Transcriber 1.1.0`, App `ClassroomTranscriber.app`, and asset `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip`. The published package is fixed above; the following commands document the packaging interface, not instructions to replace that package. REL1A itself does not tag, upload, publish, or approve a ZIP. A new build requires a new artifact and Human decision. The artifact and retained Human-review extraction must both be descendants of one task-managed Downloads root:
 
 ```bash
 ./Build\ ClassroomTranscriber.command
@@ -145,9 +151,9 @@ Before exposing the ZIP, the entry re-runs the existing packaged Runtime verifie
 
 Models, `.venv`, `.tools`, `external`, source-tree files, build caches, and user settings are not Release payloads. Models remain an external Model Manager responsibility.
 
-## Future 1.1.0 artifact work
+## Artifact acceptance and historical coverage
 
-The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Historical clean-machine acceptance and real-transcription E2E were completed for Release 1.0.0, but that history does not accept an unbuilt 1.1.0 candidate or any future 1.1.0 App/ZIP bytes. REL1A/REL1B/C1 were independently accepted for their bounded implementation scopes. C2/C3 publication/routing is an implementation candidate awaiting independent review. A real 1.1.0 integration, fresh build, Human artifact review and publication remain pending.
+The locked Python environment, whisper Runtime bootstrap, one-entry developer build orchestration, strict packaged Runtime gate, and transactional model download integrity layer are present. Release 1.1.0 completed actual integration, a 297-test strict source gate, fresh formal build, automatic and independent package checks, Owner testing and same-ZIP publication. This accepts only the exact artifact recorded above, not every hardware/language/model combination or a future rebuilt ZIP. Historical 1.0.0 clean-machine testing remains separate evidence.
 
 ## Current lightweight release workflow
 
@@ -165,6 +171,16 @@ not a requirement to install root-owned tools, signing keys, groups or auth brid
 ```
 
 The same prefix accepts `integrate`, `prepare`, `resume`, `human-gate`, and `publish`.
+For the completed 1.1.0 publication, native Homebrew's group-writable `Cellar`
+needed an explicit, temporary maintainer-side permission transaction; the original
+mode was restored on every exit. GitHub returned `untagged-*` links for the draft
+release and its asset. The strict original Publisher rejected them; a reviewed,
+task-local adapter accepted only the observed exact release/asset IDs and draft
+links, while retaining the original state machine and all source, receipt, notes,
+tag, asset and actual-download checks. Published URLs still had to use `1.1.0`.
+The shipped App/source/ZIP were not changed. Before a future release, address these
+transport compatibility issues explicitly rather than copying old IDs, disabling
+checks or assuming the original entry will work unmodified in every environment.
 Only `status` is a local read-only hint. `integrate` runs the original isolated
 two-parent Integration and live full strict gate, including ordinary feature/main
 push, then stops for independent final-main review. `prepare` runs that stage if

@@ -948,3 +948,9 @@ git switch llm-sidecar-phase1
 ```
 
 不要使用另一条工作线的 ACTIVE Step 推断当前分支下一步。
+
+## 2026-10-11 -- 1.1.0 独立发布工作线完成
+
+上面的 Deployment/0.2.0 历史和实机结论保持不变。后续 1.1.0 发布工作线已完成固定 main 源码集成、297 项 strict source gate、fresh 正式构建、自动与独立验包、Owner 对精确包的人工验收，以及同 ZIP 的 GitHub 正式/latest 发布和下载字节校验。
+
+当前用户入口以中英 README 为准；固定 tag/source/asset/size/SHA-256 和本次真实验证范围见 [1.1.0 发布记录](release_1_1_0.md)。不将旧硬件验收、源码测试或单份输出检查扩张为全部语言/模型/硬件的验证，也不自动激活 LLM、公证、DMG 或跨平台任务。

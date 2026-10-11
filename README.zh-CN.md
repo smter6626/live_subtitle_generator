@@ -8,7 +8,7 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 麦克风 -> 本地 Whisper 转写 -> 实时转写界面 -> Session 文件
 ```
 
-当前转写链路不依赖云端 LLM。Release 1.0.0 不包含 LLM 总结、翻译 sidecar、语义改写或笔记服务。
+当前转写链路不依赖云端 LLM。Release 1.1.0 不包含 LLM 总结、翻译 sidecar、语义改写或笔记服务。
 
 ## 功能
 
@@ -31,19 +31,20 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 
 ## 下载
 
-当前正式版本为 **1.0.0**：
+当前正式版本为 **1.1.0**：
 
-- [Classroom Transcriber 1.0.0 GitHub Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.0.0)
-- 正式 asset：`ClassroomTranscriber-1.0.0-macOS-AppleSilicon.zip`
+- [Classroom Transcriber 1.1.0 GitHub Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.1.0)
+- [下载 macOS Apple Silicon ZIP](https://github.com/smter6626/live_subtitle_generator/releases/download/1.1.0/ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip)
+- 正式 asset：`ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip`
 
-1.1.0 是 `codex/release-1-1-0-automation` 上尚未构建、尚未发布的候选版。其固定候选标题为 **Classroom Transcriber 1.1.0**，预定 asset 为 `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip`，其中包含 `ClassroomTranscriber.app`。当前可下载的 1.0.0 App 不包含这些候选改动。过去对 1.0.0 完成的 clean-machine 验收仅是历史证据，不会验收任何新的 1.1.0 App 或 ZIP 字节。
+1.1.0 已包含上列语言、Session、Clean 文件操作和窗口布局改进。精确 fresh-build ZIP 在发布前通过自动验包、独立审核及 Owner 人工测试。ZIP 为 48,307,378 字节，SHA-256 为 `fbe14de7d68c519ddb817ef1f45166f3e39a24f0a27d290cd82d9c2c20717bdb`；固定源码和验证范围见 [发布详情](docs/release_1_1_0.md)。1.0.0 仍作为历史版本保留。
 
 普通用户**不需要** clone 本仓库，不需要安装 Python，也不需要自行编译 `whisper.cpp`。ZIP 不包含 Whisper 模型；打开 App 后，请通过 Model Manager 下载或导入模型。
 
 ## 系统要求
 
 - Apple Silicon（`arm64`）Mac
-- macOS；正式 Release 验收已在运行 macOS 27 Beta 的 Apple M4 Max 和 Apple M5 机器上完成
+- macOS；历史 1.0.0 曾在 macOS 27 Beta 的 Apple M4 Max 和 Apple M5 上验证，不等于本次 1.1.0 的新硬件兼容矩阵
 - 麦克风使用权限
 - 足够容纳所选模型及其临时下载 staging 的可用磁盘空间
 - 使用 Model Manager 下载模型时需要网络连接
@@ -54,7 +55,7 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 
 整个流程不需要 Terminal 命令。
 
-1. 从 [1.0.0 Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.0.0) 下载 `ClassroomTranscriber-1.0.0-macOS-AppleSilicon.zip`。
+1. 从 [1.1.0 Release](https://github.com/smter6626/live_subtitle_generator/releases/tag/1.1.0) 下载 `ClassroomTranscriber-1.1.0-macOS-AppleSilicon.zip`。
 2. 在 Finder 中双击 ZIP，解压得到 `ClassroomTranscriber.app`。
 3. 打开 `ClassroomTranscriber.app`。
 4. 当前 Release 未 notarize。如果 macOS 提示无法验证 App，请关闭提示，打开**系统设置 → 隐私与安全性**，选择**仍要打开（Open Anyway）**，按提示认证，然后再次打开 App。
@@ -67,9 +68,9 @@ Classroom Live Transcriber 是一款面向 macOS Apple Silicon 的本地、近�
 11. 如有需要，使用**选择输出位置（Choose Output Location）**设置未来 Session 的保存位置。
 12. 点击**开始录音（Start Recording）**。第一个音频 chunk 处理完成后，Clean Transcript 会开始更新。
 13. 课堂或录音结束时，点击**停止录音（Stop Recording）**。App 会停止继续采集，并完成已经提交处理的音频。
-14. 如果运行当前 feature branch，请使用下述 Clean 文件操作。可下载的 1.0.0 App 中还没有这些控件。
+14. 使用下述 Clean 文件操作，这些控件已包含在 1.1.0 App 中。
 
-### 当前 feature branch 的 Clean 文件操作
+### Clean 文件操作
 
 - 左侧的**定位 Clean（Reveal Clean）**和**复制 Clean 路径（Copy Clean Path）**位于同一紧凑行。每次使用都会重新确认路径仍对应当前 Session 的 Clean writer；验证失败时，访达和剪贴板保持不变。
 - **重命名 Clean TXT（Rename Clean TXT）**位于 Clean 表格工具栏左侧。只输入文件名主体，`.txt` 后缀由 App 固定管理。普通重命名不会覆盖已有目标，会保留 writer inode，并且在录制中或 Stop 后都可使用。
@@ -161,7 +162,7 @@ Beam 控制转写时的搜索量。当前范围为 `3` 到 `8`，默认值为 `5
 ```
 
 - `raw.txt`——后端产生的原始 timestamp transcript evidence
-- `clean.txt` -- 当前 Clean transcript 的初始文件名。在 feature branch 中，重命名可将它改为用户指定的 `.txt`，同时保留已有内容和后续追加；当原 Session 路径确定不可用时，也可将完整 writer 历史无覆盖地恢复到新的 `.txt`。因此不能假设每个已完成的 feature-branch Session 都仍有一个字面名称为 `clean.txt` 的文件。
+- `clean.txt` -- 当前 Clean transcript 的初始文件名。重命名可将它改为用户指定的 `.txt`，同时保留已有内容和后续追加；当原 Session 路径确定不可用时，也可将完整 writer 历史无覆盖地恢复到新的 `.txt`。因此不能假设每个已完成的 Session 都仍有一个字面名称为 `clean.txt` 的文件。
 - `session.log`——Session、chunk、backend、warning、error 和 stop 事件日志
 - `config.json`——本次 Session 使用的模型、语言、Beam、路径和音频配置
 
@@ -172,7 +173,7 @@ Beam 控制转写时的搜索量。当前范围为 `3` 到 `8`，默认值为 `5
 - 麦克风转写和 `whisper.cpp` inference 在 Mac 本机运行。
 - Session transcript 保存在用户选择的 Output Location 下。
 - Model Manager 下载模型时会通过网络访问 upstream `ggerganov/whisper.cpp` 模型仓库。
-- Release 1.0.0 不会把 transcript 发送给云端 LLM 做总结、翻译或语义改写。
+- Release 1.1.0 不会把 transcript 发送给云端 LLM 做总结、翻译或语义改写。
 
 以上说明针对当前 App 链路，不代表对 macOS、本机网络或电脑上其他第三方软件行为作绝对承诺。
 
@@ -208,7 +209,7 @@ Start 创建 Session 后，点击**打开输出目录（Open Output Folder）**�
 
 ### 点击“定位 Clean”或“复制 Clean 路径”没有反应
 
-在 feature branch 中，如果 Store 无法证明哪个 Session 内的 `.txt` 才是当前 writer，这两个操作会主动保持访达或剪贴板不变。请等待外部文件操作停止后重试。如果路径已经被安全地确认不存在，可通过**重命名 Clean TXT**选择是否创建全文恢复文件。
+如果 Store 无法证明哪个 Session 内的 `.txt` 才是当前 writer，这两个操作会主动保持访达或剪贴板不变。请等待外部文件操作停止后重试。如果路径已经被安全地确认不存在，可通过**重命名 Clean TXT**选择是否创建全文恢复文件。
 
 ### Clean 重命名提示目标已存在
 
@@ -220,14 +221,14 @@ Start 创建 Session 后，点击**打开输出目录（Open Output Folder）**�
 
 ## 已知限制
 
-- 1.0.0 下载 asset 仅面向 macOS Apple Silicon，没有 Intel Mac 或 Windows Release。
-- Release 验收已在 Apple M4 Max 和 Apple M5 的 macOS 27 Beta 环境完成。其他 Apple Silicon 代际和更早 macOS 版本未经过项目实机验证，最低 macOS 版本尚未定义。
+- 1.1.0 下载 asset 仅面向 macOS Apple Silicon，没有 Intel Mac 或 Windows Release。
+- 历史 1.0.0 的 Apple M4 Max/M5、macOS 27 Beta 验收不代表本次 1.1.0 的全部硬件/系统组合已验证。最低 macOS 版本尚未定义。
 - 当前 Release 使用 ad-hoc signing，未进行 Developer ID notarization，因此 Gatekeeper 首次启动时可能要求“仍要打开”。
 - 当前 inference 按重叠音频 chunk 调用 `whisper.cpp` CLI。转写属于近实时，不是零延迟，也不提供固定延迟保证。
-- Release 1.0.0 没有 LLM summary、云端翻译 sidecar、语义纠错或结构化课堂笔记。
+- Release 1.1.0 没有 LLM summary、云端翻译 sidecar、语义纠错或结构化课堂笔记。
 - 自动检测使用自动语言识别，效果取决于模型和音频。
 - Clean Transcript 只执行保守去重和有限的高置信过滤，不是语义改写。
-- Feature-branch Clean 路径验证面向本 App 的 single-writer 工作流。无锁的外部程序仍可能在最后一次检查之后立刻修改 Session；App 不提供跨程序文件系统锁。
+- Clean 路径验证面向本 App 的 single-writer 工作流。无锁的外部程序仍可能在最后一次检查之后立刻修改 Session；App 不提供跨程序文件系统锁。
 
 ## 开发者指南
 
